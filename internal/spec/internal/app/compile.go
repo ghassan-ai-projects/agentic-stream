@@ -34,5 +34,5 @@ func CompilePlaybookFile(compiled *domain.CompiledSpec, path string) (*domain.Co
 	if err != nil {
 		return nil, fmt.Errorf("read file: %w", err)
 	}
-	return domain.CompilePlaybook(compiled, data) //nolint:wrapcheck // The compiler's CompileError carries the operator-facing path and message.
+	return domain.CompilePlaybook(compiled, data)
 }

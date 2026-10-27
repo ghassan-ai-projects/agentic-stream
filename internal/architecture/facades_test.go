@@ -141,7 +141,7 @@ var facadeSpecs = []facadeSpec{
 		module:       "internal/cognition",
 		constructors: []string{"New", "applicationConfig"},
 		operations: operations(to("app", "Process", "RecordCostRejectionReason", "RecordSchedulerExpiryReason", "TriggerEvaluation",
-			"TriggerEvaluations", "PruneIgnoredEvaluations")),
+			"TriggerEvaluations", "PruneIgnoredEvaluations", "QueueAudit")),
 	},
 	{
 		module: "internal/control",
@@ -165,7 +165,8 @@ var facadeSpecs = []facadeSpec{
 				"Rebind", "BindRequest", "AbandonRebind", "Abandon", "Conclude", "RetainForRetry", "SupersedeEpoch", "SupersedeCoalesced",
 				"UpsertSchedulerItem", "MarkSchedulerItemAdmitted", "CoalesceSchedulerItems", "CoalesceCostRejectedItem", "CoalesceSkippedItem",
 				"DueSchedulerItems", "PollSchedulerQueue", "ExpireSchedulerItem", "Scheduling", "Episode",
-				"ReadEpisodeFence", "ReadAttemptStatus", "ReadEpisodeLifecycle", "NextDispatchableEpisode", "ReadAdmission"),
+				"ReadEpisodeFence", "ReadAttemptStatus", "ReadEpisodeLifecycle", "NextDispatchableEpisode", "ReadAdmission",
+				"HasLiveEpisode"),
 			to("domain", "IsTerminalAttempt", "AttemptSQL"),
 		),
 	},
@@ -202,6 +203,11 @@ var facadeSpecs = []facadeSpec{
 		constructors: []string{"New"},
 		operations:   operations(to("app", "ReadPage", "Prune", "Prunable", "Append", "AppendLifecycleEvent")),
 		other:        domainEventOperation,
+	},
+	{
+		module:       "internal/playbook",
+		constructors: []string{"New", "applicationConfig"},
+		operations:   operations(to("app", "Digest", "Route", "Settle")),
 	},
 	{
 		module:     "internal/executor/remote",

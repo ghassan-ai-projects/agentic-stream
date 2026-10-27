@@ -49,3 +49,9 @@ func NextDispatchableEpisode(ctx context.Context, tx *sql.Tx, tenantID string, k
 func ReadAdmission(ctx context.Context, db *sql.DB, episodeID string) (Admission, error) {
 	return app.ReadAdmission(ctx, store.Reader(db), episodeID)
 }
+
+// HasLiveEpisode reports, on the caller's transaction, whether a Situation has
+// an admitted or running episode, the one the ledger allows per Situation.
+func HasLiveEpisode(ctx context.Context, tx *sql.Tx, situationID string) (bool, error) {
+	return app.HasLiveEpisode(ctx, store.Join(tx), situationID)
+}

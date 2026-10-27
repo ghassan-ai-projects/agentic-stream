@@ -75,7 +75,6 @@ an optional `remedyMap` and the two intent flags. A Decision gains an optional
 
 | Table | Holds |
 | --- | --- |
-| `rule_states` | Per rule id and version: mode, pinned kind digest, the playbook digest that declared it. |
 | `rule_evaluations` | What a rule would have recommended for a situation version (shadow rules), and the verdict once the model's decision is stored. |
 | `rule_fires` | Each active fire (episode, version, time): the rate cap and the audit sample. |
 | `rule_circuits` | Circuit state per rule (open or closed), its cause and evidence. |
@@ -100,7 +99,8 @@ snapshot routes the same way. Route answers one of:
   diagnosis code, intent, preset parameters and the features the rule read).
   The fire is recorded.
 - **audit**: the item was queued by the playbook to audit a rule episode. The
-  request goes to the model with dispatch policy `shadow`.
+  request goes to the model with dispatch policy `shadow`. An audit item whose
+  Situation has a live episode waits in the queue for a later pass.
 - **model**: anything else. For every shadow rule that matches, a
   `rule_evaluations` row is written.
 
@@ -124,7 +124,9 @@ After each batch the runtime calls `playbook.Settle`, which, in order:
 2. for each concluded rule episode chosen by the audit sample (a pure function
    of the situation version id, so replay reproduces it), asks cognition to
    queue an audit item for the same version once the rule episode has ended
-   (one live episode per situation);
+   (one live episode per situation). Any due item whose Situation already has a
+   live episode, an audit or an ordinary trigger, is deferred to the next
+   admission pass instead of failing the batch;
 3. compares each concluded audit with its rule's recommendation; a disagreement
    opens the rule's circuit and publishes a notification;
 4. verifies concluded cases against their settle window (AS-5);

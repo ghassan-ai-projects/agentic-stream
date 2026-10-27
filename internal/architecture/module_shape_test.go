@@ -14,6 +14,7 @@ import (
 var moduleShapeExceptions = map[string]string{
 	"internal/architecture":     "repository-wide gates: no production code beyond its package comment (README.md)",
 	"internal/executor/fixture": "demo executor used by composition; held for the owner",
+	"internal/executor/rule":    "in-process executor that turns a bound rule into a Decision; no rules of its own beyond reading its request",
 	"internal/kernel":           "shared pure vocabulary with no rules of its own to separate; one package by design (TestKernelHasNoSubpackages)",
 }
 
@@ -47,7 +48,7 @@ func requireDomain(t *testing.T, root, module string) {
 var opaqueStoreModules = []string{
 	"internal/actions", "internal/approvalledger", "internal/cognition", "internal/control", "internal/engine",
 	"internal/episodeledger", "internal/episodes", "internal/evidence", "internal/ingress", "internal/notify",
-	"internal/runartifact", "internal/watch",
+	"internal/playbook", "internal/runartifact", "internal/watch",
 }
 
 // TestStoresKeepTransactionsOpaque requires the Store and Tx types of a store
@@ -118,6 +119,7 @@ var applicationLayerSpecs = []applicationLayerSpec{
 	{"internal/evidence", slices.DeleteFunc(slices.Clone(rawInfrastructureCalls), func(call string) bool { return call == "Query" })},
 	{"internal/ingress", rawInfrastructureCalls},
 	{"internal/notify", rawInfrastructureCalls},
+	{"internal/playbook", rawInfrastructureCalls},
 	{"internal/runartifact", rawInfrastructureCalls},
 	{"internal/watch", rawInfrastructureCalls},
 }

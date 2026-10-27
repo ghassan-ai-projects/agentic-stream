@@ -19,10 +19,10 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/watch"
 )
 
-// PipelineConfig configures one owner-scoped live runtime pipeline.
 type PipelineConfig struct {
 	DB                *storage.DB
 	Spec              *spec.CompiledSpec
+	Playbook          *spec.CompiledPlaybook
 	TenantID          string
 	Owner             *runtimecontrol.RuntimeOwner
 	OwnerEpoch        string
@@ -34,12 +34,9 @@ type PipelineConfig struct {
 	TenantCostCeiling *uint64
 	CostKillSwitch    *bool
 	Telemetry         *telemetry.Runtime
-	// P8: DemoMode admits `fixture` executors (demos and tests only). A
-	// production pipeline (DemoMode false) rejects them at admission.
+
 	DemoMode bool
-	// P8: the epoch-control reader — nil in tests without drain/kill. When
-	// set, admission refuses new episodes while the epoch is draining and
-	// every later decision is refused once the epoch is killed.
+
 	EpochControl    *runtimecontrol.EpochControl
 	GatewayEffector *device.GatewayEffector
 	DeviceEffector  app.DeviceEffector
@@ -48,8 +45,6 @@ type PipelineConfig struct {
 	MaintenanceInterval time.Duration
 }
 
-// NewPipeline creates a fully composed live pipeline. The caller must start
-// the runtime Service first when Owner is configured.
 func NewPipeline(ctx context.Context, cfg PipelineConfig) (*app.Pipeline, error) {
 	if cfg.DB == nil || cfg.Spec == nil {
 		return nil, fmt.Errorf("pipeline database and spec are required")

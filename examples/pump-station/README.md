@@ -10,6 +10,7 @@ the spec the campaign runs against.
 | [`testdata/plant-wire/pump-station.site.json`](testdata/plant-wire/pump-station.site.json) | `site-a:pump-1` to `site-a:pump-8`, each reporting for the pump entity of the same id; readings to `pump.*.observed` events. |
 | [`testdata/plant-wire/pump-station.catalog.json`](testdata/plant-wire/pump-station.catalog.json) | Fleet routes: each intent route commands the pump bound to the situation's entity and fills `pump_id` with it; `schedule_maintenance` has one preset per work order. |
 | [`testdata/plant-wire/kinds/`](testdata/plant-wire/kinds/) | The `pump` kind of the `pump-station` world. |
+| [`testdata/site-a.playbook.yaml`](testdata/site-a.playbook.yaml) | A test playbook: an active `bearing-wear` rule and a shadow `misalignment` rule, used by the playbook tests. A real playbook lives in the customer workspace, never in a repository. |
 | [`testdata/plant-wire/kinds-probe-b/`](testdata/plant-wire/kinds-probe-b/) | The `pump` kind of the `pump-station-probe-b` world: the same kind with another digest (scenario S7). |
 
 The intents: `schedule_maintenance` (R1, automatic, one preset per work order:

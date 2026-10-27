@@ -25,6 +25,13 @@ func (p *Pipeline) executeAdmittedEpisodes(ctx context.Context, report *Pipeline
 		}
 		report.EpisodesExecuted++
 	}
+	return p.settlePlaybook(ctx)
+}
+
+func (p *Pipeline) settlePlaybook(ctx context.Context) error {
+	if _, err := p.transactions.SettlePlaybook(ctx); err != nil {
+		return fmt.Errorf("settle playbook: %w", err)
+	}
 	return nil
 }
 

@@ -55,6 +55,10 @@ historical design map where the code has chosen a more specific package name.
 | `internal/watch/internal/app/` | install, fire and expire use cases with busy retry |
 | `internal/watch/internal/store/` | opaque transactions, watch SQL and owner/interlock plumbing |
 | `internal/watch/internal/domain/` | pure payload rules, watch identity, CEL validation and evaluation |
+| `internal/playbook/` | rule promotion facade: route an admission to a rule, an audit or the model; settle evidence |
+| `internal/playbook/internal/app/` | route, skip-audit and settle use cases in caller or own transactions |
+| `internal/playbook/internal/store/` | opaque transactions and the SQL of rule_fires, rule_evaluations and rule_circuits |
+| `internal/playbook/internal/domain/` | pure rule matching, envelope, audit sampling, preset and agreement rules |
 | `internal/runartifact/internal/app/` | export and verify use cases |
 | `internal/runartifact/internal/store/` | read-only snapshot SQL and the device authority safety read |
 | `internal/runartifact/internal/domain/` | pure manifest, ledger encoding, checksum, binding, soak verdict and verification rules |
@@ -105,6 +109,7 @@ historical design map where the code has chosen a more specific package name.
 | `internal/sources/internal/domain/` | pure clock and generator contracts, virtual clock, deterministic generator, id prefixes |
 | `internal/sources/internal/transport/` | the operating-system clock and the cryptographic random generator |
 | `internal/executor/fixture/` | deterministic episode executor for explicit demo and replay fixtures |
+| `internal/executor/rule/` | in-process executor of playbook rules; other requests go to the wrapped model executor |
 | `internal/executor/native/`, `internal/executor/remote/`, `internal/worker/` | in-process and out-of-process executors and the worker protocol (facade) |
 | `internal/worker/internal/domain/` | pure protocol constants, limits, handshake, request and stream validation, budget rule |
 | `internal/worker/internal/transport/` | reference worker gRPC server and the private Unix sockets |
