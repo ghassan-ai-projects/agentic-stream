@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/draftport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/playbook/internal/app"
@@ -156,4 +157,32 @@ func (s *Service) PresentProposal(ctx context.Context, tx *sql.Tx, lookup Propos
 // still the one loaded.
 func (s *Service) ResolveProposal(ctx context.Context, tx *sql.Tx, resolution ProposalResolution) (ProposalResult, error) {
 	return s.app.ResolveProposal(ctx, s.app.Store().Join(tx), resolution)
+}
+
+// RuleKey names one version of a rule.
+type RuleKey = domain.RuleKey
+
+// CircuitView is one rule circuit: its rule, state, cause and, closed, when
+// and why an operator closed it.
+type CircuitView = domain.CircuitView
+
+// Fence proves, in the caller's transaction, that the caller owns the runtime.
+type Fence = store.Fence
+
+// Refusals of closing a circuit.
+var (
+	ErrNoOpenCircuit       = domain.ErrNoOpenCircuit
+	ErrCloseReasonRequired = app.ErrCloseReasonRequired
+)
+
+// Circuits lists the tenant's rule circuits, open and closed.
+func Circuits(ctx context.Context, db *storage.DB, tenantID string) ([]CircuitView, error) {
+	return app.Circuits(ctx, store.New(db), tenantID)
+}
+
+// CloseCircuit switches a rule back on: it closes the rule's open circuit
+// with the operator's reason, after the fence proves the caller owns the
+// runtime.
+func CloseCircuit(ctx context.Context, db *storage.DB, fence Fence, tenantID string, rule RuleKey, reason string, now time.Time) error {
+	return app.CloseCircuit(ctx, store.New(db), fence, tenantID, rule, reason, now)
 }

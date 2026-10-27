@@ -209,6 +209,15 @@ effect. `trip` blocks every effect and needs no lease; `clear` reopens the
 action plane and needs the lease. Each change is versioned and records its
 reason and time. It does not replace a physical e-stop.
 
+### `circuits list | close --rule <id> --version <n> --reason <text>`
+
+A playbook rule's circuit opens when an audit disagrees, the rate cap is hit,
+the device kind changes, a case is not verified or most matches fall outside
+the cap; the rule then answers no case. `list` shows every circuit with its
+cause. `close` switches the rule back on and records the reason; it needs the
+lease, so stop the runtime first. A new approved version of a rule starts
+with no circuit.
+
 ### `quarantine list | release <event-id> | redrive <event-id>`
 
 Invalid or not-yet-registered evidence is quarantined, never dropped. `list`

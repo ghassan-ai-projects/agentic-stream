@@ -1,6 +1,9 @@
 package domain
 
-import "time"
+import (
+	"errors"
+	"time"
+)
 
 const (
 	KindShadow = "shadow"
@@ -41,6 +44,17 @@ type Evaluation struct {
 	Recommendation   Recommendation
 	Verdict          string
 	Observed         *Observed
+}
+
+var ErrNoOpenCircuit = errors.New("the rule has no open circuit")
+
+type CircuitView struct {
+	Rule        RuleKey `json:"rule"`
+	State       string  `json:"state"`
+	Cause       string  `json:"cause"`
+	OpenedAt    string  `json:"opened_at"`
+	ClosedAt    string  `json:"closed_at,omitempty"`
+	CloseReason string  `json:"close_reason,omitempty"`
 }
 
 type Circuit struct {

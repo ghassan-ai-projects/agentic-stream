@@ -52,7 +52,7 @@ cognitive scheduler decides reasoning is useful.`,
 func registerCommands(root *cobra.Command) {
 	root.AddCommand(newVersionCommand(), newValidateCommand(), newRunCommand(), newServeCommand(), newRunLiveCommand(),
 		newExportRunCommand(), newVerifyRunCommand())
-	root.AddCommand(newInterlockCommand(), newPrincipalsCommand(), newQuarantineCommand(), newNotificationsCommand(),
+	root.AddCommand(newInterlockCommand(), newCircuitsCommand(), newPrincipalsCommand(), newQuarantineCommand(), newNotificationsCommand(),
 		newCommandsCommand(), newSituationCommand(), newExplainCommand(), newEpisodeCommand(), newIntentCommand(),
 		newMaintenanceCommand())
 }

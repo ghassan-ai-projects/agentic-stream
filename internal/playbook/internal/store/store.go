@@ -33,3 +33,14 @@ func (s Store) WithTx(ctx context.Context, use func(*Tx) error) error {
 	}
 	return nil
 }
+
+type Fence = func(context.Context, *sql.Tx) error
+
+func (s Store) WithFencedTx(ctx context.Context, fence Fence, use func(*Tx) error) error {
+	return s.WithTx(ctx, func(tx *Tx) error {
+		if err := fence(ctx, tx.tx); err != nil {
+			return fmt.Errorf("playbook write fence: %w", err)
+		}
+		return use(tx)
+	})
+}

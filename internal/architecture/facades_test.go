@@ -207,7 +207,7 @@ var facadeSpecs = []facadeSpec{
 	{
 		module:       "internal/playbook",
 		constructors: []string{"New", "applicationConfig"},
-		operations:   operations(to("app", "Digest", "Route", "Settle", "Draft", "Promote", "PresentProposal", "ResolveProposal"), to("domain", "IsProposalID")),
+		operations:   operations(to("app", "Digest", "Route", "Settle", "Draft", "Promote", "PresentProposal", "ResolveProposal", "Circuits", "CloseCircuit"), to("domain", "IsProposalID")),
 	},
 	{
 		module:     "internal/executor/remote",

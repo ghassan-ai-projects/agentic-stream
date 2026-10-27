@@ -11,8 +11,8 @@ import (
 )
 
 type RuleKey struct {
-	ID      string
-	Version int
+	ID      string `json:"id"`
+	Version int    `json:"version"`
 }
 
 type Rules struct {

@@ -50,7 +50,8 @@ CREATE INDEX rule_evaluations_pending ON rule_evaluations (verdict, kind);
 CREATE INDEX rule_evaluations_rule ON rule_evaluations (rule_id, rule_version, kind, verdict);
 CREATE INDEX rule_evaluations_rule_time ON rule_evaluations (rule_id, rule_version, kind, event_time);
 
--- An open circuit switches its rule off until a human closes it.
+-- An open circuit switches its rule off until an operator closes it
+-- (agentic-stream circuits close, with the runtime stopped).
 CREATE TABLE rule_circuits (
     rule_id        TEXT NOT NULL,
     rule_version   INTEGER NOT NULL CHECK (rule_version >= 1),
@@ -60,5 +61,6 @@ CREATE TABLE rule_circuits (
     evidence_json  BLOB NOT NULL,
     opened_at      TEXT NOT NULL,
     closed_at      TEXT,
+    close_reason   TEXT,
     PRIMARY KEY (rule_id, rule_version)
 ) STRICT;
