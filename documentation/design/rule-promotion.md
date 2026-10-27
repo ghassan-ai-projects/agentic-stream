@@ -4,11 +4,11 @@
 - **Date**: 2026-10-27
 - **Repository**: agentic-stream, branch `rule-promotion` (cut from main `d9f87164`)
 - **Session order**: the repositories are worked one at a time, never in parallel:
-  1. streams-simulator: `/Users/ghassan/my-projects/streams-simulator/docs/rule-promotion/PLAN-streams-simulator.md`
+  1. streams-simulator: the streams-simulator repository, `docs/rule-promotion/PLAN-streams-simulator.md`
   2. **agentic-stream, rounds AS-0 to AS-8 (this plan)**
-  3. tamoz: `/Users/ghassan/my-projects/tamoz/docs/RULE_PROMOTION_PLAN.md`
+  3. tamoz: the tamoz repository, `docs/RULE_PROMOTION_PLAN.md`
   4. **agentic-stream again, round AS-9**: the first-slice run with the real Tamoz worker
-- **Background, not required to start**: `/Users/ghassan/my-projects/streams-simulator/docs/rule-promotion/`
+- **Background, not required to start**: the streams-simulator repository's `docs/rule-promotion/`
   (`README.md`: the 18 owner decisions; `SCENARIOS.md`: the acceptance campaign; `PLAN.md`: findings F1-F9)
 
 This page is self-contained: a session that reads it and this repository's `AGENTS.md` can do the work. Before
@@ -91,7 +91,7 @@ scripted approvers and the campaign score**; the simulator owns the world and th
 
 ## 4. Inputs from session 1 (streams-simulator)
 
-From `/Users/ghassan/my-projects/streams-simulator/examples/pump-station/` on its `rule-promotion` branch:
+From the streams-simulator repository's `examples/pump-station/` on its `rule-promotion` branch:
 `pump-station.domain.json` and `pump-station-probe-b.domain.json` (the world and its probe variant; the right
 `schedule_maintenance` work order, equal to the fault id, repairs a fault after about an hour), `kinds/pump.kind.json`
 and `kinds/pump-probe-b.kind.json`, the first-slice campaign spec, and the generated campaign folder
@@ -266,7 +266,7 @@ In `examples/pump-station/`:
 After session 3 (Tamoz) delivered the draft path: build `streamsim` (simulator `rule-promotion`) and the Tamoz
 worker (tamoz `rule-promotion`), run the first-slice campaign for arms 0, A, B and C (A to C three times each),
 keep the run folders and the recorded model responses, and write the result, with every pass condition and the
-honest reading of it, to `/Users/ghassan/my-projects/streams-simulator/docs/rule-promotion/RESULT.md` on the
+honest reading of it, to the streams-simulator repository's `docs/rule-promotion/RESULT.md` on the
 simulator's `rule-promotion` branch. Then the owner decides on merging the three branches.
 
 ## 7. First-slice pass conditions (from the agreed scenarios)
@@ -319,3 +319,10 @@ the remedy map's enforcement in proposals; the scenarios S3-S6 and S8-S11.
 Hand off to session 3 (tamoz) with: the proto change (commit and file), the `decision-v1.json` change, the exact
 `DraftRequest` and reply fields, the handshake feature name, the pump-station spec's diagnosis catalog and intents,
 and how `workerfake` answers, so Tamoz can match it.
+
+## Next reads
+
+- [Cognition](cognition.md)
+- [Decisions and actions](decisions-and-actions.md)
+- [Replay and shadow](replay-and-shadow.md)
+- [Plant wire adapter](plant-wire-adapter.md)
