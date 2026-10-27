@@ -94,6 +94,9 @@ func decisionDocument(req *runtimev1.EpisodeRequest, answer Answer) (map[string]
 	}
 	decision := decisionBody(req, answer, scope, validUntil)
 	decision["intents"] = intents
+	if answer.Intent == nil {
+		decision["decision_type"] = "need_more_evidence"
+	}
 	if answer.DiagnosisCode != "" {
 		decision["diagnosis_code"] = answer.DiagnosisCode
 	}

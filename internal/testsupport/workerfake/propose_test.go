@@ -46,6 +46,9 @@ func TestProposeWithoutIntentNeedsNoEntity(t *testing.T) {
 	if err != nil || len(events) != 3 {
 		t.Fatalf("events = %v (%v), want a decision without intents", events, err)
 	}
+	if decision := string(events[1].GetDecision().GetDecisionJson()); !strings.Contains(decision, `"decision_type":"need_more_evidence"`) {
+		t.Fatalf("decision = %s, want need_more_evidence, which decision-v1 requires without intents", decision)
+	}
 }
 
 func TestProposeRefusesAnIntentWithoutTheSnapshotsEntity(t *testing.T) {
