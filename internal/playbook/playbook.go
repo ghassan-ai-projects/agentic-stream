@@ -16,16 +16,18 @@ import (
 // Config configures the playbook: the database, the spec and the compiled
 // playbook (nil: no rule ever answers), the tenant, the clock, and the port
 // that queues an audit item for a Situation version in a caller transaction
-// (nil: no audit is queued), and the query of the kind digests devices were
-// born with (nil: no rule is switched off for a kind change).
+// (nil: no audit is queued), the query of the kind digests devices were born
+// with (nil: no rule is switched off for a kind change) and the query of the
+// born kind digest of an entity's device (nil: cases carry no kind digest).
 type Config struct {
-	DB          *storage.DB
-	Spec        *spec.CompiledSpec
-	Playbook    *spec.CompiledPlaybook
-	TenantID    string
-	Clock       sources.Clock
-	QueueAudit  AuditQueue
-	KindDigests func() map[string]string
+	DB               *storage.DB
+	Spec             *spec.CompiledSpec
+	Playbook         *spec.CompiledPlaybook
+	TenantID         string
+	Clock            sources.Clock
+	QueueAudit       AuditQueue
+	KindDigests      func() map[string]string
+	EntityKindDigest func(entityID string) string
 }
 
 // AuditQueue queues one audit scheduler item in the caller's transaction and
@@ -78,7 +80,7 @@ func New(cfg Config) (*Service, error) {
 
 func applicationConfig(cfg Config) app.Config {
 	return app.Config{Store: store.New(cfg.DB), Spec: cfg.Spec, Playbook: cfg.Playbook, TenantID: cfg.TenantID, Clock: cfg.Clock,
-		QueueAudit: cfg.QueueAudit, KindDigests: cfg.KindDigests}
+		QueueAudit: cfg.QueueAudit, KindDigests: cfg.KindDigests, EntityKindDigest: cfg.EntityKindDigest}
 }
 
 // Digest is the digest of the playbook the rules were compiled from; empty

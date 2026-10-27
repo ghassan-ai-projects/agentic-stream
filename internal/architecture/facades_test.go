@@ -216,7 +216,7 @@ var facadeSpecs = []facadeSpec{
 	{
 		module:       "internal/plantwire",
 		constructors: []string{"New"},
-		operations:   operations(to("app", "Run", "Close", "OwnsRoute", "Dispatch", "DispatchAuthorized", "VerifyDeviceCommand", "BornKindDigests"), to("domain", "CheckSettings")),
+		operations:   operations(to("app", "Run", "Close", "OwnsRoute", "Dispatch", "DispatchAuthorized", "VerifyDeviceCommand", "BornKindDigests", "EntityKindDigest"), to("domain", "CheckSettings")),
 	},
 	{
 		module:       "internal/runartifact",

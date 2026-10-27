@@ -81,3 +81,40 @@ func TestAKindBornWithAnotherDigestOpensThePinnedRulesCircuits(t *testing.T) {
 		t.Fatalf("changes = %+v, want both pump rules switched off", changes)
 	}
 }
+
+func TestACaseIsVerifiedOnlyWhenItClosedAndStayedClosedThroughItsWindow(t *testing.T) {
+	t.Parallel()
+	rules := pumpRules(t)
+	acted := time.Date(2026, 1, 1, 6, 0, 0, 0, time.UTC)
+	decision := map[string]any{"diagnosis_code": "bearing_wear", "intents": []any{map[string]any{"type": "schedule_maintenance",
+		"parameters": map[string]any{"work_order": "bearing_wear"}}}}
+	c := rules.NewCase(CaseCandidate{SituationID: "s1", Decision: decision, Acknowledged: true, ActedAt: acted, RuleID: "bearing-wear", RuleVersion: 1})
+	if c.Verdict != CasePending || !c.WindowEndsAt.Equal(acted.Add(24*time.Hour)) || c.Preset != "bearing_wear" || !c.RuleHandled() {
+		t.Fatalf("new case = %+v, want a pending bearing_wear case with a 24h window", c)
+	}
+	at := func(hours int) *time.Time { moment := acted.Add(time.Duration(hours) * time.Hour); return &moment }
+	cases := []struct {
+		name     string
+		evidence CaseEvidence
+		verdict  string
+	}{
+		{"closed and stayed closed", CaseEvidence{ClosedAt: at(4), Watermark: *at(25)}, CaseVerified},
+		{"window still open", CaseEvidence{ClosedAt: at(4), Watermark: *at(10)}, CasePending},
+		{"reopened inside the window", CaseEvidence{ClosedAt: at(4), ReopenedAt: at(20), Watermark: *at(21)}, CaseNotVerified},
+		{"masked: never closed", CaseEvidence{Watermark: *at(25)}, CaseNotVerified},
+		{"reopened after the window", CaseEvidence{ClosedAt: at(4), ReopenedAt: at(30), Watermark: *at(30)}, CaseVerified},
+	}
+	for _, tc := range cases {
+		if verdict, _ := c.Verify(tc.evidence); verdict != tc.verdict {
+			t.Errorf("%s: verdict = %s, want %s", tc.name, verdict, tc.verdict)
+		}
+	}
+	unacknowledged := rules.NewCase(CaseCandidate{Decision: decision, ActedAt: acted})
+	unknownCode := rules.NewCase(CaseCandidate{Decision: map[string]any{"diagnosis_code": "transient_none"}, Acknowledged: true, ActedAt: acted})
+	if unacknowledged.Reason != ReasonNotAcknowledged || unknownCode.Reason != ReasonNoSettleWindow {
+		t.Fatalf("unacknowledged = %+v, no window = %+v", unacknowledged, unknownCode)
+	}
+	if NoEffectCircuit(c, acted).Cause != CauseNoEffect {
+		t.Fatal("an ineffective rule case opens a no_effect circuit")
+	}
+}

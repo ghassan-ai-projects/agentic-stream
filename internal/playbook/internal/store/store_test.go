@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -158,4 +159,53 @@ func TestTheLastDecisionOfAnEndedEpisodeIsRead(t *testing.T) {
 	if _, err := lastDecision([]episodes.DecisionView{{DecisionID: "d3", Decision: json.RawMessage(`{`)}}); err == nil || !strings.Contains(err.Error(), "decode decision d3") {
 		t.Fatalf("a malformed stored decision = %v, want it refused", err)
 	}
+}
+
+func seededCase(t *testing.T) Store {
+	t.Helper()
+	db := storagetest.OpenTempWithoutForeignKeys(t)
+	fixture, err := os.ReadFile("../../testdata/acted-case.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(t.Context(), string(fixture)); err != nil {
+		t.Fatalf("seed the acted case: %v", err)
+	}
+	return New(db)
+}
+
+func TestAnActedCaseIsRecordedJudgedAndSettled(t *testing.T) {
+	t.Parallel()
+	s := seededCase(t)
+	inTx(t, s, func(tx *Tx) error {
+		candidates, err := tx.CaseCandidates(t.Context(), "t")
+		if err != nil || len(candidates) != 1 || !candidates[0].Acknowledged || candidates[0].RuleID != "bearing-wear" ||
+			candidates[0].Facts["facts.vibration_mean_15m"] != 4.2 {
+			t.Fatalf("candidates = %+v, %v; want the acknowledged rule case", candidates, err)
+		}
+		c := domain.Case{CaseCandidate: candidates[0], Observed: domain.Observed{DiagnosisCode: "bearing_wear"},
+			WindowEndsAt: candidates[0].ActedAt.Add(24 * time.Hour), Verdict: domain.CasePending, Reason: domain.ReasonAwaitingWindow}
+		return tx.RecordCase(t.Context(), c, storeNow)
+	})
+	inTx(t, s, func(tx *Tx) error {
+		if candidates, err := tx.CaseCandidates(t.Context(), "t"); err != nil || len(candidates) != 0 {
+			t.Fatalf("candidates after recording = %+v, %v; want none", candidates, err)
+		}
+		pending, err := tx.PendingCases(t.Context(), "t")
+		if err != nil || len(pending) != 1 {
+			t.Fatalf("pending cases = %+v, %v", pending, err)
+		}
+		evidence, err := tx.CaseEvidence(t.Context(), pending[0])
+		if err != nil || evidence.ClosedAt == nil || evidence.ClosedAt.Hour() != 8 || evidence.ReopenedAt != nil || evidence.Watermark.Day() != 2 {
+			t.Fatalf("evidence = %+v, %v; want closed at 08:00, no reopen, the log on the next day", evidence, err)
+		}
+		pending[0].Verdict, pending[0].Reason = pending[0].Verify(evidence)
+		return tx.SettleCase(t.Context(), pending[0], storeNow)
+	})
+	inTx(t, s, func(tx *Tx) error {
+		if pending, err := tx.PendingCases(t.Context(), "t"); err != nil || len(pending) != 0 {
+			t.Fatalf("pending cases after settling = %+v, %v; want none", pending, err)
+		}
+		return nil
+	})
 }

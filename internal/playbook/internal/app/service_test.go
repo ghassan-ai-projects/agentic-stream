@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"database/sql"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -11,10 +12,16 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/playbook/internal/store"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func pumpService(t *testing.T) *Service {
+	t.Helper()
+	return pumpServiceOn(t, storagetest.OpenTemp(t))
+}
+
+func pumpServiceOn(t *testing.T, db *storage.DB) *Service {
 	t.Helper()
 	compiled, err := spec.CompileFile(t.Context(), "../../../../examples/pump-station/pump-station.situation.yaml")
 	if err != nil {
@@ -25,7 +32,7 @@ func pumpService(t *testing.T) *Service {
 		t.Fatal(err)
 	}
 	queue := func(context.Context, *sql.Tx, domain.AuditRequest) (string, error) { return "sch-audit", nil }
-	service, err := New(Config{Store: store.New(storagetest.OpenTemp(t)), Spec: compiled, Playbook: playbook, TenantID: "t",
+	service, err := New(Config{Store: store.New(db), Spec: compiled, Playbook: playbook, TenantID: "t",
 		Clock: sources.NewVirtual(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)), QueueAudit: queue})
 	if err != nil {
 		t.Fatal(err)
@@ -146,5 +153,58 @@ func TestARuleOfAKindBornWithAnotherDigestNoLongerAnswers(t *testing.T) {
 	}
 	if _, err := service.Settle(t.Context()); err != nil {
 		t.Fatalf("settle after a kind change: %v", err)
+	}
+}
+
+func seededService(t *testing.T, extra string) (*Service, *storage.DB) {
+	t.Helper()
+	db := storagetest.OpenTempWithoutForeignKeys(t)
+	fixture, err := os.ReadFile("../../testdata/acted-case.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(t.Context(), string(fixture)+extra); err != nil {
+		t.Fatalf("seed the acted case: %v", err)
+	}
+	service := pumpServiceOn(t, db)
+	service.entityKinds = func(string) string { return "sha256:pump" }
+	return service, db
+}
+
+func caseRow(t *testing.T, db *storage.DB) string {
+	t.Helper()
+	var row string
+	if err := db.QueryRowContext(t.Context(), "SELECT verdict || '/' || kind_digest || '/' || preset FROM case_verifications").Scan(&row); err != nil {
+		t.Fatal(err)
+	}
+	return row
+}
+
+func TestSettleVerifiesARuleCaseThatClosedAndStayedClosed(t *testing.T) {
+	t.Parallel()
+	service, db := seededService(t, "")
+	if _, err := service.Settle(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if row := caseRow(t, db); row != "verified/sha256:pump/bearing_wear" {
+		t.Fatalf("case = %s, want a verified bearing_wear case of the pump kind", row)
+	}
+}
+
+func TestSettleSwitchesOffARuleWhoseCaseReopened(t *testing.T) {
+	t.Parallel()
+	reopen := `INSERT INTO situation_versions (situation_id, version, phase, severity, confidence, completeness, event_horizon, valid_from,
+		snapshot_json, snapshot_sha256, lineage_id, created_at)
+		VALUES ('s1', 3, 'watch', 40, 1, 'on_time', '2026-01-01T12:00:00.000000000Z', 'x', CAST('{}' AS BLOB), zeroblob(32), 'l', 'x');`
+	service, db := seededService(t, reopen)
+	if _, err := service.Settle(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if row := caseRow(t, db); row != "not_verified/sha256:pump/bearing_wear" {
+		t.Fatalf("case = %s, want the reopened case not verified", row)
+	}
+	var cause string
+	if err := db.QueryRowContext(t.Context(), "SELECT cause FROM rule_circuits WHERE rule_id = 'bearing-wear'").Scan(&cause); err != nil || cause != "no_effect" {
+		t.Fatalf("circuit cause = %q (%v), want no_effect", cause, err)
 	}
 }

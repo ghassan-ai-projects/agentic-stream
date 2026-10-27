@@ -40,7 +40,8 @@ func composePlaybook(cfg PipelineConfig) (*playbook.Service, error) {
 		return nil, fmt.Errorf("compose playbook audits: %w", err)
 	}
 	service, err := playbook.New(playbook.Config{DB: cfg.DB, Spec: cfg.Spec, Playbook: cfg.Playbook, TenantID: cfg.TenantID,
-		Clock: cfg.Clock, QueueAudit: auditQueue(audits), KindDigests: cfg.KindDigests})
+		Clock: cfg.Clock, QueueAudit: auditQueue(audits), KindDigests: cfg.KindDigests,
+		EntityKindDigest: cfg.EntityKindDigest})
 	if err != nil {
 		return nil, fmt.Errorf("compose playbook: %w", err)
 	}

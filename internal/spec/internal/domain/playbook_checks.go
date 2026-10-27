@@ -70,7 +70,18 @@ func checkRuleDiagnosis(spec *CompiledSpec, codes []string, rule *Rule, path str
 	if remedies, mapped := remedyIntents(spec, rule.DiagnosisCode); mapped && !slices.Contains(remedies, rule.Recommend.Intent) {
 		return &CompileError{Path: path + ".recommend.intent", Message: fmt.Sprintf("the remedy map does not allow %q for %q", rule.Recommend.Intent, rule.DiagnosisCode)}
 	}
+	if !hasSettleWindow(spec, rule.DiagnosisCode) {
+		return &CompileError{Path: path + ".diagnosisCode", Message: fmt.Sprintf("diagnosis code %q has no settle window, so its cases can never be verified", rule.DiagnosisCode)}
+	}
 	return nil
+}
+
+func hasSettleWindow(spec *CompiledSpec, diagnosisCode string) bool {
+	if spec.Promotion == nil {
+		return false
+	}
+	_, declared := spec.Promotion.SettleWindows[diagnosisCode]
+	return declared
 }
 
 func remedyIntents(spec *CompiledSpec, diagnosisCode string) ([]string, bool) {

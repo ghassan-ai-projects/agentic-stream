@@ -112,6 +112,11 @@ func (h *Host) Run(ctx context.Context, emit func(context.Context, contractsv1.E
 // promotion reads it to switch off rules pinned to another digest.
 func (h *Host) BornKindDigests() map[string]string { return h.app.BornKindDigests() }
 
+// EntityKindDigest is the digest the kind of the device that reports for an
+// entity was last born with; empty when no site device reports for it or its
+// kind was never born.
+func (h *Host) EntityKindDigest(entityID string) string { return h.app.EntityKindDigest(entityID) }
+
 // Close closes the listener, so no further session is accepted; a running Run
 // returns when the caller's context ends.
 func (h *Host) Close() error { return h.app.Close() }

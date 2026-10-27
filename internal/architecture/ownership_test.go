@@ -57,6 +57,7 @@ var durableOwners = map[string]string{
 	"reconsiderations":              "internal/cognition/internal/store",
 	"runtime_interlock":             "internal/interlock/internal/store",
 	"runtime_owner":                 "internal/control/internal/store",
+	"case_verifications":            "internal/playbook/internal/store",
 	"rule_circuits":                 "internal/playbook/internal/store",
 	"rule_evaluations":              "internal/playbook/internal/store",
 	"rule_fires":                    "internal/playbook/internal/store",

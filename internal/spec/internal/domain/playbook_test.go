@@ -148,6 +148,7 @@ func TestCompilePlaybookRefusesEveryUnsafeOrUnknownRule(t *testing.T) {
 		{"another spec", "spec: test", "spec: other", "metadata.spec"},
 		{"unknown diagnosis", "diagnosisCode: wear", "diagnosisCode: unknown", "rules[0].diagnosisCode"},
 		{"uncataloged diagnosis", "diagnosisCode: wear", "diagnosisCode: rust", "rules[0].diagnosisCode"},
+		{"no settle window", "diagnosisCode: wear", "diagnosisCode: noise", "rules[0].diagnosisCode"},
 		{"undeclared intent", "intent: service", "intent: refuel", "rules[0].recommend.intent"},
 		{"undeclared preset", "preset: wear", "preset: rust", "rules[0].recommend.preset"},
 		{"risk R3", "intent: service\n      preset: wear", "intent: halt\n      preset: default", "rules[0].recommend.intent"},

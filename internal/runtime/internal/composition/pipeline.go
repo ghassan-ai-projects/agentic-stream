@@ -24,6 +24,7 @@ type PipelineConfig struct {
 	Spec              *spec.CompiledSpec
 	Playbook          *spec.CompiledPlaybook
 	KindDigests       func() map[string]string
+	EntityKindDigest  func(entityID string) string
 	TenantID          string
 	Owner             *runtimecontrol.RuntimeOwner
 	OwnerEpoch        string

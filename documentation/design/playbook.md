@@ -78,7 +78,7 @@ an optional `remedyMap` and the two intent flags. A Decision gains an optional
 | `rule_evaluations` | What a rule would have recommended for a situation version (shadow rules), and the verdict once the model's decision is stored. |
 | `rule_fires` | Each active fire (episode, version, time): the rate cap and the audit sample. |
 | `rule_circuits` | Circuit state per rule (open or closed), its cause and evidence. |
-| `case_verifications` | One record per concluded case: key, verdict, reason (AS-5). |
+| `case_verifications` | One record per case, an occurrence of a Situation whose decision dispatched an action: its key (diagnosis code, kind digest, intent, preset), the rule that handled it if any, the features at decision time, the settle window's end, and its verdict and reason (AS-5). |
 | `rule_drafts`, `rule_proposals` | Draft calls and the proposals with their replay reports and approvals (AS-7). |
 
 ## How it hooks in
@@ -129,7 +129,12 @@ After each batch the runtime calls `playbook.Settle`, which, in order:
    admission pass instead of failing the batch;
 3. compares each concluded audit with its rule's recommendation; a disagreement
    opens the rule's circuit and publishes a notification;
-4. verifies concluded cases against their settle window (AS-5);
+4. opens a case for each newly dispatched decision and verifies pending cases
+   in event time: a case is verified only when its action was acknowledged,
+   its Situation resolved and no version that is not resolved appeared on the
+   entity before `acted_at + settleWindow(diagnosis code)`; the log's latest
+   event time says when the window has passed. A rule-handled case that is not
+   verified opens the rule's circuit (`no_effect`) (AS-5);
 5. checks shadow exits and eligibility for a draft (AS-7).
 
 ### Circuit (decision 5)

@@ -14,6 +14,7 @@ func withRuleTarget(s *spec.CompiledSpec) {
 	s.Cognition.Executor.DiagnosisCatalog = ruleDiagnosisCatalog
 	s.Actions.Intents[0].Presets = map[string]map[string]any{"wear": {"reason": "wear"}}
 	s.Actions.Intents[0].ModelWritableFields = []string{"reason"}
+	s.Promotion = &spec.Promotion{SettleWindows: map[string]string{"wear": "1h"}}
 }
 
 type ruleChange func(*spec.Rule)
@@ -130,5 +131,43 @@ func TestASecondItemOfABusySituationWaitsForTheNextPass(t *testing.T) {
 	}
 	if episodes := countRows(t, db, "episodes"); episodes != 2 {
 		t.Fatalf("%d episodes after the second pass, want the waiting item admitted", episodes)
+	}
+}
+
+func withClosing(s *spec.CompiledSpec) { s.Situation.Occurrence.CloseWhen = "features.level <= 10" }
+
+func eventAt(id, entity string, level int, eventTime string) traceEvent {
+	return traceEvent{id: id, entity: entity, level: level, eventTime: eventTime, ingests: eventTime}
+}
+
+func runEvents(t *testing.T, pipeline *runtime.Pipeline, events ...traceEvent) {
+	t.Helper()
+	for _, event := range events {
+		if _, err := pipeline.RunJSONL(t.Context(), writeTrace(t, event)); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestARuleCaseThatClosesAndStaysClosedIsVerified(t *testing.T) {
+	t.Parallel()
+	pipeline, db := openPipeline(t, thingSpec("native", "active", withRuleTarget, withClosing), runtime.PipelineConfig{Playbook: thingPlaybook(spec.RuleModeActive)})
+	runEvents(t, pipeline, eventAt("e1", "ent-1", 15, "2026-08-12T00:00:00Z"), eventAt("e2", "ent-1", 5, "2026-08-12T00:10:00Z"),
+		eventAt("e3", "ent-2", 1, "2026-08-12T02:00:00Z"))
+	if verdict := scalar[string](t, db, "SELECT verdict || '/' || diagnosis_code || '/' || preset || '/' || rule_id FROM case_verifications"); verdict != "verified/wear/wear/high-level" {
+		t.Fatalf("case = %s, want a verified wear case of the rule", verdict)
+	}
+}
+
+func TestARuleCaseReopenedInsideItsWindowSwitchesTheRuleOff(t *testing.T) {
+	t.Parallel()
+	pipeline, db := openPipeline(t, thingSpec("native", "active", withRuleTarget, withClosing), runtime.PipelineConfig{Playbook: thingPlaybook(spec.RuleModeActive)})
+	runEvents(t, pipeline, eventAt("e1", "ent-1", 15, "2026-08-12T00:00:00Z"), eventAt("e2", "ent-1", 5, "2026-08-12T00:10:00Z"),
+		eventAt("e3", "ent-1", 15, "2026-08-12T00:40:00Z"), eventAt("e4", "ent-2", 1, "2026-08-12T00:45:00Z"))
+	if reason := scalar[string](t, db, "SELECT reason FROM case_verifications WHERE verdict = 'not_verified' ORDER BY acted_at LIMIT 1"); !strings.Contains(reason, "new situation opened") {
+		t.Fatalf("case reason = %q, want the reopen", reason)
+	}
+	if cause := scalar[string](t, db, "SELECT cause FROM rule_circuits WHERE state = 'open'"); cause != "no_effect" {
+		t.Fatalf("circuit cause = %q, want no_effect", cause)
 	}
 }

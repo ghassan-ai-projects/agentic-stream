@@ -11,22 +11,24 @@ import (
 )
 
 type Config struct {
-	Store       store.Store
-	Spec        *spec.CompiledSpec
-	Playbook    *spec.CompiledPlaybook
-	TenantID    string
-	Clock       sources.Clock
-	QueueAudit  store.AuditQueue
-	KindDigests func() map[string]string
+	Store            store.Store
+	Spec             *spec.CompiledSpec
+	Playbook         *spec.CompiledPlaybook
+	TenantID         string
+	Clock            sources.Clock
+	QueueAudit       store.AuditQueue
+	KindDigests      func() map[string]string
+	EntityKindDigest func(entityID string) string
 }
 
 type Service struct {
-	rules    *domain.Rules
-	store    store.Store
-	tenantID string
-	clock    sources.Clock
-	queue    store.AuditQueue
-	kinds    func() map[string]string
+	rules       *domain.Rules
+	store       store.Store
+	tenantID    string
+	clock       sources.Clock
+	queue       store.AuditQueue
+	kinds       func() map[string]string
+	entityKinds func(entityID string) string
 }
 
 func New(cfg Config) (*Service, error) {
@@ -38,7 +40,7 @@ func New(cfg Config) (*Service, error) {
 		return nil, fmt.Errorf("compile playbook rules: %w", err)
 	}
 	return &Service{rules: rules, store: cfg.Store, tenantID: cfg.TenantID, clock: sources.OrPhysical(cfg.Clock),
-		queue: cfg.QueueAudit, kinds: cfg.KindDigests}, nil
+		queue: cfg.QueueAudit, kinds: cfg.KindDigests, entityKinds: cfg.EntityKindDigest}, nil
 }
 
 func (s *Service) Digest() string { return s.rules.Digest() }

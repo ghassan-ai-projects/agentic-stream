@@ -11,18 +11,26 @@ import (
 func (s *Service) Settle(ctx context.Context) (domain.Report, error) {
 	var report domain.Report
 	err := s.store.WithTx(ctx, func(tx *store.Tx) error {
-		now := s.clock.Now().UTC()
-		if err := s.tripKindChanges(ctx, tx, now); err != nil {
-			return err
-		}
 		var err error
-		if report.AuditsQueued, err = s.queueAudits(ctx, tx, now); err != nil {
-			return err
-		}
-		report.Settled, report.Disagreements, err = s.settleEvaluations(ctx, tx, now)
+		report, err = s.settleIn(ctx, tx, s.clock.Now().UTC())
 		return err
 	})
 	return report, err
+}
+
+func (s *Service) settleIn(ctx context.Context, tx *store.Tx, now time.Time) (domain.Report, error) {
+	var report domain.Report
+	if err := s.tripKindChanges(ctx, tx, now); err != nil {
+		return report, err
+	}
+	var err error
+	if report.AuditsQueued, err = s.queueAudits(ctx, tx, now); err != nil {
+		return report, err
+	}
+	if report.Settled, report.Disagreements, err = s.settleEvaluations(ctx, tx, now); err != nil {
+		return report, err
+	}
+	return report, s.settleCases(ctx, tx, now)
 }
 
 func (s *Service) queueAudits(ctx context.Context, tx *store.Tx, now time.Time) (int, error) {
