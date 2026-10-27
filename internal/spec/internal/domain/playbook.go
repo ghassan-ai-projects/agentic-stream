@@ -142,13 +142,9 @@ func defaultRule(rule *Rule) {
 }
 
 func sealPlaybook(playbook *CompiledPlaybook) (*CompiledPlaybook, error) {
-	canonicalJSON, sum, err := canonicaljson.Seal(canonicaljson.DomainPlaybook, playbook)
-	if err != nil {
-		return nil, fmt.Errorf("seal playbook: %w", err)
-	}
-	playbook.CanonicalJSON = canonicalJSON
-	playbook.Digest = canonicaljson.EncodeDigest(sum)
-	return playbook, nil
+	var err error
+	playbook.CanonicalJSON, playbook.Digest, err = seal(canonicaljson.DomainPlaybook, playbook, "playbook")
+	return playbook, err
 }
 
 func MarshalPlaybook(playbook *CompiledPlaybook) ([]byte, error) {

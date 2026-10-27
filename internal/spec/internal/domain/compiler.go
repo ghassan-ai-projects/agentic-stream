@@ -59,11 +59,15 @@ func (c *Compiler) parseValidated(data []byte) (*rawSpec, error) {
 }
 
 func sealSpec(spec *CompiledSpec) (*CompiledSpec, error) {
-	canonicalJSON, sum, err := canonicaljson.Seal(canonicaljson.DomainSpec, spec)
+	var err error
+	spec.CanonicalJSON, spec.Digest, err = seal(canonicaljson.DomainSpec, spec, "spec")
+	return spec, err
+}
+
+func seal(domain canonicaljson.Domain, document any, what string) ([]byte, string, error) {
+	canonicalJSON, sum, err := canonicaljson.Seal(domain, document)
 	if err != nil {
-		return nil, fmt.Errorf("seal spec: %w", err)
+		return nil, "", fmt.Errorf("seal %s: %w", what, err)
 	}
-	spec.CanonicalJSON = canonicalJSON
-	spec.Digest = canonicaljson.EncodeDigest(sum)
-	return spec, nil
+	return canonicalJSON, canonicaljson.EncodeDigest(sum), nil
 }
