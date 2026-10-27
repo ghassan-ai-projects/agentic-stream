@@ -55,7 +55,7 @@ func newProposalFixture(t *testing.T) proposalFixture {
 		t.Fatal(err)
 	}
 	db := storagetest.OpenTemp(t)
-	service, err := New(Config{Store: store.New(db), Spec: compiled, Playbook: book, PlaybookPath: path, TenantID: "t",
+	service, err := New(Config{Store: store.New(db).WithSignatures(policySignatures{}), Spec: compiled, Playbook: book, PlaybookPath: path, TenantID: "t",
 		Clock: fixedClock(), KindDigests: func() map[string]string { return map[string]string{"pump": pumpDigest} },
 		Drafter: cannedDrafter{when: "features.vibration_mean_15m > 3.9"}})
 	if err != nil {
@@ -236,4 +236,14 @@ func TestAShadowRuleWhoseExitIsMetIsWrittenActive(t *testing.T) {
 
 func fixedClock() *sources.Virtual {
 	return sources.NewVirtual(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+}
+
+type policySignatures struct{}
+
+func (policySignatures) CheckSigner(ctx context.Context, tx *sql.Tx, approval store.SignedApproval) error {
+	return policy.CheckApprovalSigner(ctx, tx, policy.SignedApproval(approval))
+}
+
+func (policySignatures) Verify(ctx context.Context, tx *sql.Tx, approval store.SignedApproval) (string, error) {
+	return policy.VerifySignedApproval(ctx, tx, policy.SignedApproval(approval))
 }

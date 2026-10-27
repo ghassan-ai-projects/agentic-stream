@@ -21,8 +21,9 @@ import (
 // with (nil: no rule is switched off for a kind change) and the query of the
 // born kind digest of an entity's device (nil: cases carry no kind digest),
 // the playbook file approvals and shadow exits write (empty: none is
-// written), the worker that drafts rules (nil: none is drafted) and how many
-// verified, uncontradicted cases of a key ask for a draft (zero: three).
+// written), the worker that drafts rules (nil: none is drafted), how many
+// verified, uncontradicted cases of a key ask for a draft (zero: three) and
+// the signature checks of rule approvals (nil: none is approved).
 type Config struct {
 	DB               *storage.DB
 	Spec             *spec.CompiledSpec
@@ -35,7 +36,18 @@ type Config struct {
 	PlaybookPath     string
 	Drafter          draftport.Drafter
 	DraftAfter       int
+	Signatures       Signatures
 }
+
+// Signatures checks, in the caller's transaction, that a signer may approve a
+// rule of a risk class and verifies a signed approval, returning the digest of
+// the signed bytes. The caller supplies the approval policy's checks; without
+// them no proposal can be presented or resolved.
+type Signatures = store.Signatures
+
+// SignedApproval is what Signatures checks: the tenant, approver, relay and
+// risk class and, to verify, the signed message and its signature.
+type SignedApproval = store.SignedApproval
 
 // AuditQueue queues one audit scheduler item in the caller's transaction and
 // returns its id.
@@ -104,7 +116,7 @@ func New(cfg Config) (*Service, error) {
 }
 
 func applicationConfig(cfg Config) app.Config {
-	return app.Config{Store: store.New(cfg.DB), Spec: cfg.Spec, Playbook: cfg.Playbook, TenantID: cfg.TenantID, Clock: cfg.Clock,
+	return app.Config{Store: store.New(cfg.DB).WithSignatures(cfg.Signatures), Spec: cfg.Spec, Playbook: cfg.Playbook, TenantID: cfg.TenantID, Clock: cfg.Clock,
 		QueueAudit: cfg.QueueAudit, KindDigests: cfg.KindDigests, EntityKindDigest: cfg.EntityKindDigest,
 		PlaybookPath: cfg.PlaybookPath, Drafter: cfg.Drafter, DraftAfter: cfg.DraftAfter}
 }

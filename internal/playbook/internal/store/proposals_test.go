@@ -1,13 +1,15 @@
 package store
 
 import (
+	"context"
+	"database/sql"
 	"errors"
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/draftport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/playbook/internal/domain"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/policy"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 var wearKey = domain.Key{DiagnosisCode: "bearing_wear", KindDigest: "sha256:pump", Intent: "schedule_maintenance", Preset: "bearing_wear"}
@@ -96,12 +98,44 @@ func TestReplayHistoryAndShadowTalliesAreRead(t *testing.T) {
 		if err != nil || agree != 0 || disagree != 0 {
 			t.Fatalf("tallies = %d/%d, %v", agree, disagree, err)
 		}
-		if err := tx.CheckSigner(t.Context(), "t", "operator", "relay", "R1"); !errors.Is(err, policy.ErrApprovalUnauthorized) {
-			t.Fatalf("an unknown signer = %v, want unauthorized", err)
+		if err := tx.CheckSigner(t.Context(), "t", "operator", "relay", "R1"); !errors.Is(err, ErrNoSignatures) {
+			t.Fatalf("a signer without signature checks = %v, want refused", err)
 		}
-		if _, err := tx.VerifySignature(t.Context(), "t", "operator", "relay", "R1", []byte("m"), []byte("s")); !errors.Is(err, policy.ErrApprovalUnauthorized) {
-			t.Fatalf("an unknown signer's signature = %v, want unauthorized", err)
+		if _, err := tx.VerifySignature(t.Context(), "t", "operator", "relay", "R1", []byte("m"), []byte("s")); !errors.Is(err, ErrNoSignatures) {
+			t.Fatalf("a signature without signature checks = %v, want refused", err)
 		}
 		return nil
 	})
+}
+
+type refusingSignatures struct{ seen *[]SignedApproval }
+
+var errRefusedSigner = errors.New("refused signer")
+
+func (r refusingSignatures) CheckSigner(_ context.Context, _ *sql.Tx, approval SignedApproval) error {
+	*r.seen = append(*r.seen, approval)
+	return errRefusedSigner
+}
+
+func (r refusingSignatures) Verify(_ context.Context, _ *sql.Tx, approval SignedApproval) (string, error) {
+	*r.seen = append(*r.seen, approval)
+	return "", errRefusedSigner
+}
+
+func TestApprovalChecksGoToTheCallersSignatures(t *testing.T) {
+	t.Parallel()
+	var seen []SignedApproval
+	s := New(storagetest.OpenTemp(t)).WithSignatures(refusingSignatures{seen: &seen})
+	inTx(t, s, func(tx *Tx) error {
+		if err := tx.CheckSigner(t.Context(), "t", "operator", "relay", "R1"); !errors.Is(err, errRefusedSigner) {
+			t.Fatalf("check signer = %v, want the signatures' refusal", err)
+		}
+		if _, err := tx.VerifySignature(t.Context(), "t", "operator", "relay", "R1", []byte("m"), []byte("s")); !errors.Is(err, errRefusedSigner) {
+			t.Fatalf("verify = %v, want the signatures' refusal", err)
+		}
+		return nil
+	})
+	if len(seen) != 2 || seen[1].RiskClass != "R1" || string(seen[1].Message) != "m" {
+		t.Fatalf("signatures saw %+v, want both approvals with their risk and message", seen)
+	}
 }

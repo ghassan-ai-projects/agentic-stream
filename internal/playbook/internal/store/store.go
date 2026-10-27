@@ -9,22 +9,29 @@ import (
 )
 
 type Store struct {
-	db *storage.DB
+	db         *storage.DB
+	signatures Signatures
 }
 
 type Tx struct {
-	tx *sql.Tx
-	db *storage.DB
+	tx         *sql.Tx
+	db         *storage.DB
+	signatures Signatures
 }
 
 func New(db *storage.DB) Store {
 	return Store{db: db}
 }
 
+func (s Store) WithSignatures(signatures Signatures) Store {
+	s.signatures = signatures
+	return s
+}
+
 func (s Store) Configured() bool { return s.db != nil }
 
 func (s Store) Join(tx *sql.Tx) *Tx {
-	return &Tx{tx: tx, db: s.db}
+	return &Tx{tx: tx, db: s.db, signatures: s.signatures}
 }
 
 func (s Store) WithTx(ctx context.Context, use func(*Tx) error) error {
