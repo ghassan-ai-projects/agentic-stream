@@ -72,7 +72,14 @@ func (n *Node) Skip() { n.next++ }
 // given type.
 func (n *Node) Expect(recordType string) map[string]any {
 	n.tb.Helper()
-	record, err := n.read()
+	return n.ExpectWithin(recordType, readTimeout)
+}
+
+// ExpectWithin is Expect for a record the host may hold back longer, such as
+// an HSYNC held until the host's ingest queue drains.
+func (n *Node) ExpectWithin(recordType string, within time.Duration) map[string]any {
+	n.tb.Helper()
+	record, err := n.readWithin(within)
 	if err != nil {
 		n.tb.Fatalf("read a %s from the host: %v", recordType, err)
 	}
