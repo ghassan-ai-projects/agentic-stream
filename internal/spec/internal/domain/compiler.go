@@ -7,12 +7,10 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 )
 
-// Compiler validates and compiles SituationSpec documents.
 type Compiler struct {
 	eventSchemas *EventSchemas
 }
 
-// NewCompiler creates a compiler with the embedded v1 JSON Schema.
 func NewCompiler() *Compiler {
 	return &Compiler{}
 }
@@ -22,7 +20,6 @@ func (c *Compiler) WithEventSchemas(schemas *EventSchemas) *Compiler {
 	return c
 }
 
-// CompileBytes parses and validates raw spec bytes.
 func (c *Compiler) CompileBytes(_ context.Context, data []byte, path string) (*CompiledSpec, error) {
 	raw, err := c.parseValidated(data)
 	if err != nil {
@@ -30,17 +27,22 @@ func (c *Compiler) CompileBytes(_ context.Context, data []byte, path string) (*C
 	}
 	spec := normalizeSpec(raw)
 	spec.eventSchemas = c.eventSchemas
-	if err := resolveReferences(spec); err != nil {
-		return nil, err
-	}
-	if err := validateExpressions(spec); err != nil {
+	if err := checkSpec(spec); err != nil {
 		return nil, err
 	}
 	return sealSpec(spec)
 }
 
-// parseValidated parses the YAML source and validates it against the
-// embedded SituationSpec schema.
+func checkSpec(spec *CompiledSpec) error {
+	if err := resolveReferences(spec); err != nil {
+		return err
+	}
+	if err := validateExpressions(spec); err != nil {
+		return err
+	}
+	return checkPromotion(spec)
+}
+
 func (c *Compiler) parseValidated(data []byte) (*rawSpec, error) {
 	schema, err := embeddedSchema()
 	if err != nil {
@@ -56,7 +58,6 @@ func (c *Compiler) parseValidated(data []byte) (*rawSpec, error) {
 	return raw, nil
 }
 
-// sealSpec records the spec's canonical JSON and its digest.
 func sealSpec(spec *CompiledSpec) (*CompiledSpec, error) {
 	canonicalJSON, sum, err := canonicaljson.Seal(canonicaljson.DomainSpec, spec)
 	if err != nil {

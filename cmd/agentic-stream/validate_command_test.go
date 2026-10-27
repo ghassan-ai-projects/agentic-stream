@@ -115,3 +115,41 @@ func writeInto(t *testing.T, dir, name, content string) error {
 	defer func() { _ = root.Close() }()
 	return root.WriteFile(name, []byte(content), 0o600)
 }
+
+func TestValidateWithAPlaybookPrintsItsDigestAndKeepsThePolicyDigest(t *testing.T) {
+	t.Parallel()
+	compiled, err := spec.CompileFile(t.Context(), experimentSpec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "bench.playbook.yaml")
+	playbookYAML := `apiVersion: agentic-stream/v1
+kind: Playbook
+metadata: {name: bench, spec: ` + compiled.Metadata.Name + `}
+rules:
+  - id: hot-zone
+    version: 1
+    diagnosisCode: over_temperature
+    when: features.temp_mean_5m > 30.0
+    recommend: {intent: select_thermal_mode, preset: bounded_cooling}
+    envelope: {temp_mean_5m: {min: 31, max: 34}}
+    cap: {temp_mean_5m: {min: 30, max: 36}}
+    pinnedKind: {name: thermal_sensor, digest: "sha256:` + strings.Repeat("a", 64) + `"}
+    mode: shadow
+    rateCapPerHour: 2
+    provenance: {sourceEpisodes: [ep-1]}
+`
+	if err := os.WriteFile(path, []byte(playbookYAML), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	playbook, err := spec.CompilePlaybookFile(compiled, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain := runCLI(t, newValidateCommand(), experimentSpec)
+	out := runCLI(t, newValidateCommand(), experimentSpec, "--playbook", path)
+	want := plain + "playbook: bench\nplaybook_rules: 1\nplaybook_digest: " + playbook.Digest + "\n"
+	if out != want {
+		t.Fatalf("validate --playbook =\n%s\nwant\n%s", out, want)
+	}
+}

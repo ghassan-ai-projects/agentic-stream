@@ -185,3 +185,50 @@ func LoadDeployment(ctx context.Context, db *storage.DB, deploymentID string) (*
 	}
 	return compiled, nil
 }
+
+// Promotion is what rule promotion reads from a spec: the settle window of
+// each diagnosis code, the context features a rule's envelope may cover, the
+// optional remedy map and the margin a proposed cap adds to an envelope.
+type Promotion = domain.Promotion
+
+// UnknownDiagnosis is the diagnosis code that never becomes a rule.
+const UnknownDiagnosis = domain.UnknownDiagnosis
+
+// ParseDiagnosisCodes reads the codes of a diagnosis catalog document; an
+// empty document declares no catalog.
+func ParseDiagnosisCodes(catalog string) ([]string, error) {
+	return domain.ParseDiagnosisCodes(catalog)
+}
+
+// CompiledPlaybook is the immutable result of compiling a playbook against a
+// spec. Its digest is its own: the spec and policy digests do not change.
+type CompiledPlaybook = domain.CompiledPlaybook
+
+// Rule is one compiled playbook rule; Reads lists the features its condition
+// reads.
+type Rule = domain.Rule
+
+// Recommendation is the intent and preset a rule recommends.
+type Recommendation = domain.Recommendation
+
+// Range is an inclusive feature range of a rule's envelope or cap.
+type Range = domain.Range
+
+// PinnedKind is the device kind and digest a rule was learned on.
+type PinnedKind = domain.PinnedKind
+
+// Rule modes.
+const (
+	RuleModeShadow = domain.RuleModeShadow
+	RuleModeActive = domain.RuleModeActive
+)
+
+// CompilePlaybookFile reads a playbook from path and compiles it against a
+// compiled spec. Every refusal is a CompileError naming the rule field.
+func CompilePlaybookFile(compiled *CompiledSpec, path string) (*CompiledPlaybook, error) {
+	playbook, err := app.CompilePlaybookFile(compiled, path)
+	if err != nil {
+		return nil, fmt.Errorf("compile playbook %s: %w", path, err)
+	}
+	return playbook, nil
+}

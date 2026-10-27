@@ -7,7 +7,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// rawSpec mirrors the external YAML/JSON shape exactly.
 type rawSpec struct {
 	APIVersion string     `yaml:"apiVersion" json:"apiVersion"`
 	Kind       string     `yaml:"kind" json:"kind"`
@@ -19,10 +18,9 @@ type rawSpec struct {
 	Situation  Situation  `yaml:"situation" json:"situation"`
 	Cognition  Cognition  `yaml:"cognition" json:"cognition"`
 	Actions    Actions    `yaml:"actions" json:"actions"`
+	Promotion  *Promotion `yaml:"promotion,omitempty" json:"promotion,omitempty"`
 }
 
-// parseRawSpec decodes the YAML strictly: duplicate keys and unknown fields
-// are rejected, and the document must be an agentic-stream/v1 SituationSpec.
 func parseRawSpec(data []byte) (*rawSpec, error) {
 	if err := checkDocumentKeys(data); err != nil {
 		return nil, err
@@ -45,7 +43,6 @@ func checkDocumentKeys(data []byte) error {
 	return checkDuplicateKeys(&root, "")
 }
 
-// checkDuplicateKeys walks a YAML document and rejects duplicate mapping keys.
 func checkDuplicateKeys(n *yaml.Node, path string) error {
 	if n.Kind == yaml.MappingNode {
 		return checkMappingKeys(n, path)
@@ -58,8 +55,6 @@ func checkDuplicateKeys(n *yaml.Node, path string) error {
 	return nil
 }
 
-// checkMappingKeys rejects a repeated scalar key in one mapping, then checks
-// each value under its key path.
 func checkMappingKeys(n *yaml.Node, path string) error {
 	seen := make(map[string]struct{}, len(n.Content)/2)
 	for i := 0; i < len(n.Content); i += 2 {
@@ -70,8 +65,6 @@ func checkMappingKeys(n *yaml.Node, path string) error {
 	return nil
 }
 
-// checkMappingEntry rejects a repeated scalar key at content[i], then checks
-// its value recursively.
 func checkMappingEntry(content []*yaml.Node, i int, path string, seen map[string]struct{}) error {
 	keyNode := content[i]
 	if keyNode.Kind != yaml.ScalarNode {

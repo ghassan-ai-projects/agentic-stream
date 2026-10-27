@@ -71,15 +71,19 @@ func newVersionCommand() *cobra.Command {
 
 func newValidateCommand() *cobra.Command {
 	var outputJSON bool
+	var playbookPath string
 	cmd := &cobra.Command{
-		Use: "validate <spec.yaml>", Short: "Validate and compile a SituationSpec.", Args: cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error { return validateSpecCommand(cmd, args[0], outputJSON) },
+		Use: "validate <spec.yaml>", Short: "Validate and compile a SituationSpec and, optionally, its playbook.", Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return validateSpecCommand(cmd, args[0], playbookPath, outputJSON)
+		},
 	}
 	cmd.Flags().BoolVar(&outputJSON, "json", false, "Emit canonical JSON instead of summary")
+	cmd.Flags().StringVar(&playbookPath, "playbook", "", "playbook YAML path compiled against the spec; prints its own digest")
 	return cmd
 }
 
-func validateSpecCommand(cmd *cobra.Command, path string, outputJSON bool) error {
+func validateSpecCommand(cmd *cobra.Command, path, playbookPath string, outputJSON bool) error {
 	schemas, err := loadEventSchemas(cmd)
 	if err != nil {
 		return err
@@ -92,7 +96,28 @@ func validateSpecCommand(cmd *cobra.Command, path string, outputJSON bool) error
 		cmd.Printf("%s\n", result.CanonicalJSON)
 		return nil
 	}
-	return printCompiledSpec(cmd, result)
+	return printValidation(cmd, result, playbookPath)
+}
+
+func printValidation(cmd *cobra.Command, result *spec.CompiledSpec, playbookPath string) error {
+	if err := printCompiledSpec(cmd, result); err != nil {
+		return err
+	}
+	return printCompiledPlaybook(cmd, result, playbookPath)
+}
+
+func printCompiledPlaybook(cmd *cobra.Command, compiled *spec.CompiledSpec, path string) error {
+	if path == "" {
+		return nil
+	}
+	playbook, err := spec.CompilePlaybookFile(compiled, path)
+	if err != nil {
+		return fmt.Errorf("validate playbook: %w", err)
+	}
+	cmd.Printf("playbook: %s\n", playbook.Metadata.Name)
+	cmd.Printf("playbook_rules: %d\n", len(playbook.Rules))
+	cmd.Printf("playbook_digest: %s\n", playbook.Digest)
+	return nil
 }
 
 func printCompiledSpec(cmd *cobra.Command, result *spec.CompiledSpec) error {

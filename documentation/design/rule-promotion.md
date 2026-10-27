@@ -306,7 +306,7 @@ the remedy map's enforcement in proposals; the scenarios S3-S6 and S8-S11.
 | Round | State | Commit | Notes |
 |---|---|---|---|
 | AS-0 | done | see git log | `documentation/design/playbook.md`. Deviation: the rule hook sits at episode admission (runtime), not trigger admission (cognition): the scheduler item binds no executor, and the episode request is where the executor is bound; matching reads the same immutable snapshot. |
-| AS-1 | not started | | |
+| AS-1 | done | see git log | `spec.CompilePlaybookFile` (own digest domain `situation-runtime/playbook/v1`), `promotion` block, intent flags, `decision-v1.json` `diagnosis_code`. Deviations: `validate <spec> --playbook <f>` keeps the spec positional (scripts call it so); YAML keys are camelCase like the spec (`diagnosisCode`, `pinnedKind {name, digest}`, `auditEvery: 3` for 1 in 3, `rateCapPerHour`); the promotion block also carries `envelopeMargin` (AS-6); a rule `when` may read only `features.<name>`. |
 | AS-2 | not started | | |
 | AS-3 | not started | | |
 | AS-4 | not started | | |
