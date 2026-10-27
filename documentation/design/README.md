@@ -36,6 +36,8 @@ Its first diagram has four stages. The pages below add one boundary at a time;
   process, and explicit scale-out deferrals.
 - [Plant wire adapter](plant-wire-adapter.md) — the planned host for plant
   wire sessions behind the ingress and effect ports, beside device-wire.
+- [Rule promotion](rule-promotion.md) — planned: a playbook of human-approved
+  rules drafted by Tamoz from verified cases, and the rounds that build it.
 
 ## Drift rule
 
