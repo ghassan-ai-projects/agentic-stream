@@ -305,7 +305,7 @@ the remedy map's enforcement in proposals; the scenarios S3-S6 and S8-S11.
 
 | Round | State | Commit | Notes |
 |---|---|---|---|
-| AS-0 | not started | | |
+| AS-0 | done | see git log | `documentation/design/playbook.md`. Deviation: the rule hook sits at episode admission (runtime), not trigger admission (cognition): the scheduler item binds no executor, and the episode request is where the executor is bound; matching reads the same immutable snapshot. |
 | AS-1 | not started | | |
 | AS-2 | not started | | |
 | AS-3 | not started | | |
