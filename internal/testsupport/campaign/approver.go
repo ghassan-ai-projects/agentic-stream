@@ -79,7 +79,7 @@ func (d *Desk) Act(ctx context.Context, db *sql.DB, now time.Time) (int, error) 
 		if err != nil {
 			return answered, err
 		}
-		answered += boolCount(done)
+		answered += storage.BoolInt(done)
 	}
 	return answered, nil
 }
@@ -125,11 +125,4 @@ func scanOne[T any](rows *sql.Rows) (T, error) {
 		return value, fmt.Errorf("scan a value: %w", err)
 	}
 	return value, nil
-}
-
-func boolCount(value bool) int {
-	if value {
-		return 1
-	}
-	return 0
 }

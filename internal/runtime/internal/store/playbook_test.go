@@ -56,14 +56,14 @@ func TestAdmissionRoutesThroughThePlaybookWhenOneIsLoaded(t *testing.T) {
 	if route, err := routeIn(t, store, wornPumpRequest(t)); err != nil || route.Kind != playbook.RouteModel {
 		t.Fatalf("route without a playbook = %+v, %v; want the model", route, err)
 	}
-	if report, err := store.SettlePlaybook(t.Context()); err != nil || report != (playbook.Report{}) {
-		t.Fatalf("settle without a playbook = %+v, %v", report, err)
+	if err := store.SettlePlaybook(t.Context()); err != nil {
+		t.Fatalf("settle without a playbook: %v", err)
 	}
 	pumpPlaybook(t, store)
 	if route, err := routeIn(t, store, wornPumpRequest(t)); err != nil || route.Kind != playbook.RouteRule {
 		t.Fatalf("route of a worn pump = %+v, %v; want its rule", route, err)
 	}
-	if _, err := store.SettlePlaybook(t.Context()); err != nil {
+	if err := store.SettlePlaybook(t.Context()); err != nil {
 		t.Fatalf("settle: %v", err)
 	}
 	broken := wornPumpRequest(t)

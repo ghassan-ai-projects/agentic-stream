@@ -23,9 +23,3 @@ type Route struct {
 	Kind           string
 	Recommendation *Recommendation
 }
-
-type Report struct {
-	AuditsQueued  int
-	Settled       int
-	Disagreements int
-}

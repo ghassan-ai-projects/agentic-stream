@@ -43,15 +43,14 @@ func (t *AdmissionTx) PlaybookDigest() string {
 	return t.store.Playbook.Digest()
 }
 
-func (p *PipelineStore) SettlePlaybook(ctx context.Context) (playbook.Report, error) {
+func (p *PipelineStore) SettlePlaybook(ctx context.Context) error {
 	if p.Playbook == nil {
-		return playbook.Report{}, nil
+		return nil
 	}
-	report, err := p.Playbook.Settle(ctx)
-	if err != nil {
-		return report, fmt.Errorf("settle the playbook evidence: %w", err)
+	if err := p.Playbook.Settle(ctx); err != nil {
+		return fmt.Errorf("settle the playbook evidence: %w", err)
 	}
-	return report, nil
+	return nil
 }
 
 func (p *PipelineStore) DraftPlaybook(ctx context.Context) error {

@@ -70,9 +70,6 @@ type Route = domain.Route
 // the features the rule read.
 type Recommendation = domain.Recommendation
 
-// Report counts what one settle did.
-type Report = domain.Report
-
 // The routes of an admission.
 const (
 	RouteModel = domain.RouteModel
@@ -135,7 +132,7 @@ func (s *Service) Route(ctx context.Context, tx *sql.Tx, admission Admission) (R
 // Settle queues the audits that are due, judges the pending evaluations
 // against the model's stored decisions and opens the circuit of a rule an
 // audit disagreed with.
-func (s *Service) Settle(ctx context.Context) (Report, error) {
+func (s *Service) Settle(ctx context.Context) error {
 	return s.app.Settle(ctx)
 }
 

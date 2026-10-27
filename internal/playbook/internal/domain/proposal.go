@@ -22,7 +22,6 @@ const (
 	maxDraftAttempt = 3
 
 	ProposalPending  = "pending"
-	ProposalApproved = "approved"
 	ProposalRejected = "rejected"
 	ProposalWritten  = "written"
 

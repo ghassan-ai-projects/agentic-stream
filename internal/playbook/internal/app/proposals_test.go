@@ -141,7 +141,7 @@ func TestVerifiedCasesBecomeAProposalThatAnApprovalWritesInShadow(t *testing.T) 
 	t.Parallel()
 	f := newProposalFixture(t)
 	f.seedVerifiedDriftCases(t, 3)
-	if _, err := f.service.Settle(t.Context()); err != nil {
+	if err := f.service.Settle(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	if drafted, err := f.service.Draft(t.Context()); err != nil || !drafted {
@@ -176,7 +176,7 @@ func TestAForgedOrRepeatedApprovalIsRefused(t *testing.T) {
 	t.Parallel()
 	f := newProposalFixture(t)
 	f.seedVerifiedDriftCases(t, 3)
-	if _, err := f.service.Settle(t.Context()); err != nil {
+	if err := f.service.Settle(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := f.service.Draft(t.Context()); err != nil {

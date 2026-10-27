@@ -134,9 +134,16 @@ func TestSettleWaitsForEpisodesThatHaveNotEnded(t *testing.T) {
 	service := pumpService(t)
 	route(t, service, admission("e1", 4.2, 2.0))
 	route(t, service, admission("e2", 3.0, 2.6))
-	report, err := service.Settle(t.Context())
-	if err != nil || report != (domain.Report{}) {
-		t.Fatalf("settle = %+v, %v; want nothing settled before the episodes end", report, err)
+	if err := service.Settle(t.Context()); err != nil {
+		t.Fatalf("settle before the episodes end: %v", err)
+	}
+	var pending int
+	if err := service.store.WithTx(t.Context(), func(tx *store.Tx) error {
+		evaluations, err := tx.PendingEvaluations(t.Context(), "t")
+		pending = len(evaluations)
+		return err
+	}); err != nil || pending != 1 {
+		t.Fatalf("%d pending evaluations (%v), want the shadow evaluation still pending before its episode ends", pending, err)
 	}
 }
 
@@ -152,9 +159,6 @@ func TestJudgeComparesAnAcceptedDecisionWithTheRecommendation(t *testing.T) {
 	if verdict, _ := service.judge(evaluation, agreeing); verdict != domain.VerdictAgree {
 		t.Fatalf("judge of the same answer = %s, want agree", verdict)
 	}
-	if boolCount(true) != 1 || boolCount(false) != 0 {
-		t.Fatal("boolCount counts a true as one")
-	}
 }
 
 func TestARuleOfAKindBornWithAnotherDigestNoLongerAnswers(t *testing.T) {
@@ -164,7 +168,7 @@ func TestARuleOfAKindBornWithAnotherDigestNoLongerAnswers(t *testing.T) {
 	if routed := route(t, service, admission("e1", 4.2, 2.0)); routed.Kind != domain.RouteModel {
 		t.Fatalf("route after a kind change = %+v, want the model", routed)
 	}
-	if _, err := service.Settle(t.Context()); err != nil {
+	if err := service.Settle(t.Context()); err != nil {
 		t.Fatalf("settle after a kind change: %v", err)
 	}
 }
@@ -197,7 +201,7 @@ func caseRow(t *testing.T, db *storage.DB) string {
 func TestSettleVerifiesARuleCaseThatClosedAndStayedClosed(t *testing.T) {
 	t.Parallel()
 	service, db := seededService(t, "")
-	if _, err := service.Settle(t.Context()); err != nil {
+	if err := service.Settle(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	if row := caseRow(t, db); row != "verified/"+pumpDigest+"/bearing_wear" {
@@ -211,7 +215,7 @@ func TestSettleSwitchesOffARuleWhoseCaseReopened(t *testing.T) {
 		snapshot_json, snapshot_sha256, lineage_id, created_at)
 		VALUES ('s1', 3, 'watch', 40, 1, 'on_time', '2026-01-01T12:00:00.000000000Z', 'x', CAST('{}' AS BLOB), zeroblob(32), 'l', 'x');`
 	service, db := seededService(t, reopen)
-	if _, err := service.Settle(t.Context()); err != nil {
+	if err := service.Settle(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	if row := caseRow(t, db); row != "not_verified/"+pumpDigest+"/bearing_wear" {
@@ -248,7 +252,7 @@ func TestBornKindDigestsOutliveTheServiceThatSawThem(t *testing.T) {
 	db := storagetest.OpenTemp(t)
 	seeing := pumpServiceOn(t, db)
 	seeing.kinds = func() map[string]string { return map[string]string{"pump": "sha256:" + strings.Repeat("b", 64)} }
-	if _, err := seeing.Settle(t.Context()); err != nil {
+	if err := seeing.Settle(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	restarted := pumpServiceOn(t, db)

@@ -36,7 +36,7 @@ func TestTheFacadeRoutesAWornPumpToItsRuleAndSettles(t *testing.T) {
 	}); err != nil || route.Kind != playbook.RouteRule {
 		t.Fatalf("route = %+v, %v; want the rule", route, err)
 	}
-	if _, err := service.Settle(t.Context()); err != nil {
+	if err := service.Settle(t.Context()); err != nil {
 		t.Fatalf("settle: %v", err)
 	}
 	if _, err := playbook.New(playbook.Config{}); err == nil || !strings.Contains(err.Error(), "are required") {

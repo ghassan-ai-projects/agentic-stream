@@ -8,101 +8,85 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/playbook/internal/store"
 )
 
-func (s *Service) Settle(ctx context.Context) (domain.Report, error) {
-	var report domain.Report
-	err := s.store.WithTx(ctx, func(tx *store.Tx) error {
-		var err error
-		report, err = s.settleIn(ctx, tx, s.clock.Now().UTC())
-		return err
+func (s *Service) Settle(ctx context.Context) error {
+	return s.store.WithTx(ctx, func(tx *store.Tx) error {
+		return s.settleIn(ctx, tx, s.clock.Now().UTC())
 	})
-	return report, err
 }
 
-func (s *Service) settleIn(ctx context.Context, tx *store.Tx, now time.Time) (domain.Report, error) {
-	var report domain.Report
+func (s *Service) settleIn(ctx context.Context, tx *store.Tx, now time.Time) error {
 	if err := s.tripKindChanges(ctx, tx, now); err != nil {
-		return report, err
+		return err
 	}
-	var err error
-	if report.AuditsQueued, err = s.queueAudits(ctx, tx, now); err != nil {
-		return report, err
+	if err := s.queueAudits(ctx, tx, now); err != nil {
+		return err
 	}
-	if report.Settled, report.Disagreements, err = s.settleEvaluations(ctx, tx, now); err != nil {
-		return report, err
+	if err := s.settleEvaluations(ctx, tx, now); err != nil {
+		return err
 	}
 	if err := s.settleCases(ctx, tx, now); err != nil {
-		return report, err
+		return err
 	}
-	return report, s.requestDrafts(ctx, tx, now)
+	return s.requestDrafts(ctx, tx, now)
 }
 
-func (s *Service) queueAudits(ctx context.Context, tx *store.Tx, now time.Time) (int, error) {
+func (s *Service) queueAudits(ctx context.Context, tx *store.Tx, now time.Time) error {
 	if s.queue == nil {
-		return 0, nil
+		return nil
 	}
 	due, err := tx.DueAudits(ctx, s.tenantID)
 	if err != nil {
-		return 0, err
+		return err
 	}
-	return s.queueDueAudits(ctx, tx, due, now)
-}
-
-func (s *Service) queueDueAudits(ctx context.Context, tx *store.Tx, due []domain.Fire, now time.Time) (int, error) {
-	queued := 0
 	for _, fire := range due {
-		done, err := s.queueAudit(ctx, tx, fire, now)
-		if err != nil {
-			return queued, err
+		if err := s.queueAudit(ctx, tx, fire, now); err != nil {
+			return err
 		}
-		queued += done
 	}
-	return queued, nil
+	return nil
 }
 
-func (s *Service) queueAudit(ctx context.Context, tx *store.Tx, fire domain.Fire, now time.Time) (int, error) {
+func (s *Service) queueAudit(ctx context.Context, tx *store.Tx, fire domain.Fire, now time.Time) error {
 	ended, err := tx.EpisodeEnded(ctx, fire.EpisodeID)
 	if err != nil || !ended {
-		return 0, err
+		return err
 	}
 	itemID, err := tx.QueueAudit(ctx, s.queue, domain.AuditRequestFor(fire))
 	if err != nil {
-		return 0, err
+		return err
 	}
 	if err := tx.RecordEvaluation(ctx, domain.NewAuditEvaluation(fire, itemID), now); err != nil {
-		return 0, err
+		return err
 	}
-	return 1, tx.MarkAuditQueued(ctx, fire.FireID)
+	return tx.MarkAuditQueued(ctx, fire.FireID)
 }
 
-func (s *Service) settleEvaluations(ctx context.Context, tx *store.Tx, now time.Time) (int, int, error) {
+func (s *Service) settleEvaluations(ctx context.Context, tx *store.Tx, now time.Time) error {
 	pending, err := tx.PendingEvaluations(ctx, s.tenantID)
 	if err != nil {
-		return 0, 0, err
+		return err
 	}
-	settled, disagreements := 0, 0
 	for _, evaluation := range pending {
-		verdict, err := s.settleEvaluation(ctx, tx, evaluation, now)
-		if err != nil {
-			return settled, disagreements, err
+		if err := s.settleEvaluation(ctx, tx, evaluation, now); err != nil {
+			return err
 		}
-		settled, disagreements = settled+boolCount(verdict != domain.VerdictPending), disagreements+boolCount(verdict == domain.VerdictDisagree)
 	}
-	return settled, disagreements, nil
+	return nil
 }
 
-func (s *Service) settleEvaluation(ctx context.Context, tx *store.Tx, evaluation domain.Evaluation, now time.Time) (string, error) {
+func (s *Service) settleEvaluation(ctx context.Context, tx *store.Tx, evaluation domain.Evaluation, now time.Time) error {
 	decision, err := tx.Decision(ctx, evaluation.EpisodeID)
 	if err != nil || !decision.Ended {
-		return domain.VerdictPending, err
+		return err
 	}
 	verdict, observed := s.judge(evaluation, decision)
 	if err := tx.SettleEvaluation(ctx, evaluation.EvaluationID, verdict, observed, now); err != nil {
-		return verdict, err
+		return err
 	}
 	if evaluation.Kind == domain.KindAudit && verdict == domain.VerdictDisagree {
-		return verdict, tx.OpenCircuit(ctx, domain.DisagreementCircuit(evaluation, *observed, now))
+		return tx.OpenCircuit(ctx, domain.DisagreementCircuit(evaluation, *observed, now))
 	}
-	return verdict, nil
+	return nil
 }
 
 func (s *Service) judge(evaluation domain.Evaluation, decision store.EpisodeDecision) (string, *domain.Observed) {
@@ -111,11 +95,4 @@ func (s *Service) judge(evaluation domain.Evaluation, decision store.EpisodeDeci
 	}
 	observed := s.rules.Observe(decision.Decision)
 	return evaluation.Recommendation.Verdict(observed), &observed
-}
-
-func boolCount(value bool) int {
-	if value {
-		return 1
-	}
-	return 0
 }
