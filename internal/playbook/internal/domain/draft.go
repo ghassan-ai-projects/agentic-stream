@@ -100,7 +100,7 @@ func (r *Rules) RuleFromProposal(request draftport.Request, proposal draftport.P
 	envelope, limits := ProposedEnvelope(featuresOf(cited), append(reads, r.context...), r.spec.Promotion.Margin())
 	return spec.Rule{ID: RuleID(key), Version: identity.Version, DiagnosisCode: proposal.DiagnosisCode, When: proposal.When,
 		Recommend: spec.Recommendation{Intent: proposal.Intent, Preset: proposal.Preset}, Envelope: envelope, Cap: limits,
-		PinnedKind: spec.PinnedKind{Name: identity.KindName, Digest: key.KindDigest}, Mode: spec.RuleModeShadow,
+		PinnedKind: spec.PinnedKind{Name: identity.KindName, Digest: key.KindDigest}, Mode: spec.RuleModeShadow, ShadowExit: r.spec.Promotion.DraftShadowExit(),
 		RateCapPerHour: defaultRateCap, Provenance: spec.Provenance{SourceEpisodes: proposal.CitedEpisodeIDs}}, nil
 }
 

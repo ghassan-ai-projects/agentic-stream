@@ -250,7 +250,7 @@ cognition:
       - history_prior_incidents
       - knowledge_search
     budget:
-      wallTime: 45s
+      wallTime: 240s
       modelCalls: 6
       inputTokens: 30000
       outputTokens: 5000
@@ -384,3 +384,4 @@ promotion:
     overload: 2h
   contextFeatures: [current_mean_15m]
   envelopeMargin: 0.1
+  shadowExitAgreeing: 3

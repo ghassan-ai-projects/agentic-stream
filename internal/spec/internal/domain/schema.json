@@ -757,7 +757,8 @@
             "items": {"$ref": "#/$defs/name"}
           }
         },
-        "envelopeMargin": {"type": "number", "minimum": 0, "maximum": 10}
+        "envelopeMargin": {"type": "number", "minimum": 0, "maximum": 10},
+        "shadowExitAgreeing": {"type": "integer", "minimum": 1, "maximum": 1000}
       }
     }
   }

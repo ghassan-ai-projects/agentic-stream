@@ -13,6 +13,7 @@ type Promotion struct {
 	ContextFeatures []string            `json:"contextFeatures,omitempty" yaml:"contextFeatures,omitempty"`
 	RemedyMap       map[string][]string `json:"remedyMap,omitempty" yaml:"remedyMap,omitempty"`
 	EnvelopeMargin  float64             `json:"envelopeMargin,omitempty" yaml:"envelopeMargin,omitempty"`
+	ShadowExit      int                 `json:"shadowExitAgreeing,omitempty" yaml:"shadowExitAgreeing,omitempty"`
 }
 
 const UnknownDiagnosis = "unknown"
@@ -41,6 +42,13 @@ func (p *Promotion) Margin() float64 {
 		return 0
 	}
 	return p.EnvelopeMargin
+}
+
+func (p *Promotion) DraftShadowExit() *ShadowExit {
+	if p == nil || p.ShadowExit == 0 {
+		return nil
+	}
+	return &ShadowExit{Agreeing: p.ShadowExit}
 }
 
 func (s *CompiledSpec) DiagnosisCodes() ([]string, error) {

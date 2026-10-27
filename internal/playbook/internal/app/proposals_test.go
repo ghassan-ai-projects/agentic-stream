@@ -177,8 +177,9 @@ func TestVerifiedCasesBecomeAProposalThatAnApprovalWritesInShadow(t *testing.T) 
 	if err != nil || result.Status != "written" || written.Digest != result.WrittenDigest || len(written.Rules) != 3 {
 		t.Fatalf("result %+v, written %v (%v); want the rule written", result, written, err)
 	}
-	if rule := written.Rules[2]; rule.Mode != spec.RuleModeShadow || rule.Provenance.ApprovalDigest == "" || rule.PinnedKind.Name != "pump" {
-		t.Fatalf("written rule = %+v, want an approved shadow rule pinned to the pump", rule)
+	if rule := written.Rules[2]; rule.Mode != spec.RuleModeShadow || rule.Provenance.ApprovalDigest == "" || rule.PinnedKind.Name != "pump" ||
+		rule.ShadowExit.Agreeing != 3 {
+		t.Fatalf("written rule = %+v, want an approved shadow rule pinned to the pump, leaving shadow after the spec's 3 agreeing matches", rule)
 	}
 }
 

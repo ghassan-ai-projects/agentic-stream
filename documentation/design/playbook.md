@@ -172,7 +172,8 @@ workspace). The reply is checked: it answers the key, cites only cases it was
 sent, and its condition compiles over the spec's features and holds for every
 cited case. The runtime then builds the rule (identity, envelope from the cited
 cases' range, cap widened by the spec's `envelopeMargin`, pinned kind, shadow
-mode, default caps), compiles it into a candidate playbook (so every compiler
+mode, a shadow exit of the spec's `shadowExitAgreeing` agreeing matches (10
+when absent), default caps), compiles it into a candidate playbook (so every compiler
 refusal applies), replays it over the stored Situation history (would it fire,
 did the model's decision agree, how did the key's source cases end), and stores
 a pending proposal with a `playbook.rule.proposed` notification.
