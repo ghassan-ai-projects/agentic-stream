@@ -32,10 +32,7 @@ func (h *Host) BornKindDigests() map[string]string {
 	return h.born.snapshot()
 }
 
-func (h *Host) EntityKindDigest(entityID string) string {
-	kind, found := h.mapping.Directory().KindOfEntity(entityID)
-	if !found {
-		return ""
-	}
-	return h.born.snapshot()[kind]
+func (h *Host) EntityKind(entityID string) string {
+	kind, _ := h.mapping.Directory().KindOfEntity(entityID)
+	return kind
 }

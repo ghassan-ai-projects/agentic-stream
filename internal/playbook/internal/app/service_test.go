@@ -180,7 +180,8 @@ func seededService(t *testing.T, extra string) (*Service, *storage.DB) {
 		t.Fatalf("seed the acted case: %v", err)
 	}
 	service := pumpServiceOn(t, db)
-	service.entityKinds = func(string) string { return "sha256:pump" }
+	service.entityKinds = func(string) string { return "pump" }
+	service.kinds = func() map[string]string { return map[string]string{"pump": pumpDigest} }
 	return service, db
 }
 
@@ -199,7 +200,7 @@ func TestSettleVerifiesARuleCaseThatClosedAndStayedClosed(t *testing.T) {
 	if _, err := service.Settle(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if row := caseRow(t, db); row != "verified/sha256:pump/bearing_wear" {
+	if row := caseRow(t, db); row != "verified/"+pumpDigest+"/bearing_wear" {
 		t.Fatalf("case = %s, want a verified bearing_wear case of the pump kind", row)
 	}
 }
@@ -213,7 +214,7 @@ func TestSettleSwitchesOffARuleWhoseCaseReopened(t *testing.T) {
 	if _, err := service.Settle(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if row := caseRow(t, db); row != "not_verified/sha256:pump/bearing_wear" {
+	if row := caseRow(t, db); row != "not_verified/"+pumpDigest+"/bearing_wear" {
 		t.Fatalf("case = %s, want the reopened case not verified", row)
 	}
 	var cause string
@@ -239,5 +240,23 @@ func TestMostMatchesOutsideTheCapOpenTheRulesCircuit(t *testing.T) {
 		return err
 	}); err != nil || cause == "" {
 		t.Fatalf("circuit open = %q (%v), want the rule switched off after most matches fell outside its cap", cause, err)
+	}
+}
+
+func TestBornKindDigestsOutliveTheServiceThatSawThem(t *testing.T) {
+	t.Parallel()
+	db := storagetest.OpenTemp(t)
+	seeing := pumpServiceOn(t, db)
+	seeing.kinds = func() map[string]string { return map[string]string{"pump": "sha256:" + strings.Repeat("b", 64)} }
+	if _, err := seeing.Settle(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	restarted := pumpServiceOn(t, db)
+	if routed := route(t, restarted, admission("e1", 4.2, 2.0)); routed.Kind != domain.RouteModel {
+		t.Fatalf("route after a restart = %+v, want the model: the rule's kind changed before the restart", routed)
+	}
+	var digest string
+	if err := db.QueryRowContext(t.Context(), "SELECT digest FROM rule_kind_digests WHERE kind = 'pump'").Scan(&digest); err != nil || !strings.HasSuffix(digest, "bbbb") {
+		t.Fatalf("recorded digest = %q, %v", digest, err)
 	}
 }

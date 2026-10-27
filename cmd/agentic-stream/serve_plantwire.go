@@ -151,9 +151,9 @@ func (e effects) kindDigests() func() map[string]string {
 	return e.plant.BornKindDigests
 }
 
-func (e effects) entityKindDigest() func(string) string {
+func (e effects) entityKind() func(string) string {
 	if e.plant == nil {
 		return nil
 	}
-	return e.plant.EntityKindDigest
+	return e.plant.EntityKind
 }

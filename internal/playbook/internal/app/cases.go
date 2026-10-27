@@ -29,24 +29,24 @@ func (s *Service) openCases(ctx context.Context, tx *store.Tx, now time.Time) er
 	if err != nil {
 		return err
 	}
+	kinds, err := tx.KindDigests(ctx, s.tenantID)
+	if err != nil {
+		return err
+	}
 	for _, candidate := range candidates {
-		candidate.KindDigest = s.entityKindDigest(candidate.EntityID)
-		c := s.rules.NewCase(candidate)
-		if err := tx.RecordCase(ctx, c, now); err != nil {
-			return err
-		}
-		if err := s.switchOffIneffective(ctx, tx, c, now); err != nil {
+		candidate.KindDigest = kinds[s.entityKind(candidate.EntityID)]
+		if err := s.openCase(ctx, tx, s.rules.NewCase(candidate), now); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (s *Service) entityKindDigest(entityID string) string {
-	if s.entityKinds == nil {
-		return ""
+func (s *Service) openCase(ctx context.Context, tx *store.Tx, c domain.Case, now time.Time) error {
+	if err := tx.RecordCase(ctx, c, now); err != nil {
+		return err
 	}
-	return s.entityKinds(entityID)
+	return s.switchOffIneffective(ctx, tx, c, now)
 }
 
 func (s *Service) verifyCase(ctx context.Context, tx *store.Tx, c domain.Case, now time.Time) error {

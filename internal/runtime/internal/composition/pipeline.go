@@ -25,7 +25,7 @@ type PipelineConfig struct {
 	Spec              *spec.CompiledSpec
 	Playbook          *spec.CompiledPlaybook
 	KindDigests       func() map[string]string
-	EntityKindDigest  func(entityID string) string
+	EntityKind        func(entityID string) string
 	PlaybookPath      string
 	Drafter           draftport.Drafter
 	DraftAfter        int

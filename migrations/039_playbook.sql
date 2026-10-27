@@ -64,3 +64,14 @@ CREATE TABLE rule_circuits (
     close_reason   TEXT,
     PRIMARY KEY (rule_id, rule_version)
 ) STRICT;
+
+-- The digest each device kind was last born with, as the playbook last saw it
+-- from plant wire: routing, case keys and drafts read it, so it survives a
+-- restart until the next birth.
+CREATE TABLE rule_kind_digests (
+    tenant_id    TEXT NOT NULL,
+    kind         TEXT NOT NULL,
+    digest       TEXT NOT NULL,
+    recorded_at  TEXT NOT NULL,
+    PRIMARY KEY (tenant_id, kind)
+) STRICT;

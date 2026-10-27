@@ -98,10 +98,11 @@ func (s *Service) fire(ctx context.Context, tx *store.Tx, admission domain.Admis
 }
 
 func (s *Service) tripKindChanges(ctx context.Context, tx *store.Tx, now time.Time) error {
-	if s.kinds == nil {
-		return nil
+	kinds, err := s.knownKinds(ctx, tx, now)
+	if err != nil {
+		return err
 	}
-	for _, circuit := range s.rules.KindChanges(s.tenantID, s.kinds(), now) {
+	for _, circuit := range s.rules.KindChanges(s.tenantID, kinds, now) {
 		if err := tx.OpenCircuit(ctx, circuit); err != nil {
 			return err
 		}

@@ -41,7 +41,7 @@ func composePlaybook(cfg PipelineConfig) (*playbook.Service, error) {
 	}
 	service, err := playbook.New(playbook.Config{DB: cfg.DB, Spec: cfg.Spec, Playbook: cfg.Playbook, TenantID: cfg.TenantID,
 		Clock: cfg.Clock, QueueAudit: auditQueue(audits), KindDigests: cfg.KindDigests,
-		EntityKindDigest: cfg.EntityKindDigest, PlaybookPath: cfg.PlaybookPath, Drafter: cfg.Drafter, DraftAfter: cfg.DraftAfter,
+		EntityKind: cfg.EntityKind, PlaybookPath: cfg.PlaybookPath, Drafter: cfg.Drafter, DraftAfter: cfg.DraftAfter,
 		Signatures: policySignatures{}})
 	if err != nil {
 		return nil, fmt.Errorf("compose playbook: %w", err)

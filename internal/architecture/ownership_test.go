@@ -62,6 +62,7 @@ var durableOwners = map[string]string{
 	"rule_drafts":                   "internal/playbook/internal/store",
 	"rule_evaluations":              "internal/playbook/internal/store",
 	"rule_fires":                    "internal/playbook/internal/store",
+	"rule_kind_digests":             "internal/playbook/internal/store",
 	"rule_proposals":                "internal/playbook/internal/store",
 	"scheduler_items":               "internal/episodeledger/internal/store",
 	"schema_migrations":             "internal/storage/internal/store",

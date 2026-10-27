@@ -18,25 +18,26 @@ import (
 // playbook (nil: no rule ever answers), the tenant, the clock, and the port
 // that queues an audit item for a Situation version in a caller transaction
 // (nil: no audit is queued), the query of the kind digests devices were born
-// with (nil: no rule is switched off for a kind change) and the query of the
-// born kind digest of an entity's device (nil: cases carry no kind digest),
+// with, recorded in the playbook's own table so they survive a restart (nil:
+// only the recorded digests are known), the query of the kind of an entity's
+// device (nil: cases carry no kind digest),
 // the playbook file approvals and shadow exits write (empty: none is
 // written), the worker that drafts rules (nil: none is drafted), how many
 // verified, uncontradicted cases of a key ask for a draft (zero: three) and
 // the signature checks of rule approvals (nil: none is approved).
 type Config struct {
-	DB               *storage.DB
-	Spec             *spec.CompiledSpec
-	Playbook         *spec.CompiledPlaybook
-	TenantID         string
-	Clock            sources.Clock
-	QueueAudit       AuditQueue
-	KindDigests      func() map[string]string
-	EntityKindDigest func(entityID string) string
-	PlaybookPath     string
-	Drafter          draftport.Drafter
-	DraftAfter       int
-	Signatures       Signatures
+	DB           *storage.DB
+	Spec         *spec.CompiledSpec
+	Playbook     *spec.CompiledPlaybook
+	TenantID     string
+	Clock        sources.Clock
+	QueueAudit   AuditQueue
+	KindDigests  func() map[string]string
+	EntityKind   func(entityID string) string
+	PlaybookPath string
+	Drafter      draftport.Drafter
+	DraftAfter   int
+	Signatures   Signatures
 }
 
 // Signatures checks, in the caller's transaction, that a signer may approve a
@@ -117,7 +118,7 @@ func New(cfg Config) (*Service, error) {
 
 func applicationConfig(cfg Config) app.Config {
 	return app.Config{Store: store.New(cfg.DB).WithSignatures(cfg.Signatures), Spec: cfg.Spec, Playbook: cfg.Playbook, TenantID: cfg.TenantID, Clock: cfg.Clock,
-		QueueAudit: cfg.QueueAudit, KindDigests: cfg.KindDigests, EntityKindDigest: cfg.EntityKindDigest,
+		QueueAudit: cfg.QueueAudit, KindDigests: cfg.KindDigests, EntityKind: cfg.EntityKind,
 		PlaybookPath: cfg.PlaybookPath, Drafter: cfg.Drafter, DraftAfter: cfg.DraftAfter}
 }
 

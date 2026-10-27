@@ -159,7 +159,7 @@ func (core *runtimeCore) startPipeline(ctx context.Context, compiled *spec.Compi
 		DB: core.db, Spec: compiled, Playbook: core.playbook, TenantID: tenantID, Owner: core.owner, OwnerEpoch: core.epoch,
 		Executor: workerRuntime.Executor, Effector: opened.effector, GatewayEffector: opened.serial, DeviceEffector: opened.device, DispatchLease: opened.dispatchLease,
 		IDGenerator: sources.Random(), Telemetry: metrics, EpochControl: core.epochControl, DemoMode: demoMode,
-		KindDigests: opened.kindDigests(), EntityKindDigest: opened.entityKindDigest(),
+		KindDigests: opened.kindDigests(), EntityKind: opened.entityKind(),
 		PlaybookPath: core.playbookPath, Drafter: workerRuntime.Drafter(), DraftAfter: core.draftAfter,
 	})
 	if err != nil {

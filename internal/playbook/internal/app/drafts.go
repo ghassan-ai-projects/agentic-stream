@@ -109,7 +109,7 @@ func retryStatus(draft domain.Draft) string {
 }
 
 func (s *Service) propose(ctx context.Context, tx *store.Tx, draft domain.Draft, request draftport.Request, proposed draftport.Proposal, now time.Time) error {
-	rule, err := s.checkedRule(request, proposed)
+	rule, err := s.proposedRule(ctx, tx, request, proposed)
 	if err != nil {
 		return err
 	}
@@ -125,12 +125,20 @@ func (s *Service) propose(ctx context.Context, tx *store.Tx, draft domain.Draft,
 	return tx.RecordProposal(ctx, proposal, now)
 }
 
-func (s *Service) checkedRule(request draftport.Request, proposed draftport.Proposal) (spec.Rule, error) {
+func (s *Service) proposedRule(ctx context.Context, tx *store.Tx, request draftport.Request, proposed draftport.Proposal) (spec.Rule, error) {
+	kinds, err := tx.KindDigests(ctx, s.tenantID)
+	if err != nil {
+		return spec.Rule{}, err
+	}
+	return s.checkedRule(request, proposed, kindNamed(kinds, request.Key.KindDigest))
+}
+
+func (s *Service) checkedRule(request draftport.Request, proposed draftport.Proposal, kindName string) (spec.Rule, error) {
 	if err := s.rules.CheckProposal(request, proposed); err != nil {
 		return spec.Rule{}, err
 	}
 	key := domain.Key(request.Key)
-	identity := domain.RuleIdentity{Version: s.rules.NextVersion(domain.RuleID(key)), KindName: s.kindName(key.KindDigest)}
+	identity := domain.RuleIdentity{Version: s.rules.NextVersion(domain.RuleID(key)), KindName: kindName}
 	rule, err := s.rules.RuleFromProposal(request, proposed, identity)
 	if err != nil {
 		return spec.Rule{}, err
@@ -148,18 +156,6 @@ func (s *Service) compiledRule(rule spec.Rule) (spec.Rule, error) {
 		return spec.Rule{}, fmt.Errorf("%w: %w", domain.ErrProposalRefused, err)
 	}
 	return compiled.Rules[len(compiled.Rules)-1], nil
-}
-
-func (s *Service) kindName(digest string) string {
-	if s.kinds == nil {
-		return ""
-	}
-	for name, born := range s.kinds() {
-		if born == digest {
-			return name
-		}
-	}
-	return ""
 }
 
 func (s *Service) replay(ctx context.Context, tx *store.Tx, rule spec.Rule) (domain.ReplayReport, error) {
