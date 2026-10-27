@@ -115,20 +115,25 @@ type draftAnswer struct {
 	Usage  *usage `json:"usage,omitempty"`
 }
 
-func forwardDraft(ctx context.Context, upstream runtimev1.EpisodeWorkerClient, req *runtimev1.DraftRequest) (*runtimev1.DraftEvent, error) {
+func forwardDraft(ctx context.Context, upstream runtimev1.EpisodeWorkerClient, req *runtimev1.DraftRequest, call *workerCall) (*runtimev1.DraftEvent, error) {
 	stream, err := upstream.DraftPlaybookRule(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("forward the draft: %w", err)
 	}
+	return readDraft(stream, call)
+}
+
+func readDraft(stream runtimev1.EpisodeWorker_DraftPlaybookRuleClient, call *workerCall) (*runtimev1.DraftEvent, error) {
 	var last *runtimev1.DraftEvent
 	for {
 		event, err := stream.Recv()
-		if errors.Is(err, io.EOF) {
+		switch {
+		case errors.Is(err, io.EOF):
 			return last, nil
-		}
-		if err != nil {
+		case err != nil:
 			return nil, fmt.Errorf("read the forwarded draft: %w", err)
 		}
+		call.heard(event)
 		last = event
 	}
 }

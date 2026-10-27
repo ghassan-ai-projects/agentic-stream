@@ -107,26 +107,30 @@ func (r *Recording) append(entry recorded) error {
 	if err != nil {
 		return fmt.Errorf("encode the recording line: %w", err)
 	}
-	file, err := r.open()
+	return r.appendLine(filepath.Base(r.path), line)
+}
+
+func (r *Recording) appendLine(name string, line []byte) error {
+	file, err := r.open(name)
 	if err != nil {
 		return err
 	}
 	_, writeErr := file.Write(append(line, '\n'))
 	if err := errors.Join(writeErr, file.Close()); err != nil {
-		return fmt.Errorf("append to the recording: %w", err)
+		return fmt.Errorf("append to %s: %w", name, err)
 	}
 	return nil
 }
 
-func (r *Recording) open() (*os.File, error) {
+func (r *Recording) open(name string) (*os.File, error) {
 	root, err := os.OpenRoot(filepath.Dir(r.path))
 	if err != nil {
 		return nil, fmt.Errorf("open the recording folder: %w", err)
 	}
 	defer func() { _ = root.Close() }()
-	file, err := root.OpenFile(filepath.Base(r.path), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	file, err := root.OpenFile(name, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
-		return nil, fmt.Errorf("open the recording: %w", err)
+		return nil, fmt.Errorf("open %s: %w", name, err)
 	}
 	return file, nil
 }

@@ -22,12 +22,15 @@ var draftUsage = &usage{InputTokens: 4000, OutputTokens: 600}
 // With an Upstream it forwards each call to that worker; without one it
 // answers from canned answers over the snapshot's features. Every answer goes
 // through the recording, so a campaign replays without the worker's
-// judgement. An abstaining worker stands for no model at all: it diagnoses
+// judgement. With LogExchanges each forwarded call is also logged whole,
+// request and every streamed event, to worker-exchanges.jsonl beside the
+// recording. An abstaining worker stands for no model at all: it diagnoses
 // nothing.
 type Worker struct {
-	Recording *Recording
-	Abstain   bool
-	Upstream  runtimev1.EpisodeWorkerClient
+	Recording    *Recording
+	Abstain      bool
+	Upstream     runtimev1.EpisodeWorkerClient
+	LogExchanges bool
 }
 
 // Server returns the worker on the episode protocol, drafting when asked to.
@@ -59,7 +62,9 @@ func (w *Worker) freshEpisode(ctx context.Context, req *runtimev1.EpisodeRequest
 			return w.diagnose(req.GetSnapshotJson())
 		}
 		*forwarded = true
-		return forwardEpisode(ctx, w.Upstream, req, emit)
+		call := w.call(recordedEpisode, req)
+		given, err := forwardEpisode(ctx, w.Upstream, req, call.passing(emit))
+		return given, call.end(err)
 	}
 }
 
@@ -127,9 +132,10 @@ func (w *Worker) freshDraft(ctx context.Context, req *runtimev1.DraftRequest, fo
 		if w.Upstream == nil {
 			return cannedDraft(req.GetKey().GetDiagnosisCode())
 		}
-		event, err := forwardDraft(ctx, w.Upstream, req)
+		call := w.call(recordedDraft, req)
+		event, err := forwardDraft(ctx, w.Upstream, req, call)
 		*forwarded = event
-		return draftAnswerOf(event), err
+		return draftAnswerOf(event), call.end(err)
 	}
 }
 

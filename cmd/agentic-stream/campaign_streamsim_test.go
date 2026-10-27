@@ -24,15 +24,16 @@ import (
 )
 
 const (
-	campaignDirVariable    = "CAMPAIGN_DIR"
-	campaignArmVariable    = "CAMPAIGN_ARM"
-	campaignRunsVariable   = "CAMPAIGN_RUNS"
-	campaignOutVariable    = "CAMPAIGN_OUT"
-	campaignReplayVariable = "CAMPAIGN_REPLAY"
-	campaignTamozVariable  = "CAMPAIGN_TAMOZ_SOCKET"
-	campaignApprovalToken  = "campaign-approval-token"
-	campaignRelay          = "campaign-relay"
-	campaignApprover       = "campaign-approver"
+	campaignDirVariable       = "CAMPAIGN_DIR"
+	campaignArmVariable       = "CAMPAIGN_ARM"
+	campaignRunsVariable      = "CAMPAIGN_RUNS"
+	campaignOutVariable       = "CAMPAIGN_OUT"
+	campaignReplayVariable    = "CAMPAIGN_REPLAY"
+	campaignTamozVariable     = "CAMPAIGN_TAMOZ_SOCKET"
+	campaignExchangesVariable = "CAMPAIGN_LOG_EXCHANGES"
+	campaignApprovalToken     = "campaign-approval-token"
+	campaignRelay             = "campaign-relay"
+	campaignApprover          = "campaign-approver"
 )
 
 var pumpStationCampaignData = filepath.Join("..", "..", "examples", "pump-station", "testdata", "campaign")
@@ -158,7 +159,8 @@ func serveCampaignWorker(t *testing.T, setup campaignSetup) {
 		t.Fatalf("listen worker socket: %v", err)
 	}
 	server := grpc.NewServer()
-	worker := &campaign.Worker{Recording: recording, Abstain: setup.arm.Static, Upstream: campaignTamoz(t, setup.arm)}
+	worker := &campaign.Worker{Recording: recording, Abstain: setup.arm.Static, Upstream: campaignTamoz(t, setup.arm),
+		LogExchanges: os.Getenv(campaignExchangesVariable) == "1"}
 	runtimev1.RegisterEpisodeWorkerServer(server, worker.Server(setup.arm.Learning))
 	go func() { _ = server.Serve(listener) }()
 	t.Cleanup(server.Stop)

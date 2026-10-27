@@ -59,7 +59,10 @@ folder made by `streamsim suite campaign`. `CAMPAIGN_ARM` picks the arm (`0`,
 `CAMPAIGN_OUT` where the database, run folders, verdicts, `responses.jsonl` and
 `campaign-score.json` are kept (default a temporary folder) and
 `CAMPAIGN_REPLAY` a `responses.jsonl` to replay instead of asking the canned
-worker:
+worker. `CAMPAIGN_TAMOZ_SOCKET` forwards every episode and draft to a running
+Tamoz worker on that socket instead, and `CAMPAIGN_LOG_EXCHANGES=1` then logs
+each forwarded request and every event of its response to
+`worker-exchanges.jsonl` beside `responses.jsonl`:
 
 ```bash
 STREAMSIM_BIN=/tmp/streamsim STREAMSIM_REPO=<streams-simulator checkout> CAMPAIGN_DIR=<campaign> \
