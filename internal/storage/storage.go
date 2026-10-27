@@ -98,6 +98,15 @@ func QueryOptional[T any](ctx context.Context, q Querier, query string, args ...
 	return store.QueryOptional[T](ctx, q, query, args...) //nolint:wrapcheck // Single delegating facade return; the store reports the failed query and scan.
 }
 
+// ScanValue scans a row of a single-column query, for QueryAll.
+func ScanValue[T any](rows *sql.Rows) (T, error) {
+	var value T
+	if err := rows.Scan(&value); err != nil {
+		return value, fmt.Errorf("scan a value: %w", err)
+	}
+	return value, nil
+}
+
 // QueryAll runs query, scans every row with scan and closes the rows. A query
 // failure is "run query: <cause>" and an iteration failure names what was
 // being read; callers add the operation. No rows yields an empty, non-nil slice.

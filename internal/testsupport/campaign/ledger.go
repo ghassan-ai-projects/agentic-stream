@@ -69,7 +69,7 @@ func ReadLedger(ctx context.Context, db *sql.DB, since time.Time) (Ledger, error
 }
 
 func ruleDecisionP95(ctx context.Context, db *sql.DB, from string) (float64, error) {
-	latencies, err := storage.QueryAll(ctx, db, "rule decision latency", scanOne[float64], ruleLatencyQuery, from)
+	latencies, err := storage.QueryAll(ctx, db, "rule decision latency", storage.ScanValue[float64], ruleLatencyQuery, from)
 	if err != nil {
 		return 0, fmt.Errorf("read the rule decision latencies: %w", err)
 	}

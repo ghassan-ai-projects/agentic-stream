@@ -111,18 +111,10 @@ func (d *Desk) pending(id string, presented Presentation, now time.Time) Pending
 }
 
 func pendingRequests(ctx context.Context, db *sql.DB) ([]string, error) {
-	ids, err := storage.QueryAll(ctx, db, "pending request", scanOne[string], `SELECT approval_id FROM approvals WHERE status = 'pending'
+	ids, err := storage.QueryAll(ctx, db, "pending request", storage.ScanValue[string], `SELECT approval_id FROM approvals WHERE status = 'pending'
 		UNION ALL SELECT proposal_id FROM rule_proposals WHERE status = 'pending' ORDER BY 1`)
 	if err != nil {
 		return nil, fmt.Errorf("read the pending requests: %w", err)
 	}
 	return ids, nil
-}
-
-func scanOne[T any](rows *sql.Rows) (T, error) {
-	var value T
-	if err := rows.Scan(&value); err != nil {
-		return value, fmt.Errorf("scan a value: %w", err)
-	}
-	return value, nil
 }
