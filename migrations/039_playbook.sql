@@ -2,8 +2,9 @@
 -- live in the playbook file; these tables record what the rules did. They have
 -- no foreign key into intents, commands or the outbox and authorize nothing.
 
--- One row per rule episode admitted: the rate cap counts them, the audit
--- sample is drawn when the fire is recorded.
+-- One row per rule episode admitted: the rate cap counts them by the event
+-- time of the Situation version they answered, the audit sample is drawn when
+-- the fire is recorded.
 CREATE TABLE rule_fires (
     fire_id            TEXT PRIMARY KEY,
     tenant_id          TEXT NOT NULL,
@@ -16,10 +17,10 @@ CREATE TABLE rule_fires (
     recommendation_json BLOB NOT NULL,
     audit_due          INTEGER NOT NULL CHECK (audit_due IN (0, 1)),
     audit_queued       INTEGER NOT NULL DEFAULT 0 CHECK (audit_queued IN (0, 1)),
-    fired_at           TEXT NOT NULL
+    event_time         TEXT NOT NULL
 ) STRICT;
 
-CREATE INDEX rule_fires_rule_time ON rule_fires (rule_id, rule_version, fired_at);
+CREATE INDEX rule_fires_rule_time ON rule_fires (rule_id, rule_version, event_time);
 CREATE INDEX rule_fires_audit ON rule_fires (audit_due, audit_queued);
 
 -- What a rule would have recommended next to the model's own decision: a
@@ -40,12 +41,14 @@ CREATE TABLE rule_evaluations (
     recommendation_json BLOB NOT NULL,
     verdict             TEXT NOT NULL CHECK (verdict IN ('pending', 'agree', 'disagree', 'inconclusive')),
     observed_json       BLOB,
+    event_time          TEXT NOT NULL,
     created_at          TEXT NOT NULL,
     settled_at          TEXT
 ) STRICT;
 
 CREATE INDEX rule_evaluations_pending ON rule_evaluations (verdict, kind);
 CREATE INDEX rule_evaluations_rule ON rule_evaluations (rule_id, rule_version, kind, verdict);
+CREATE INDEX rule_evaluations_rule_time ON rule_evaluations (rule_id, rule_version, kind, event_time);
 
 -- An open circuit switches its rule off until a human closes it.
 CREATE TABLE rule_circuits (

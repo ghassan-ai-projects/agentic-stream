@@ -23,7 +23,7 @@ type Fire struct {
 	SituationVersion int
 	Recommendation   Recommendation
 	AuditDue         bool
-	FiredAt          time.Time
+	EventTime        time.Time
 }
 
 type Evaluation struct {
@@ -37,6 +37,7 @@ type Evaluation struct {
 	SituationVersion int
 	InEnvelope       bool
 	InCap            bool
+	EventTime        time.Time
 	Recommendation   Recommendation
 	Verdict          string
 	Observed         *Observed
@@ -50,21 +51,21 @@ type Circuit struct {
 	OpenedAt time.Time
 }
 
-func NewFire(tenantID, episodeID, situationID string, version int, recommendation Recommendation, auditEvery int, now time.Time) Fire {
+func NewFire(tenantID, episodeID, situationID string, version int, recommendation Recommendation, auditEvery int, eventTime time.Time) Fire {
 	return Fire{FireID: firePrefix + episodeID, TenantID: tenantID, EpisodeID: episodeID, SituationID: situationID,
-		SituationVersion: version, Recommendation: recommendation, AuditDue: AuditDue(situationID, version, auditEvery), FiredAt: now}
+		SituationVersion: version, Recommendation: recommendation, AuditDue: AuditDue(situationID, version, auditEvery), EventTime: eventTime}
 }
 
-func NewShadowEvaluation(tenantID, episodeID, situationID string, version int, match Match, recommendation Recommendation) Evaluation {
-	return Evaluation{EvaluationID: evaluationPrefix + episodeID + "_" + recommendation.RuleID, TenantID: tenantID, Kind: KindShadow,
-		EpisodeID: episodeID, SituationID: situationID, SituationVersion: version, InEnvelope: match.InEnvelope, InCap: match.InCap,
-		Recommendation: recommendation, Verdict: VerdictPending}
+func NewShadowEvaluation(tenantID string, admission Admission, match Match, recommendation Recommendation) Evaluation {
+	return Evaluation{EvaluationID: evaluationPrefix + admission.EpisodeID + "_" + recommendation.RuleID, TenantID: tenantID, Kind: KindShadow,
+		EpisodeID: admission.EpisodeID, SituationID: admission.SituationID, SituationVersion: admission.SituationVersion,
+		InEnvelope: match.InEnvelope, InCap: match.InCap, EventTime: admission.EventTime, Recommendation: recommendation, Verdict: VerdictPending}
 }
 
 func NewAuditEvaluation(fire Fire, schedulerItemID string) Evaluation {
 	return Evaluation{EvaluationID: auditPrefix + fire.FireID, TenantID: fire.TenantID, Kind: KindAudit, FireID: fire.FireID,
 		SchedulerItemID: schedulerItemID, SituationID: fire.SituationID, SituationVersion: fire.SituationVersion,
-		InEnvelope: true, InCap: true, Recommendation: fire.Recommendation, Verdict: VerdictPending}
+		InEnvelope: true, InCap: true, EventTime: fire.EventTime, Recommendation: fire.Recommendation, Verdict: VerdictPending}
 }
 
 func AuditKey(fire Fire) string {

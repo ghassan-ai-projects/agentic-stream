@@ -32,9 +32,9 @@ func TestFiresCountTowardTheRateCapAndQueueTheirAudits(t *testing.T) {
 	t.Parallel()
 	s := New(storagetest.OpenTemp(t))
 	first := domain.Fire{FireID: "rfire_e1", TenantID: "t", EpisodeID: "e1", SituationID: "s1", SituationVersion: 1,
-		Recommendation: recommendation("r"), AuditDue: true, FiredAt: storeNow}
+		Recommendation: recommendation("r"), AuditDue: true, EventTime: storeNow}
 	second := first
-	second.FireID, second.EpisodeID, second.AuditDue, second.FiredAt = "rfire_e2", "e2", false, storeNow.Add(-2*time.Hour)
+	second.FireID, second.EpisodeID, second.AuditDue, second.EventTime = "rfire_e2", "e2", false, storeNow.Add(-2*time.Hour)
 	inTx(t, s, func(tx *Tx) error {
 		for _, fire := range []domain.Fire{first, second} {
 			if err := tx.RecordFire(t.Context(), fire); err != nil {
@@ -66,7 +66,7 @@ func TestAnAuditEvaluationIsBoundSettledAndNoLongerPending(t *testing.T) {
 	t.Parallel()
 	s := New(storagetest.OpenTemp(t))
 	fire := domain.Fire{FireID: "rfire_e1", TenantID: "t", EpisodeID: "e1", SituationID: "s1", SituationVersion: 1,
-		Recommendation: recommendation("r"), AuditDue: true, FiredAt: storeNow}
+		Recommendation: recommendation("r"), AuditDue: true, EventTime: storeNow}
 	audit := domain.NewAuditEvaluation(fire, "sch-1")
 	inTx(t, s, func(tx *Tx) error {
 		if err := tx.RecordFire(t.Context(), fire); err != nil {

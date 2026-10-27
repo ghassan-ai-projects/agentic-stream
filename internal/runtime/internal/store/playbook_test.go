@@ -29,7 +29,7 @@ func wornPumpRequest(t *testing.T) *episodes.Request {
 	t.Helper()
 	raw, err := canonicaljson.Marshal(map[string]any{"snapshot": map[string]any{"facts": map[string]any{
 		"facts.vibration_mean_15m": 4.2, "facts.vibration_mean_24h": 3.0, "facts.axial_mean_15m": 2.0,
-		"facts.axial_mean_24h": 2.0, "facts.current_mean_15m": 30.0}}})
+		"facts.axial_mean_24h": 2.0, "facts.current_mean_15m": 30.0}, "event_horizon": "2026-01-01T00:00:00.000000000Z"}})
 	if err != nil {
 		t.Fatal(err)
 	}

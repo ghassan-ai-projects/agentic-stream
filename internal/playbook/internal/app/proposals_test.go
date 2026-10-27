@@ -220,8 +220,8 @@ func TestAShadowRuleWhoseExitIsMetIsWrittenActive(t *testing.T) {
 	f := newProposalFixture(t)
 	for i := range 10 {
 		if _, err := f.db.ExecContext(t.Context(), `INSERT INTO rule_evaluations (evaluation_id, tenant_id, rule_id, rule_version,
-			playbook_digest, kind, situation_id, situation_version, in_envelope, recommendation_json, verdict, created_at)
-			VALUES (?, 't', 'misalignment', 1, 'pb', 'shadow', 's', 1, 1, CAST('{}' AS BLOB), 'agree', 'x')`, "ev"+string(rune('a'+i))); err != nil {
+			playbook_digest, kind, situation_id, situation_version, in_envelope, recommendation_json, verdict, event_time, created_at)
+			VALUES (?, 't', 'misalignment', 1, 'pb', 'shadow', 's', 1, 1, CAST('{}' AS BLOB), 'agree', 'x', 'x')`, "ev"+string(rune('a'+i))); err != nil {
 			t.Fatal(err)
 		}
 	}

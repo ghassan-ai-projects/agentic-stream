@@ -24,7 +24,7 @@ INSERT INTO commands (command_id, intent_id, tenant_id, effector_route, normaliz
     command_sha256, status, created_at, updated_at)
 VALUES ('c1', 'i1', 't', 'schedule_maintenance', 'p1', randomblob(32), CAST('{}' AS BLOB), zeroblob(32), 'manual_review', 'x', 'x');
 INSERT INTO rule_fires (fire_id, tenant_id, rule_id, rule_version, playbook_digest, episode_id, situation_id, situation_version,
-    recommendation_json, audit_due, fired_at)
+    recommendation_json, audit_due, event_time)
 VALUES ('rfire_e1', 't', 'bearing-wear', 1, 'sha256:pb', 'e1', 's1', 1, CAST('{}' AS BLOB), 0, '2026-01-01T06:00:00.000000000Z');
 INSERT INTO event_log (tenant_id, partition_id, event_id, event_type, schema_version, source, partition_key, entity_type, entity_id,
     event_time, ingested_at, classification, quality_json, payload_json, payload_sha256, created_at)

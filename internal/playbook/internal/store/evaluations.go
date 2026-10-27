@@ -22,12 +22,12 @@ func (t *Tx) RecordEvaluation(ctx context.Context, evaluation domain.Evaluation,
 	}
 	if _, err := t.tx.ExecContext(ctx, `INSERT INTO rule_evaluations (evaluation_id, tenant_id, rule_id, rule_version, playbook_digest,
 		kind, fire_id, scheduler_item_id, episode_id, situation_id, situation_version, in_envelope, in_cap, recommendation_json, verdict,
-		created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		event_time, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		evaluation.EvaluationID, evaluation.TenantID, evaluation.Recommendation.RuleID, evaluation.Recommendation.RuleVersion,
 		evaluation.Recommendation.PlaybookDigest, evaluation.Kind, storage.NullIfEmpty(evaluation.FireID),
 		storage.NullIfEmpty(evaluation.SchedulerItemID), storage.NullIfEmpty(evaluation.EpisodeID), evaluation.SituationID,
 		evaluation.SituationVersion, storage.BoolInt(evaluation.InEnvelope), storage.BoolInt(evaluation.InCap), recommendation, evaluation.Verdict,
-		kernel.FormatTime(now)); err != nil {
+		kernel.FormatTime(evaluation.EventTime), kernel.FormatTime(now)); err != nil {
 		return fmt.Errorf("record evaluation %s: %w", evaluation.EvaluationID, err)
 	}
 	return nil
@@ -105,9 +105,9 @@ func (t *Tx) CapCounts(ctx context.Context, rule domain.RuleKey, since time.Time
 	var counts domain.CapCounts
 	at := kernel.FormatTime(since)
 	if err := t.tx.QueryRowContext(ctx, `SELECT
-			(SELECT COUNT(*) FROM rule_evaluations WHERE rule_id = ? AND rule_version = ? AND kind = 'shadow' AND created_at >= ?) +
-			(SELECT COUNT(*) FROM rule_fires WHERE rule_id = ? AND rule_version = ? AND fired_at >= ?),
-			(SELECT COUNT(*) FROM rule_evaluations WHERE rule_id = ? AND rule_version = ? AND kind = 'shadow' AND in_cap = 0 AND created_at >= ?)`,
+			(SELECT COUNT(*) FROM rule_evaluations WHERE rule_id = ? AND rule_version = ? AND kind = 'shadow' AND event_time >= ?) +
+			(SELECT COUNT(*) FROM rule_fires WHERE rule_id = ? AND rule_version = ? AND event_time >= ?),
+			(SELECT COUNT(*) FROM rule_evaluations WHERE rule_id = ? AND rule_version = ? AND kind = 'shadow' AND in_cap = 0 AND event_time >= ?)`,
 		rule.ID, rule.Version, at, rule.ID, rule.Version, at, rule.ID, rule.Version, at).Scan(&counts.Matches, &counts.OutsideCap); err != nil {
 		return counts, fmt.Errorf("count the recent matches of rule %s: %w", rule.ID, err)
 	}

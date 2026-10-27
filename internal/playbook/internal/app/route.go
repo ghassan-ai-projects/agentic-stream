@@ -34,7 +34,7 @@ func (s *Service) routeAudit(ctx context.Context, tx *store.Tx, audit domain.Eva
 
 func (s *Service) routeByRules(ctx context.Context, tx *store.Tx, admission domain.Admission) (domain.Route, error) {
 	now := s.clock.Now().UTC()
-	state, err := s.ruleState(ctx, tx, now)
+	state, err := s.ruleState(ctx, tx, admission.EventTime, now)
 	if err != nil {
 		return domain.Route{}, err
 	}
@@ -55,7 +55,7 @@ func (s *Service) recordMisses(ctx context.Context, tx *store.Tx, admission doma
 	return s.tripRateCap(ctx, tx, routing.RateCapped, state, now)
 }
 
-func (s *Service) ruleState(ctx context.Context, tx *store.Tx, now time.Time) (domain.State, error) {
+func (s *Service) ruleState(ctx context.Context, tx *store.Tx, eventTime, now time.Time) (domain.State, error) {
 	if err := s.tripKindChanges(ctx, tx, now); err != nil {
 		return domain.State{}, err
 	}
@@ -63,7 +63,7 @@ func (s *Service) ruleState(ctx context.Context, tx *store.Tx, now time.Time) (d
 	if err != nil {
 		return domain.State{}, err
 	}
-	fires, err := tx.FiresSince(ctx, s.tenantID, now.Add(-rateCapWindow))
+	fires, err := tx.FiresSince(ctx, s.tenantID, eventTime.Add(-rateCapWindow))
 	if err != nil {
 		return domain.State{}, err
 	}
@@ -72,8 +72,7 @@ func (s *Service) ruleState(ctx context.Context, tx *store.Tx, now time.Time) (d
 
 func (s *Service) recordShadows(ctx context.Context, tx *store.Tx, admission domain.Admission, shadows []domain.Match, now time.Time) error {
 	for _, match := range shadows {
-		evaluation := domain.NewShadowEvaluation(s.tenantID, admission.EpisodeID, admission.SituationID, admission.SituationVersion,
-			match, s.rules.Recommend(match))
+		evaluation := domain.NewShadowEvaluation(s.tenantID, admission, match, s.rules.Recommend(match))
 		if err := tx.RecordEvaluation(ctx, evaluation, now); err != nil {
 			return err
 		}
@@ -95,7 +94,7 @@ func (s *Service) fire(ctx context.Context, tx *store.Tx, admission domain.Admis
 	}
 	recommendation := s.rules.Recommend(*match)
 	fire := domain.NewFire(s.tenantID, admission.EpisodeID, admission.SituationID, admission.SituationVersion,
-		recommendation, match.Rule.AuditEvery, now)
+		recommendation, match.Rule.AuditEvery, admission.EventTime)
 	if err := tx.RecordFire(ctx, fire); err != nil {
 		return domain.Route{}, err
 	}
@@ -122,7 +121,7 @@ func (s *Service) recordOutsideEnvelope(ctx context.Context, tx *store.Tx, admis
 		return err
 	}
 	rule := domain.RuleKey{ID: match.Rule.ID, Version: match.Rule.Version}
-	counts, err := tx.CapCounts(ctx, rule, now.Add(-domain.OutOfCapWindow))
+	counts, err := tx.CapCounts(ctx, rule, admission.EventTime.Add(-domain.OutOfCapWindow))
 	if err != nil || !counts.MostlyOutside() {
 		return err
 	}

@@ -98,6 +98,19 @@ func TestRouteTripsTheRateCapAfterItsFires(t *testing.T) {
 	}
 }
 
+func TestTheRateCapCountsFiresByTheirEventTime(t *testing.T) {
+	t.Parallel()
+	service := pumpService(t)
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	for i := range 6 {
+		admitted := admission("e"+string(rune('a'+i)), 4.2, 2.0)
+		admitted.EventTime = start.Add(time.Duration(i) * 20 * time.Minute)
+		if routed := route(t, service, admitted); routed.Kind != domain.RouteRule {
+			t.Fatalf("fire %d at %v = %+v, want the rule: at most three fires fall in any event hour", i, admitted.EventTime, routed)
+		}
+	}
+}
+
 func TestAnAuditItemRoutesAsAnAuditOfItsRule(t *testing.T) {
 	t.Parallel()
 	service := pumpService(t)

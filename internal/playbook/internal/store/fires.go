@@ -18,10 +18,10 @@ func (t *Tx) RecordFire(ctx context.Context, fire domain.Fire) error {
 		return fmt.Errorf("encode the recommendation of fire %s: %w", fire.FireID, err)
 	}
 	if _, err := t.tx.ExecContext(ctx, `INSERT INTO rule_fires (fire_id, tenant_id, rule_id, rule_version, playbook_digest, episode_id,
-		situation_id, situation_version, recommendation_json, audit_due, fired_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		situation_id, situation_version, recommendation_json, audit_due, event_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		fire.FireID, fire.TenantID, fire.Recommendation.RuleID, fire.Recommendation.RuleVersion, fire.Recommendation.PlaybookDigest,
 		fire.EpisodeID, fire.SituationID, fire.SituationVersion, recommendation, storage.BoolInt(fire.AuditDue),
-		kernel.FormatTime(fire.FiredAt)); err != nil {
+		kernel.FormatTime(fire.EventTime)); err != nil {
 		return fmt.Errorf("record fire %s: %w", fire.FireID, err)
 	}
 	return nil
@@ -29,7 +29,7 @@ func (t *Tx) RecordFire(ctx context.Context, fire domain.Fire) error {
 
 func (t *Tx) FiresSince(ctx context.Context, tenantID string, since time.Time) (map[domain.RuleKey]int, error) {
 	counts, err := storage.QueryAll(ctx, t.tx, "rule fires", scanFireCount, `SELECT rule_id, rule_version, COUNT(*) FROM rule_fires
-		WHERE tenant_id = ? AND fired_at >= ? GROUP BY rule_id, rule_version`, tenantID, kernel.FormatTime(since))
+		WHERE tenant_id = ? AND event_time >= ? GROUP BY rule_id, rule_version`, tenantID, kernel.FormatTime(since))
 	if err != nil {
 		return nil, fmt.Errorf("count rule fires since %s: %w", kernel.FormatTime(since), err)
 	}
@@ -55,8 +55,8 @@ func scanFireCount(rows *sql.Rows) (fireCount, error) {
 
 func (t *Tx) DueAudits(ctx context.Context, tenantID string) ([]domain.Fire, error) {
 	fires, err := storage.QueryAll(ctx, t.tx, "due audits", scanFire, `SELECT fire_id, tenant_id, episode_id, situation_id,
-		situation_version, recommendation_json, audit_due, fired_at FROM rule_fires
-		WHERE tenant_id = ? AND audit_due = 1 AND audit_queued = 0 ORDER BY fired_at, fire_id`, tenantID)
+		situation_version, recommendation_json, audit_due, event_time FROM rule_fires
+		WHERE tenant_id = ? AND audit_due = 1 AND audit_queued = 0 ORDER BY event_time, fire_id`, tenantID)
 	if err != nil {
 		return nil, fmt.Errorf("read due audits: %w", err)
 	}
@@ -67,16 +67,16 @@ func scanFire(rows *sql.Rows) (domain.Fire, error) {
 	var fire domain.Fire
 	var recommendation []byte
 	var auditDue int
-	var firedAt string
+	var eventTime string
 	if err := rows.Scan(&fire.FireID, &fire.TenantID, &fire.EpisodeID, &fire.SituationID, &fire.SituationVersion,
-		&recommendation, &auditDue, &firedAt); err != nil {
+		&recommendation, &auditDue, &eventTime); err != nil {
 		return domain.Fire{}, fmt.Errorf("scan rule fire: %w", err)
 	}
 	if err := json.Unmarshal(recommendation, &fire.Recommendation); err != nil {
 		return domain.Fire{}, fmt.Errorf("decode the recommendation of fire %s: %w", fire.FireID, err)
 	}
 	fire.AuditDue = auditDue == 1
-	return fire, parseInto(&fire.FiredAt, firedAt)
+	return fire, parseInto(&fire.EventTime, eventTime)
 }
 
 func parseInto(target *time.Time, text string) error {

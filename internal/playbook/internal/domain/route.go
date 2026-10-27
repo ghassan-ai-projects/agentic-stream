@@ -1,5 +1,7 @@
 package domain
 
+import "time"
+
 const (
 	RouteModel = "model"
 	RouteRule  = "rule"
@@ -13,6 +15,7 @@ type Admission struct {
 	SchedulerItemID  string
 	SituationID      string
 	SituationVersion int
+	EventTime        time.Time
 	Facts            map[string]any
 	Evidence         []string
 }

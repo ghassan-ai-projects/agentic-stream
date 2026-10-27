@@ -15,7 +15,7 @@ func TestExportBindsThePlaybookDigestsTheRunRecorded(t *testing.T) {
 	t.Parallel()
 	db := storagetest.OpenTemp(t)
 	if _, err := db.ExecContext(t.Context(), `INSERT INTO rule_fires (fire_id, tenant_id, rule_id, rule_version, playbook_digest,
-		episode_id, situation_id, situation_version, recommendation_json, audit_due, fired_at)
+		episode_id, situation_id, situation_version, recommendation_json, audit_due, event_time)
 		VALUES ('rfire_e1', 'tenant', 'r', 1, 'sha256:pb', 'e1', 's1', 1, X'7B7D', 0, '2026-01-01T00:00:00.000000000Z')`); err != nil {
 		t.Fatal(err)
 	}

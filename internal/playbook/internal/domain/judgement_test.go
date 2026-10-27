@@ -57,7 +57,10 @@ func TestRecordsCarryTheirIdentityAndEvidence(t *testing.T) {
 	if fire.FireID != "rfire_ep-9" || !fire.AuditDue || audit.FireID != fire.FireID || request.Key != AuditKey(fire) {
 		t.Fatalf("fire %+v, audit %+v, request %+v", fire, audit, request)
 	}
-	shadow := NewShadowEvaluation("t", "ep-9", "sit-1", 2, match, recommendation)
+	shadow := NewShadowEvaluation("t", Admission{EpisodeID: "ep-9", SituationID: "sit-1", SituationVersion: 2, EventTime: now}, match, recommendation)
+	if !shadow.EventTime.Equal(now) || !audit.EventTime.Equal(fire.EventTime) {
+		t.Fatalf("shadow at %v, audit at %v; want the admission's and the fire's event time", shadow.EventTime, audit.EventTime)
+	}
 	circuit := DisagreementCircuit(shadow, Observed{}, now)
 	if circuit.Cause != CauseAuditDisagreement || RateCapCircuit("t", match, 4, now).Cause != CauseRateCap {
 		t.Fatalf("circuit = %+v", circuit)

@@ -12,17 +12,28 @@ func (t *AdmissionTx) Route(ctx context.Context, req *episodes.Request) (playboo
 	if t.store.Playbook == nil {
 		return playbook.Route{Kind: playbook.RouteModel}, nil
 	}
-	facts, evidence, err := req.SnapshotFacts()
+	admission, err := admissionOf(t.store.TenantID, req)
 	if err != nil {
-		return playbook.Route{}, fmt.Errorf("read the snapshot to route episode %s: %w", req.EpisodeID, err)
+		return playbook.Route{}, err
 	}
-	route, err := t.store.Playbook.Route(ctx, t.tx, playbook.Admission{TenantID: t.store.TenantID, EpisodeID: req.EpisodeID,
-		SchedulerItemID: req.SchedulerItemID, SituationID: req.SituationID, SituationVersion: req.SituationVersion,
-		Facts: facts, Evidence: evidence})
+	route, err := t.store.Playbook.Route(ctx, t.tx, admission)
 	if err != nil {
 		return playbook.Route{}, fmt.Errorf("route episode %s through the playbook: %w", req.EpisodeID, err)
 	}
 	return route, nil
+}
+
+func admissionOf(tenantID string, req *episodes.Request) (playbook.Admission, error) {
+	facts, evidence, err := req.SnapshotFacts()
+	if err != nil {
+		return playbook.Admission{}, fmt.Errorf("read the snapshot to route episode %s: %w", req.EpisodeID, err)
+	}
+	eventTime, err := req.EvidenceHorizon()
+	if err != nil {
+		return playbook.Admission{}, fmt.Errorf("read the event time to route episode %s: %w", req.EpisodeID, err)
+	}
+	return playbook.Admission{TenantID: tenantID, EpisodeID: req.EpisodeID, SchedulerItemID: req.SchedulerItemID, SituationID: req.SituationID,
+		SituationVersion: req.SituationVersion, EventTime: eventTime, Facts: facts, Evidence: evidence}, nil
 }
 
 func (t *AdmissionTx) PlaybookDigest() string {
