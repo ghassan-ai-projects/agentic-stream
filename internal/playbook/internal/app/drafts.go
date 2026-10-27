@@ -74,7 +74,7 @@ func (s *Service) startDraft(ctx context.Context, tx *store.Tx, draft domain.Dra
 	if err != nil {
 		return draftport.Request{}, err
 	}
-	request := s.rules.DraftRequestFor(draft.DraftID, s.tenantID, draft.Key, cases)
+	request := s.rules.DraftRequestFor(draft.AttemptID(), s.tenantID, draft.Key, cases)
 	return request, tx.StartDraft(ctx, draft.DraftID, request, s.clock.Now().UTC())
 }
 

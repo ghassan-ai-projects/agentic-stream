@@ -52,6 +52,8 @@ func NewDraft(tenantID string, key Key, evidenceCases int) Draft {
 
 func (d Draft) Exhausted() bool { return d.Attempts >= maxDraftAttempt }
 
+func (d Draft) AttemptID() string { return d.DraftID + "-a" + strconv.Itoa(d.Attempts+1) }
+
 type ReplayReport struct {
 	VersionsExamined  int `json:"versions_examined"`
 	WouldFire         int `json:"would_fire"`

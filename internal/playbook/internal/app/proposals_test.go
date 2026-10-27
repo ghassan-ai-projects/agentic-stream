@@ -35,6 +35,16 @@ func (d cannedDrafter) Draft(_ context.Context, request draftport.Request) (draf
 		Preset: request.Key.Preset, When: d.when, CitedEpisodeIDs: cited}, Usage: draftport.Usage{InputTokens: 900}}, nil
 }
 
+type flakyDrafter struct{ ids *[]string }
+
+func (d flakyDrafter) Draft(ctx context.Context, request draftport.Request) (draftport.Reply, error) {
+	*d.ids = append(*d.ids, request.DraftID)
+	if len(*d.ids) == 1 {
+		return draftport.Reply{}, errors.New("provider unavailable")
+	}
+	return cannedDrafter{when: "features.vibration_mean_15m > 3.9"}.Draft(ctx, request)
+}
+
 type proposalFixture struct {
 	service *Service
 	db      *storage.DB
@@ -170,6 +180,26 @@ func TestVerifiedCasesBecomeAProposalThatAnApprovalWritesInShadow(t *testing.T) 
 	if rule := written.Rules[2]; rule.Mode != spec.RuleModeShadow || rule.Provenance.ApprovalDigest == "" || rule.PinnedKind.Name != "pump" {
 		t.Fatalf("written rule = %+v, want an approved shadow rule pinned to the pump", rule)
 	}
+}
+
+func TestARetriedDraftReachesTheWorkerUnderANewID(t *testing.T) {
+	t.Parallel()
+	f := newProposalFixture(t)
+	var ids []string
+	f.service.drafter = flakyDrafter{ids: &ids}
+	f.seedVerifiedDriftCases(t, 3)
+	if err := f.service.Settle(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		if _, err := f.service.Draft(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(ids) != 2 || ids[0] == ids[1] || !strings.HasSuffix(ids[0], "-a1") || !strings.HasSuffix(ids[1], "-a2") {
+		t.Fatalf("draft ids = %v, want one per attempt", ids)
+	}
+	f.pendingProposalID(t)
 }
 
 func TestAForgedOrRepeatedApprovalIsRefused(t *testing.T) {

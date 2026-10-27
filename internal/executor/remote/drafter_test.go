@@ -1,7 +1,9 @@
 package remote_test
 
 import (
+	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -40,5 +42,18 @@ func TestTheDrafterReportsAWorkerThatDeclinesOrCannotDraft(t *testing.T) {
 	unable := &workerfake.Server{WorkerName: "worker-1"}
 	if _, err := remote.NewDrafter(workerfake.ConnectClient(t, unable), "worker-1", "epoch").Draft(t.Context(), draftRequest()); !errors.Is(err, draftport.ErrUnsupported) {
 		t.Fatalf("a worker without the feature = %v, want unsupported", err)
+	}
+}
+
+func TestTheDrafterKeepsTheWorkersTypedFailure(t *testing.T) {
+	t.Parallel()
+	failing := &workerfake.Server{WorkerName: "worker-1", SupportedFeatures: []string{draftport.Feature},
+		DraftFunc: func(context.Context, *runtimev1.DraftRequest) (*runtimev1.DraftEvent, error) {
+			return &runtimev1.DraftEvent{Event: &runtimev1.DraftEvent_Diagnostic{Diagnostic: &runtimev1.Diagnostic{Code: "model_unavailable",
+				Message: "the provider timed out"}}, Usage: &runtimev1.Usage{InputTokens: 300}}, nil
+		}}
+	reply, err := remote.NewDrafter(workerfake.ConnectClient(t, failing), "worker-1", "epoch").Draft(t.Context(), draftRequest())
+	if err == nil || !strings.Contains(err.Error(), "model_unavailable") || reply.Usage.InputTokens != 300 {
+		t.Fatalf("failed draft = %+v, %v; want the typed failure and its usage", reply, err)
 	}
 }

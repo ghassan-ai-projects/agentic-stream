@@ -12,7 +12,10 @@ import (
 	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
 )
 
-var ErrDraftUnterminated = errors.New("the draft stream ended without a proposal or a reason for none")
+var (
+	ErrDraftUnterminated = errors.New("the draft stream ended without a proposal or a reason for none")
+	ErrDraftFailed       = errors.New("the worker failed the draft")
+)
 
 func DraftWireRequest(request draftport.Request) (*runtimev1.DraftRequest, error) {
 	cases, err := draftWireCases(request.Cases)
@@ -51,8 +54,9 @@ func draftWireRules(rules []draftport.Rule) []*runtimev1.DraftRule {
 }
 
 type DraftReading struct {
-	Reply draftport.Reply
-	Ended bool
+	Reply   draftport.Reply
+	Ended   bool
+	failure *runtimev1.Diagnostic
 }
 
 func (d *DraftReading) Read(event *runtimev1.DraftEvent) error {
@@ -65,6 +69,8 @@ func (d *DraftReading) Read(event *runtimev1.DraftEvent) error {
 		d.Reply.Proposal, d.Ended = proposalOf(event.GetProposal()), true
 	case event.GetNoProposal() != nil:
 		d.Reply.NoProposal, d.Ended = event.GetNoProposal().GetReason(), true
+	case event.GetDiagnostic() != nil:
+		d.failure = event.GetDiagnostic()
 	}
 	return nil
 }
@@ -81,8 +87,11 @@ func proposalOf(proposal *runtimev1.PlaybookProposal) *draftport.Proposal {
 }
 
 func (d *DraftReading) Result() (draftport.Reply, error) {
-	if !d.Ended {
-		return d.Reply, ErrDraftUnterminated
+	if d.Ended {
+		return d.Reply, nil
 	}
-	return d.Reply, nil
+	if d.failure != nil {
+		return d.Reply, fmt.Errorf("%w: %s: %s", ErrDraftFailed, d.failure.GetCode(), d.failure.GetMessage())
+	}
+	return d.Reply, ErrDraftUnterminated
 }
