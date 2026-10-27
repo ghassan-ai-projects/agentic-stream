@@ -235,6 +235,18 @@ func TestStreamOutcomeCarriesTheDecisionOnlyWithAProducedTerminal(t *testing.T) 
 	}
 }
 
+func terminalUsageReport(status runtimev1.TerminalStatus, usage *runtimev1.Usage) func(s *eventScript) []*runtimev1.EpisodeEvent {
+	return func(s *eventScript) []*runtimev1.EpisodeEvent {
+		return []*runtimev1.EpisodeEvent{s.started(), s.budget(&runtimev1.BudgetUpdated{}), s.terminal(status, usage)}
+	}
+}
+
+func usageFreeBudgetReport(status runtimev1.TerminalStatus) func(*testing.T, *eventScript) []*runtimev1.EpisodeEvent {
+	return func(_ *testing.T, s *eventScript) []*runtimev1.EpisodeEvent {
+		return terminalUsageReport(status, nil)(s)
+	}
+}
+
 func TestStreamOutcomeRefusesStreamsThatDoNotEndInACompleteTerminal(t *testing.T) {
 	t.Parallel()
 	declined := runtimev1.TerminalStatus_TERMINAL_STATUS_DECLINED
@@ -257,12 +269,8 @@ func TestStreamOutcomeRefusesStreamsThatDoNotEndInACompleteTerminal(t *testing.T
 		{"numeric budget without budget telemetry", &runtimev1.EpisodeBudget{MaxModelCalls: 1}, func(_ *testing.T, s *eventScript) []*runtimev1.EpisodeEvent {
 			return []*runtimev1.EpisodeEvent{s.started(), s.terminal(declined, nil)}
 		}, "budget telemetry is missing"},
-		{"token budget without usage", &runtimev1.EpisodeBudget{MaxInputTokens: 10}, func(_ *testing.T, s *eventScript) []*runtimev1.EpisodeEvent {
-			return []*runtimev1.EpisodeEvent{s.started(), s.budget(&runtimev1.BudgetUpdated{}), s.terminal(declined, nil)}
-		}, "budget telemetry is missing"},
-		{"cost budget without usage", &runtimev1.EpisodeBudget{MaxCostMicrounits: 10}, func(_ *testing.T, s *eventScript) []*runtimev1.EpisodeEvent {
-			return []*runtimev1.EpisodeEvent{s.started(), s.budget(&runtimev1.BudgetUpdated{}), s.terminal(declined, nil)}
-		}, "worker cost telemetry is missing"},
+		{"token budget without usage", &runtimev1.EpisodeBudget{MaxInputTokens: 10}, usageFreeBudgetReport(declined), "budget telemetry is missing"},
+		{"cost budget without usage", &runtimev1.EpisodeBudget{MaxCostMicrounits: 10}, usageFreeBudgetReport(declined), "worker cost telemetry is missing"},
 		{"terminal usage regresses below the reported total", &runtimev1.EpisodeBudget{MaxCostMicrounits: 100}, func(_ *testing.T, s *eventScript) []*runtimev1.EpisodeEvent {
 			return []*runtimev1.EpisodeEvent{
 				s.started(), s.budget(&runtimev1.BudgetUpdated{CumulativeUsage: &runtimev1.Usage{CostMicrounits: 5}}),
@@ -301,12 +309,8 @@ func TestStreamOutcomeReportsUsageTheWorkerCannotUnderstate(t *testing.T) {
 		{"cumulative budget report settles the cost", &runtimev1.EpisodeBudget{MaxCostMicrounits: 100}, func(s *eventScript) []*runtimev1.EpisodeEvent {
 			return []*runtimev1.EpisodeEvent{s.started(), s.budget(&runtimev1.BudgetUpdated{CumulativeUsage: &runtimev1.Usage{CostMicrounits: 42}}), s.terminal(declined, nil)}
 		}, 42},
-		{"terminal usage settles the cost", &runtimev1.EpisodeBudget{MaxCostMicrounits: 100}, func(s *eventScript) []*runtimev1.EpisodeEvent {
-			return []*runtimev1.EpisodeEvent{s.started(), s.budget(&runtimev1.BudgetUpdated{}), s.terminal(declined, &runtimev1.Usage{CostMicrounits: 7})}
-		}, 7},
-		{"zero priced usage is a valid report", &runtimev1.EpisodeBudget{MaxCostMicrounits: 100}, func(s *eventScript) []*runtimev1.EpisodeEvent {
-			return []*runtimev1.EpisodeEvent{s.started(), s.budget(&runtimev1.BudgetUpdated{}), s.terminal(declined, &runtimev1.Usage{InputTokens: 1})}
-		}, 0},
+		{"terminal usage settles the cost", &runtimev1.EpisodeBudget{MaxCostMicrounits: 100}, terminalUsageReport(declined, &runtimev1.Usage{CostMicrounits: 7}), 7},
+		{"zero priced usage is a valid report", &runtimev1.EpisodeBudget{MaxCostMicrounits: 100}, terminalUsageReport(declined, &runtimev1.Usage{InputTokens: 1}), 0},
 		{"per event usage counts when the report is lower", &runtimev1.EpisodeBudget{}, func(s *eventScript) []*runtimev1.EpisodeEvent {
 			started := s.started()
 			completed := s.next(func(e *runtimev1.EpisodeEvent) {

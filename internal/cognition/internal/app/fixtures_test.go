@@ -103,16 +103,26 @@ func (h *harness) reprocess(v situations.Version) {
 
 func (h *harness) exec(statement string, args ...any) {
 	h.t.Helper()
-	if _, err := h.db.ExecContext(h.t.Context(), statement, args...); err != nil {
-		h.t.Fatalf("%s: %v", statement, err)
+	mustExec(h.t, h.db, statement, args...)
+}
+
+func mustExec(t *testing.T, db *storage.DB, statement string, args ...any) {
+	t.Helper()
+	if _, err := db.ExecContext(t.Context(), statement, args...); err != nil {
+		t.Fatalf("%s: %v", statement, err)
 	}
 }
 
 func scalar[T any](h *harness, query string, args ...any) T {
 	h.t.Helper()
+	return queryScalar[T](h.t, h.db, query, args...)
+}
+
+func queryScalar[T any](t *testing.T, db *storage.DB, query string, args ...any) T {
+	t.Helper()
 	var value T
-	if err := h.db.QueryRowContext(h.t.Context(), query, args...).Scan(&value); err != nil {
-		h.t.Fatalf("%s: %v", query, err)
+	if err := db.QueryRowContext(t.Context(), query, args...).Scan(&value); err != nil {
+		t.Fatalf("%s: %v", query, err)
 	}
 	return value
 }

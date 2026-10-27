@@ -124,13 +124,7 @@ func TestVerifyBindsDigestToValueAndDomain(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tests := []struct {
-		name   string
-		domain Domain
-		value  any
-		digest string
-		want   bool
-	}{
+	tests := []verifyCase[string]{
 		{"matching", testDomain, document, digest, true},
 		{"wrong domain", DomainSnapshot, document, digest, false},
 		{"changed value", testDomain, map[string]any{"ok": false}, digest, false},
@@ -141,14 +135,7 @@ func TestVerifyBindsDigestToValueAndDomain(t *testing.T) {
 		{"same length different digest", testDomain, document, flipLastDigit(digest), false},
 		{"upper case digest", testDomain, document, strings.ToUpper(digest), false},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			if got := Verify(tt.domain, tt.value, tt.digest); got != tt.want {
-				t.Fatalf("Verify = %v, want %v", got, tt.want)
-			}
-		})
-	}
+	runVerifyCases(t, "Verify", tests, Verify)
 }
 
 func TestVerifySumBindsSumToValueAndDomain(t *testing.T) {
@@ -158,13 +145,7 @@ func TestVerifySumBindsSumToValueAndDomain(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tests := []struct {
-		name   string
-		domain Domain
-		value  any
-		sum    []byte
-		want   bool
-	}{
+	tests := []verifyCase[[]byte]{
 		{"matching", testDomain, document, sum, true},
 		{"wrong domain", DomainSnapshot, document, sum, false},
 		{"changed value", testDomain, map[string]any{"ok": false}, sum, false},
@@ -173,11 +154,24 @@ func TestVerifySumBindsSumToValueAndDomain(t *testing.T) {
 		{"empty domain", "", document, sum, false},
 		{"unencodable value", testDomain, math.NaN(), sum, false},
 	}
+	runVerifyCases(t, "VerifySum", tests, VerifySum)
+}
+
+type verifyCase[D any] struct {
+	name   string
+	domain Domain
+	value  any
+	digest D
+	want   bool
+}
+
+func runVerifyCases[D any](t *testing.T, operation string, tests []verifyCase[D], verify func(Domain, any, D) bool) {
+	t.Helper()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if got := VerifySum(tt.domain, tt.value, tt.sum); got != tt.want {
-				t.Fatalf("VerifySum = %v, want %v", got, tt.want)
+			if got := verify(tt.domain, tt.value, tt.digest); got != tt.want {
+				t.Fatalf("%s = %v, want %v", operation, got, tt.want)
 			}
 		})
 	}

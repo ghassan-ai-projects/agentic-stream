@@ -2,6 +2,7 @@ package wire_test
 
 import (
 	"bytes"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -50,11 +51,7 @@ func TestDecodeFailsClosed(t *testing.T) {
 	replaced := func(old, replacement string) []byte {
 		return bytes.Replace(valid, []byte(old), []byte(replacement), 1)
 	}
-	cases := []struct {
-		name  string
-		frame []byte
-		want  string
-	}{
+	cases := []refusalCase[[]byte]{
 		{"empty", nil, "device frame is empty"},
 		{"malformed", []byte(`{"message_type":`), "decode device frame"},
 		{"not an object", []byte("null\n"), "must be a JSON object"},
@@ -67,16 +64,7 @@ func TestDecodeFailsClosed(t *testing.T) {
 		{"unknown field", replaced(`"target":"led-01"`, `"pin":13,"target":"led-01"`), "validate device frame"},
 		{"oversized", append(append([]byte(nil), valid...), bytes.Repeat([]byte{' '}, wire.MaxFrameBytes)...), "exceeds 65536 bytes"},
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			document, err := wire.Decode(tc.frame)
-			assertRefusal(t, err, tc.want)
-			if document != nil {
-				t.Fatalf("an invalid frame decoded to %v", document)
-			}
-		})
-	}
+	runRefusals(t, cases, wire.Decode)
 }
 
 func TestEncodeFailsClosed(t *testing.T) {
@@ -87,24 +75,31 @@ func TestEncodeFailsClosed(t *testing.T) {
 	delete(noType, "message_type")
 	incomplete := goldenDeviceState()
 	delete(incomplete, "boot_id")
-	cases := []struct {
-		name     string
-		document map[string]any
-		want     string
-	}{
+	cases := []refusalCase[map[string]any]{
 		{"no record", nil, "device record is required"},
 		{"no message type", noType, "device message_type is required"},
 		{"unsupported type", map[string]any{"message_type": "motor"}, `unsupported device message_type "motor"`},
 		{"schema-invalid record", incomplete, "validate device record"},
 		{"oversized record", oversized, "device record exceeds 65536 bytes"},
 	}
+	runRefusals(t, cases, wire.Encode)
+}
+
+type refusalCase[I any] struct {
+	name  string
+	input I
+	want  string
+}
+
+func runRefusals[I, O any](t *testing.T, cases []refusalCase[I], run func(I) (O, error)) {
+	t.Helper()
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			frame, err := wire.Encode(tc.document)
+			output, err := run(tc.input)
 			assertRefusal(t, err, tc.want)
-			if frame != nil {
-				t.Fatalf("a refused record produced a frame: %q", frame)
+			if !reflect.ValueOf(&output).Elem().IsZero() {
+				t.Fatalf("a refused input produced %v", output)
 			}
 		})
 	}
