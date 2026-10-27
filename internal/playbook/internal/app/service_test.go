@@ -136,3 +136,15 @@ func TestJudgeComparesAnAcceptedDecisionWithTheRecommendation(t *testing.T) {
 		t.Fatal("boolCount counts a true as one")
 	}
 }
+
+func TestARuleOfAKindBornWithAnotherDigestNoLongerAnswers(t *testing.T) {
+	t.Parallel()
+	service := pumpService(t)
+	service.kinds = func() map[string]string { return map[string]string{"pump": "sha256:probe-b"} }
+	if routed := route(t, service, admission("e1", 4.2, 2.0)); routed.Kind != domain.RouteModel {
+		t.Fatalf("route after a kind change = %+v, want the model", routed)
+	}
+	if _, err := service.Settle(t.Context()); err != nil {
+		t.Fatalf("settle after a kind change: %v", err)
+	}
+}

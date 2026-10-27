@@ -81,3 +81,8 @@ the [device-authority language](../authority/UBIQUITOUS_LANGUAGE.md).
 | **Verification window** | How long a command waits for its verification after the dispatch returns: 6 s, the slowest output's 5 s report period and a second of slack. | `VerificationWindow` | — |
 | **Command evidence** | A numeric verification decision sent with the next barrier: observed with the value, or not observed when the window lapsed. | `Conversation.barrier` | `HSYNC.command_evidence` |
 | **Clearing by readings** | Presenting a device's held readings to the device authority, which clears its reconciliation when each output has a good, live reading newer than the opening. | `clearByReadings`, `authority.ResolveWithReadings` | — |
+
+| Term | Meaning | Code name | Stored as |
+| --- | --- | --- | --- |
+| **Born kind digest** | The kind digest a kind was last born with, per kind name, whether or not a kind file commissions it. Rule promotion reads it to switch off rules pinned to another digest. | `Host.BornKindDigests`, `Birth.KindDigests` | in memory |
+

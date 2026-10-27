@@ -23,6 +23,7 @@ type PipelineConfig struct {
 	DB                *storage.DB
 	Spec              *spec.CompiledSpec
 	Playbook          *spec.CompiledPlaybook
+	KindDigests       func() map[string]string
 	TenantID          string
 	Owner             *runtimecontrol.RuntimeOwner
 	OwnerEpoch        string

@@ -48,6 +48,7 @@ type session struct {
 	mailboxes    map[string]chan<- domain.Settlement
 	watchers     map[string]chan<- domain.Verification
 	held         []map[string]any
+	born         *bornKinds
 	done         chan struct{}
 }
 
@@ -55,7 +56,7 @@ func (h *Host) serve(ctx context.Context, conn *transport.Conn, queue *ingestQue
 	s := &session{conn: conn, conversation: domain.NewConversation(h.admission, h.epoch, h.mapping), clock: h.clock,
 		queue: queue, lines: make(chan readResult), calls: make(chan call), mailboxes: map[string]chan<- domain.Settlement{},
 		watchers: map[string]chan<- domain.Verification{}, authority: h.authority, claims: map[string]authority.TargetClaim{},
-		settings: h.settings, done: make(chan struct{})}
+		settings: h.settings, born: h.born, done: make(chan struct{})}
 	h.goLive(s)
 	defer h.goLive(nil)
 	defer s.close()
@@ -96,6 +97,7 @@ func (s *session) receive(ctx context.Context, read readResult) string {
 	}
 	reaction := s.conversation.Receive(s.arrivalOf(read.line))
 	report(ctx, reaction)
+	s.born.record(reaction.BornKinds)
 	s.startBeating(reaction)
 	s.deliverReaction(reaction)
 	if !s.queue.enqueue(reaction.Events) {

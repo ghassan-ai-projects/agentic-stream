@@ -8,6 +8,7 @@ const (
 
 	CauseAuditDisagreement = "audit_disagreement"
 	CauseRateCap           = "rate_cap"
+	CauseKindChanged       = "kind_changed"
 
 	firePrefix       = "rfire_"
 	evaluationPrefix = "reval_"
@@ -78,4 +79,16 @@ func DisagreementCircuit(evaluation Evaluation, observed Observed, now time.Time
 	return Circuit{Rule: evaluation.Recommendation.Key(), TenantID: evaluation.TenantID, Cause: CauseAuditDisagreement, OpenedAt: now,
 		Evidence: map[string]any{"episode_id": evaluation.EpisodeID, "situation_id": evaluation.SituationID,
 			"situation_version": evaluation.SituationVersion, "recommended": evaluation.Recommendation, "observed": observed}}
+}
+
+func (r *Rules) KindChanges(tenantID string, born map[string]string, now time.Time) []Circuit {
+	var circuits []Circuit
+	for _, compiled := range r.compiled {
+		pinned := compiled.rule.PinnedKind
+		if digest, seen := born[pinned.Name]; seen && digest != pinned.Digest {
+			circuits = append(circuits, Circuit{Rule: keyOf(compiled.rule), TenantID: tenantID, Cause: CauseKindChanged, OpenedAt: now,
+				Evidence: map[string]any{"kind": pinned.Name, "pinned_digest": pinned.Digest, "born_digest": digest}})
+		}
+	}
+	return circuits
 }

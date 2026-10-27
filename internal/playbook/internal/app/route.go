@@ -49,6 +49,9 @@ func (s *Service) routeByRules(ctx context.Context, tx *store.Tx, admission doma
 }
 
 func (s *Service) ruleState(ctx context.Context, tx *store.Tx, now time.Time) (domain.State, error) {
+	if err := s.tripKindChanges(ctx, tx, now); err != nil {
+		return domain.State{}, err
+	}
 	open, err := tx.OpenCircuits(ctx, s.tenantID)
 	if err != nil {
 		return domain.State{}, err
@@ -90,4 +93,16 @@ func (s *Service) fire(ctx context.Context, tx *store.Tx, admission domain.Admis
 		return domain.Route{}, err
 	}
 	return domain.Route{Kind: domain.RouteRule, Recommendation: &recommendation}, nil
+}
+
+func (s *Service) tripKindChanges(ctx context.Context, tx *store.Tx, now time.Time) error {
+	if s.kinds == nil {
+		return nil
+	}
+	for _, circuit := range s.rules.KindChanges(s.tenantID, s.kinds(), now) {
+		if err := tx.OpenCircuit(ctx, circuit); err != nil {
+			return err
+		}
+	}
+	return nil
 }

@@ -11,12 +11,13 @@ import (
 )
 
 type Config struct {
-	Store      store.Store
-	Spec       *spec.CompiledSpec
-	Playbook   *spec.CompiledPlaybook
-	TenantID   string
-	Clock      sources.Clock
-	QueueAudit store.AuditQueue
+	Store       store.Store
+	Spec        *spec.CompiledSpec
+	Playbook    *spec.CompiledPlaybook
+	TenantID    string
+	Clock       sources.Clock
+	QueueAudit  store.AuditQueue
+	KindDigests func() map[string]string
 }
 
 type Service struct {
@@ -25,6 +26,7 @@ type Service struct {
 	tenantID string
 	clock    sources.Clock
 	queue    store.AuditQueue
+	kinds    func() map[string]string
 }
 
 func New(cfg Config) (*Service, error) {
@@ -36,7 +38,7 @@ func New(cfg Config) (*Service, error) {
 		return nil, fmt.Errorf("compile playbook rules: %w", err)
 	}
 	return &Service{rules: rules, store: cfg.Store, tenantID: cfg.TenantID, clock: sources.OrPhysical(cfg.Clock),
-		queue: cfg.QueueAudit}, nil
+		queue: cfg.QueueAudit, kinds: cfg.KindDigests}, nil
 }
 
 func (s *Service) Digest() string { return s.rules.Digest() }

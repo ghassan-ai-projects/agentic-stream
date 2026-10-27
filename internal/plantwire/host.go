@@ -107,6 +107,11 @@ func (h *Host) Run(ctx context.Context, emit func(context.Context, contractsv1.E
 	return h.app.Run(ctx, emit)
 }
 
+// BornKindDigests reports, per kind name, the kind digest the latest birth
+// announced, whether or not a kind file commissions that digest. Rule
+// promotion reads it to switch off rules pinned to another digest.
+func (h *Host) BornKindDigests() map[string]string { return h.app.BornKindDigests() }
+
 // Close closes the listener, so no further session is accepted; a running Run
 // returns when the caller's context ends.
 func (h *Host) Close() error { return h.app.Close() }

@@ -12,6 +12,9 @@ func (s *Service) Settle(ctx context.Context) (domain.Report, error) {
 	var report domain.Report
 	err := s.store.WithTx(ctx, func(tx *store.Tx) error {
 		now := s.clock.Now().UTC()
+		if err := s.tripKindChanges(ctx, tx, now); err != nil {
+			return err
+		}
 		var err error
 		if report.AuditsQueued, err = s.queueAudits(ctx, tx, now); err != nil {
 			return err

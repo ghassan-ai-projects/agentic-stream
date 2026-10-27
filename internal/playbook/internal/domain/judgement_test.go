@@ -67,3 +67,17 @@ func TestRecordsCarryTheirIdentityAndEvidence(t *testing.T) {
 		t.Fatalf("event = %+v, %v", event, err)
 	}
 }
+
+func TestAKindBornWithAnotherDigestOpensThePinnedRulesCircuits(t *testing.T) {
+	t.Parallel()
+	rules := pumpRules(t)
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	pinned := rules.compiled[0].rule.PinnedKind
+	if changes := rules.KindChanges("t", map[string]string{pinned.Name: pinned.Digest, "fan": "sha256:other"}, now); len(changes) != 0 {
+		t.Fatalf("changes = %+v, want none while the pinned digest is born", changes)
+	}
+	changes := rules.KindChanges("t", map[string]string{pinned.Name: "sha256:probe-b"}, now)
+	if len(changes) != 2 || changes[0].Cause != CauseKindChanged || changes[0].Evidence["born_digest"] != "sha256:probe-b" {
+		t.Fatalf("changes = %+v, want both pump rules switched off", changes)
+	}
+}

@@ -49,6 +49,7 @@ type Host struct {
 	live       *session
 	sentMu     sync.Mutex
 	sent       map[string]target
+	born       *bornKinds
 }
 
 func New(cfg Config) (*Host, error) {
@@ -92,7 +93,7 @@ func newHost(cfg Config, inventory domain.Inventory, mapping domain.Mapping) *Ho
 	admission := domain.Admission{Environment: cfg.Settings.Environment, ContractDigest: wire.ContractDigest(), Inventory: inventory}
 	return &Host{listener: cfg.Listener, settings: cfg.Settings, admission: admission, mapping: mapping, epoch: epoch, clock: clock,
 		queueSize: cmp.Or(max(cfg.QueueSize, 0), defaultQueueSize), catalog: cfg.Catalog,
-		authority: cfg.Authority, ownerEpoch: cfg.OwnerEpoch, sent: map[string]target{}}
+		authority: cfg.Authority, ownerEpoch: cfg.OwnerEpoch, sent: map[string]target{}, born: &bornKinds{}}
 }
 
 func (h *Host) logReady(cfg Config, siteDigest string) {

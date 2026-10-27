@@ -143,3 +143,10 @@ func runPlantWireHost(host *plantwire.Host, pipeline *runtime.Pipeline, run func
 		run("plant wire host", func(ctx context.Context) error { return pipeline.RunFeed(ctx, host.Run) })
 	}
 }
+
+func (e effects) kindDigests() func() map[string]string {
+	if e.plant == nil {
+		return nil
+	}
+	return e.plant.BornKindDigests
+}

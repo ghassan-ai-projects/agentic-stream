@@ -140,9 +140,12 @@ Closing a circuit needs a human.
 
 ### Kind pinning (decision 3)
 
-Plant wire tells the playbook the kind digest a device is born with. A rule
-pinned to another digest for that kind opens its circuit with cause
-`kind_changed`, so it stops at the first birth on the new kind.
+Plant wire remembers the kind digest each kind was last born with
+(`plantwire.Host.BornKindDigests`, a query the composition hands to the
+playbook; no callback). A rule pinned to another digest for that kind opens its
+circuit with cause `kind_changed`, at the next routing or settle, so it stops at
+the first birth on the new kind, whether that kind is commissioned or
+quarantined.
 
 ### Drafts and approvals (decisions 1, 6, 9, 11, F4)
 

@@ -33,6 +33,7 @@ type Reaction struct {
 	Verifications []Verification
 	Verdict       *Verdict
 	Quarantined   []string
+	BornKinds     map[string]string
 	Rebirth       bool
 	Dropped       string
 	End           string
@@ -168,6 +169,7 @@ func (c *Conversation) rebirth(b Birth, r *Reaction) {
 
 func (c *Conversation) commission(b Birth, r *Reaction) {
 	r.Quarantined = c.admission.Inventory.Quarantined(b)
+	r.BornKinds = b.KindDigests()
 	c.ingest.rebirth(b, r.Quarantined)
 }
 
