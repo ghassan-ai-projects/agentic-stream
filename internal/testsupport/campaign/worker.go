@@ -46,18 +46,21 @@ func (w *Worker) Execute(ctx context.Context, req *runtimev1.EpisodeRequest, emi
 		return fmt.Errorf("episode %s: %w", req.GetEpisodeId(), err)
 	}
 	forwarded := false
-	fresh := func() (any, error) {
-		if w.Upstream == nil {
-			return w.diagnose(req.GetSnapshotJson())
-		}
-		forwarded = true
-		return forwardEpisode(ctx, w.Upstream, req, emit)
-	}
 	var given answer
-	if err := w.Recording.next(recordedEpisode, entity, fresh, &given); err != nil || forwarded {
+	if err := w.Recording.next(recordedEpisode, entity, w.freshEpisode(ctx, req, emit, &forwarded), &given); err != nil || forwarded {
 		return wrapEpisode(req, err)
 	}
 	return wrapEpisode(req, given.give(req, emit))
+}
+
+func (w *Worker) freshEpisode(ctx context.Context, req *runtimev1.EpisodeRequest, emit func(*runtimev1.EpisodeEvent) error, forwarded *bool) func() (any, error) {
+	return func() (any, error) {
+		if w.Upstream == nil {
+			return w.diagnose(req.GetSnapshotJson())
+		}
+		*forwarded = true
+		return forwardEpisode(ctx, w.Upstream, req, emit)
+	}
 }
 
 func wrapEpisode(req *runtimev1.EpisodeRequest, err error) error {
@@ -92,10 +95,16 @@ func diagnoseSnapshot(snapshotJSON []byte) (answer, error) {
 
 func (a answer) give(req *runtimev1.EpisodeRequest, emit func(*runtimev1.EpisodeEvent) error) error {
 	if a.Failed != "" {
-		return workerfake.Fail(req, emit, a.Failed, a.Usage.wire())
+		if err := workerfake.Fail(req, emit, a.Failed, a.Usage.wire()); err != nil {
+			return fmt.Errorf("give the recorded failure: %w", err)
+		}
+		return nil
 	}
-	return workerfake.Propose(req, emit, workerfake.Answer{Hypothesis: cmp.Or(a.Hypothesis, a.DiagnosisCode), DiagnosisCode: a.DiagnosisCode,
-		Summary: cmp.Or(a.Summary, "canned pump diagnosis"), Intents: a.Intents, Usage: a.Usage.wire()})
+	if err := workerfake.Propose(req, emit, workerfake.Answer{Hypothesis: cmp.Or(a.Hypothesis, a.DiagnosisCode), DiagnosisCode: a.DiagnosisCode,
+		Summary: cmp.Or(a.Summary, "canned pump diagnosis"), Intents: a.Intents, Usage: a.Usage.wire()}); err != nil {
+		return fmt.Errorf("give the recorded answer: %w", err)
+	}
+	return nil
 }
 
 // Draft answers a draft: forwarded, canned or replayed. A canned draft
@@ -103,22 +112,25 @@ func (a answer) give(req *runtimev1.EpisodeRequest, emit func(*runtimev1.Episode
 // declines the others.
 func (w *Worker) Draft(ctx context.Context, req *runtimev1.DraftRequest) (*runtimev1.DraftEvent, error) {
 	var forwardedEvent *runtimev1.DraftEvent
-	fresh := func() (any, error) {
-		if w.Upstream == nil {
-			return cannedDraft(req.GetKey().GetDiagnosisCode())
-		}
-		event, err := forwardDraft(ctx, w.Upstream, req)
-		forwardedEvent = event
-		return draftAnswerOf(event), err
-	}
 	var given draftAnswer
-	if err := w.Recording.next(recordedDraft, req.GetKey().GetDiagnosisCode(), fresh, &given); err != nil {
+	if err := w.Recording.next(recordedDraft, req.GetKey().GetDiagnosisCode(), w.freshDraft(ctx, req, &forwardedEvent), &given); err != nil {
 		return nil, fmt.Errorf("draft %s: %w", req.GetDraftId(), err)
 	}
 	if forwardedEvent != nil {
 		return forwardedEvent, nil
 	}
 	return given.event(ctx, req)
+}
+
+func (w *Worker) freshDraft(ctx context.Context, req *runtimev1.DraftRequest, forwarded **runtimev1.DraftEvent) func() (any, error) {
+	return func() (any, error) {
+		if w.Upstream == nil {
+			return cannedDraft(req.GetKey().GetDiagnosisCode())
+		}
+		event, err := forwardDraft(ctx, w.Upstream, req)
+		*forwarded = event
+		return draftAnswerOf(event), err
+	}
 }
 
 func cannedDraft(diagnosisCode string) (draftAnswer, error) {

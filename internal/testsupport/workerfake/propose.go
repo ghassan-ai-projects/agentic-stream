@@ -126,15 +126,19 @@ func decisionBody(req *runtimev1.EpisodeRequest, answer Answer, scope, validUnti
 }
 
 func answerIntents(req *runtimev1.EpisodeRequest, answer Answer, scope, validUntil string) ([]any, error) {
-	intents := []any{}
 	if len(answer.Intents) == 0 {
-		return intents, nil
+		return []any{}, nil
 	}
 	entityID, err := SnapshotEntityID(req.GetSnapshotJson())
 	if err != nil {
 		return nil, err
 	}
-	for _, proposed := range answer.Intents {
+	return intentDocuments(req, answer.Intents, scope, entityID, validUntil)
+}
+
+func intentDocuments(req *runtimev1.EpisodeRequest, proposed []ProposedIntent, scope, entityID, validUntil string) ([]any, error) {
+	intents := []any{}
+	for _, proposed := range proposed {
 		intent, err := intentDocument(req, proposed, scope, entityID, validUntil)
 		if err != nil {
 			return nil, err

@@ -39,6 +39,10 @@ func forwardEpisode(ctx context.Context, upstream runtimev1.EpisodeWorkerClient,
 	if err != nil {
 		return answer{}, fmt.Errorf("forward the episode: %w", err)
 	}
+	return relayAll(stream, emit)
+}
+
+func relayAll(stream runtimev1.EpisodeWorker_ExecuteClient, emit func(*runtimev1.EpisodeEvent) error) (answer, error) {
 	var given answer
 	for {
 		event, err := stream.Recv()
