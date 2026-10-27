@@ -156,7 +156,7 @@ var facadeSpecs = []facadeSpec{
 	{
 		module:       "internal/engine",
 		constructors: []string{"New", "applicationConfig", "ReplayOwnership"},
-		operations:   operations(to("app", "RunGlobal", "ListSituations", "SituationVersion", "PruneHistory")),
+		operations:   operations(to("app", "RunGlobal", "ListSituations", "SituationVersion", "PruneHistory", "ResolvedAfter", "ReopenedAfter")),
 	},
 	{
 		module: "internal/episodeledger",

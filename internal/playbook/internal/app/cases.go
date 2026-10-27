@@ -12,12 +12,20 @@ func (s *Service) settleCases(ctx context.Context, tx *store.Tx, now time.Time) 
 	if err := s.openCases(ctx, tx, now); err != nil {
 		return err
 	}
+	return s.verifyPendingCases(ctx, tx, now)
+}
+
+func (s *Service) verifyPendingCases(ctx context.Context, tx *store.Tx, now time.Time) error {
 	pending, err := tx.PendingCases(ctx, s.tenantID)
+	if err != nil || len(pending) == 0 {
+		return err
+	}
+	watermark, err := tx.Watermark(ctx, s.tenantID)
 	if err != nil {
 		return err
 	}
 	for _, c := range pending {
-		if err := s.verifyCase(ctx, tx, c, now); err != nil {
+		if err := s.verifyCase(ctx, tx, c, watermark, now); err != nil {
 			return err
 		}
 	}
@@ -49,8 +57,8 @@ func (s *Service) openCase(ctx context.Context, tx *store.Tx, c domain.Case, now
 	return s.switchOffIneffective(ctx, tx, c, now)
 }
 
-func (s *Service) verifyCase(ctx context.Context, tx *store.Tx, c domain.Case, now time.Time) error {
-	evidence, err := tx.CaseEvidence(ctx, c)
+func (s *Service) verifyCase(ctx context.Context, tx *store.Tx, c domain.Case, watermark, now time.Time) error {
+	evidence, err := tx.CaseEvidence(ctx, c, watermark)
 	if err != nil {
 		return err
 	}

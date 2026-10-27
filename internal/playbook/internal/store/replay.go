@@ -44,14 +44,24 @@ func scanReplayVersion(rows *sql.Rows) (domain.ReplayVersion, error) {
 }
 
 func replayedSnapshot(snapshot []byte) (domain.ReplayVersion, error) {
-	var document struct {
-		Facts    map[string]any `json:"facts"`
-		Evidence []string       `json:"evidence"`
+	facts, err := decodeSnapshot(snapshot)
+	if err != nil {
+		return domain.ReplayVersion{}, fmt.Errorf("a replayed version: %w", err)
 	}
-	if err := json.Unmarshal(snapshot, &document); err != nil {
-		return domain.ReplayVersion{}, fmt.Errorf("decode a replayed snapshot: %w", err)
+	return domain.ReplayVersion{Facts: facts.Facts, Evidence: facts.Evidence}, nil
+}
+
+type snapshotFacts struct {
+	Facts    map[string]any `json:"facts"`
+	Evidence []string       `json:"evidence"`
+}
+
+func decodeSnapshot(snapshot []byte) (snapshotFacts, error) {
+	var facts snapshotFacts
+	if err := json.Unmarshal(snapshot, &facts); err != nil {
+		return snapshotFacts{}, fmt.Errorf("decode the snapshot: %w", err)
 	}
-	return domain.ReplayVersion{Facts: document.Facts, Evidence: document.Evidence}, nil
+	return facts, nil
 }
 
 func (t *Tx) ShadowTallies(ctx context.Context, rule domain.RuleKey) (int, int, error) {

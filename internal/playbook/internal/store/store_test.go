@@ -192,7 +192,11 @@ func TestAnActedCaseIsRecordedJudgedAndSettled(t *testing.T) {
 		if err != nil || len(pending) != 1 {
 			t.Fatalf("pending cases = %+v, %v", pending, err)
 		}
-		evidence, err := tx.CaseEvidence(t.Context(), pending[0])
+		watermark, err := tx.Watermark(t.Context(), "t")
+		if err != nil {
+			t.Fatal(err)
+		}
+		evidence, err := tx.CaseEvidence(t.Context(), pending[0], watermark)
 		if err != nil || evidence.ClosedAt == nil || evidence.ClosedAt.Hour() != 8 || evidence.ReopenedAt != nil || evidence.Watermark.Day() != 2 {
 			t.Fatalf("evidence = %+v, %v; want closed at 08:00, no reopen, the log on the next day", evidence, err)
 		}

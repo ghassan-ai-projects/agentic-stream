@@ -4,11 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/engine"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/playbook/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/situations"
@@ -58,14 +59,11 @@ func decodeCaseCandidate(candidate domain.CaseCandidate, decision, snapshot []by
 	if err := json.Unmarshal(decision, &candidate.Decision); err != nil {
 		return domain.CaseCandidate{}, fmt.Errorf("decode decision %s: %w", candidate.DecisionID, err)
 	}
-	var document struct {
-		Facts    map[string]any `json:"facts"`
-		Evidence []string       `json:"evidence"`
+	facts, err := decodeSnapshot(snapshot)
+	if err != nil {
+		return domain.CaseCandidate{}, fmt.Errorf("the snapshot of %s v%d: %w", candidate.SituationID, candidate.SituationVersion, err)
 	}
-	if err := json.Unmarshal(snapshot, &document); err != nil {
-		return domain.CaseCandidate{}, fmt.Errorf("decode the snapshot of %s v%d: %w", candidate.SituationID, candidate.SituationVersion, err)
-	}
-	candidate.Facts, candidate.Evidence = document.Facts, document.Evidence
+	candidate.Facts, candidate.Evidence = facts.Facts, facts.Evidence
 	return candidate, parseInto(&candidate.ActedAt, actedAt)
 }
 
@@ -113,42 +111,33 @@ func (t *Tx) SettleCase(ctx context.Context, c domain.Case, now time.Time) error
 	return nil
 }
 
-func (t *Tx) CaseEvidence(ctx context.Context, c domain.Case) (domain.CaseEvidence, error) {
-	var evidence domain.CaseEvidence
-	var err error
-	if evidence.ClosedAt, err = t.optionalTime(ctx, `SELECT event_horizon FROM situation_versions WHERE situation_id = ? AND phase = ?
-		AND version > ? ORDER BY version LIMIT 1`, c.SituationID, situations.PhaseResolved, c.SituationVersion); err != nil {
-		return evidence, err
+func (t *Tx) Watermark(ctx context.Context, tenantID string) (time.Time, error) {
+	watermark, _, err := eventlog.LatestEventTime(ctx, t.tx, tenantID)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("read the event-time watermark of case verification: %w", err)
 	}
-	if evidence.ReopenedAt, err = t.reopenedAfter(ctx, c, evidence.ClosedAt); err != nil {
-		return evidence, err
-	}
-	watermark, err := t.optionalTime(ctx, `SELECT MAX(event_time) FROM event_log WHERE tenant_id = ?`, c.TenantID)
-	if watermark != nil {
-		evidence.Watermark = *watermark
-	}
-	return evidence, err
+	return watermark, nil
 }
 
-func (t *Tx) reopenedAfter(ctx context.Context, c domain.Case, closedAt *time.Time) (*time.Time, error) {
-	if closedAt == nil {
-		return nil, nil
+func (t *Tx) CaseEvidence(ctx context.Context, c domain.Case, watermark time.Time) (domain.CaseEvidence, error) {
+	evidence := domain.CaseEvidence{Watermark: watermark}
+	closedAt, closed, err := engine.ResolvedAfter(ctx, t.tx, c.SituationID, c.SituationVersion)
+	if err != nil || !closed {
+		return evidence, wrapEvidence(c, err)
 	}
-	return t.optionalTime(ctx, `SELECT MIN(sv.event_horizon) FROM situations s JOIN situation_versions sv ON sv.situation_id = s.situation_id
-		WHERE s.tenant_id = ? AND s.entity_id = ? AND s.situation_type = ? AND sv.phase != ? AND sv.event_horizon > ?`,
-		c.TenantID, c.EntityID, c.SituationType, situations.PhaseResolved, kernel.FormatTime(*closedAt))
+	evidence.ClosedAt = &closedAt
+	reopenedAt, reopened, err := engine.ReopenedAfter(ctx, t.tx, c.TenantID, c.EntityID, c.SituationType, closedAt)
+	if reopened {
+		evidence.ReopenedAt = &reopenedAt
+	}
+	return evidence, wrapEvidence(c, err)
 }
 
-func (t *Tx) optionalTime(ctx context.Context, query string, args ...any) (*time.Time, error) {
-	var text sql.NullString
-	if err := t.tx.QueryRowContext(ctx, query, args...).Scan(&text); err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return nil, fmt.Errorf("read case evidence: %w", err)
+func wrapEvidence(c domain.Case, err error) error {
+	if err != nil {
+		return fmt.Errorf("read the evidence of case %s v%d: %w", c.SituationID, c.SituationVersion, err)
 	}
-	if !text.Valid {
-		return nil, nil
-	}
-	var at time.Time
-	return &at, parseInto(&at, text.String)
+	return nil
 }
 
 func (t *Tx) PendingCases(ctx context.Context, tenantID string) ([]domain.Case, error) {

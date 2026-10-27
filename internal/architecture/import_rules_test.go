@@ -209,7 +209,7 @@ var allowedImports = map[string][]string{
 	"internal/playbook":                           {"internal/draftport", "internal/playbook/internal/app", "internal/playbook/internal/domain", "internal/playbook/internal/store", "internal/sources", "internal/spec", "internal/storage"},
 	"internal/playbook/internal/app":              {"internal/draftport", "internal/playbook/internal/domain", "internal/playbook/internal/store", "internal/sources", "internal/spec"},
 	"internal/playbook/internal/domain":           {"internal/actionport", "internal/canonicaljson", "internal/contractsv1", "internal/draftport", "internal/situations", "internal/spec"},
-	"internal/playbook/internal/store":            {"internal/actionport", "internal/draftport", "internal/episodeledger", "internal/episodes", "internal/notify", "internal/playbook/internal/domain", "internal/situations", "internal/storage"},
+	"internal/playbook/internal/store":            {"internal/actionport", "internal/draftport", "internal/episodeledger", "internal/episodes", "internal/notify", "internal/playbook/internal/domain", "internal/situations", "internal/storage", "internal/engine", "internal/eventlog"},
 	"internal/watch":                              {"internal/actionport", "internal/sources", "internal/storage", "internal/watch/internal/app", "internal/watch/internal/store"},
 	"internal/watch/internal/app":                 {"internal/actionport", "internal/sources", "internal/watch/internal/domain", "internal/watch/internal/store"},
 	"internal/watch/internal/domain":              {"internal/actionport"},
