@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/testsupport/workerfake"
 )
 
 //go:embed canned.json
@@ -24,21 +26,15 @@ type canned struct {
 }
 
 type diagnosis struct {
-	Rises         string  `json:"rises"`
-	Above         float64 `json:"above"`
-	DiagnosisCode string  `json:"diagnosis_code"`
-	Intent        *intent `json:"intent"`
-}
-
-type intent struct {
-	Type       string         `json:"type"`
-	Risk       string         `json:"risk"`
-	Parameters map[string]any `json:"parameters"`
+	Rises         string                     `json:"rises"`
+	Above         float64                    `json:"above"`
+	DiagnosisCode string                     `json:"diagnosis_code"`
+	Intent        *workerfake.ProposedIntent `json:"intent"`
 }
 
 type answer struct {
-	DiagnosisCode string  `json:"diagnosis_code"`
-	Intent        *intent `json:"intent,omitempty"`
+	DiagnosisCode string                     `json:"diagnosis_code"`
+	Intent        *workerfake.ProposedIntent `json:"intent,omitempty"`
 }
 
 var unknown = answer{DiagnosisCode: "unknown"}

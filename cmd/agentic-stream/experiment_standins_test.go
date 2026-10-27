@@ -39,12 +39,9 @@ func serveTamozStandIn(t *testing.T, socketPath string, delay time.Duration) {
 
 // proposal is one intent the stand-in worker proposes: its type, risk class
 // and the model-writable parameters.
-type proposal struct {
-	intentType, risk string
-	parameters       map[string]any
-}
+type proposal = workerfake.ProposedIntent
 
-var indicatorAlert = proposal{intentType: "set_indicator", risk: "R1", parameters: map[string]any{"state": "alert"}}
+var indicatorAlert = proposal{Type: "set_indicator", Risk: "R1", Parameters: map[string]any{"state": "alert"}}
 
 func serveWorkerProposing(t *testing.T, socketPath string, delay time.Duration, proposals ...proposal) {
 	t.Helper()
@@ -69,13 +66,9 @@ func proposeAfter(delay time.Duration, proposals []proposal) workerfake.ExecuteF
 		case <-time.After(delay):
 		}
 		next := min(int(episodes.Add(1))-1, len(proposals)-1)
-		return propose(req, emit, proposals[next])
+		return workerfake.Propose(req, emit, workerfake.Answer{Hypothesis: "over_temperature", Summary: "sustained rise above the band",
+			Intent: &proposals[next]})
 	}
-}
-
-func propose(req *runtimev1.EpisodeRequest, emit func(*runtimev1.EpisodeEvent) error, proposed proposal) error {
-	return workerfake.Propose(req, emit, workerfake.Answer{Hypothesis: "over_temperature", Summary: "sustained rise above the band",
-		Intent: &workerfake.ProposedIntent{Type: proposed.intentType, Risk: proposed.risk, Parameters: proposed.parameters}})
 }
 
 // deviceStandIn is a device on the wire contract that remembers its output, so

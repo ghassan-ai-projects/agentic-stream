@@ -51,8 +51,7 @@ func composePlaybook(cfg PipelineConfig) (*playbook.Service, error) {
 
 func auditQueue(audits *cognition.Service) playbook.AuditQueue {
 	return func(ctx context.Context, tx *sql.Tx, request playbook.AuditRequest) (string, error) {
-		itemID, err := audits.QueueAudit(ctx, tx, cognition.AuditRequest{TenantID: request.TenantID, SituationID: request.SituationID,
-			SituationVersion: request.SituationVersion, Key: request.Key, Reason: request.Reason})
+		itemID, err := audits.QueueAudit(ctx, tx, cognition.AuditRequest(request))
 		if err != nil {
 			return "", fmt.Errorf("queue playbook audit: %w", err)
 		}
@@ -63,21 +62,16 @@ func auditQueue(audits *cognition.Service) playbook.AuditQueue {
 type policySignatures struct{}
 
 func (policySignatures) CheckSigner(ctx context.Context, tx *sql.Tx, approval playbook.SignedApproval) error {
-	if err := policy.CheckApprovalSigner(ctx, tx, signedApproval(approval)); err != nil {
+	if err := policy.CheckApprovalSigner(ctx, tx, policy.SignedApproval(approval)); err != nil {
 		return fmt.Errorf("check rule approval signer: %w", err)
 	}
 	return nil
 }
 
 func (policySignatures) Verify(ctx context.Context, tx *sql.Tx, approval playbook.SignedApproval) (string, error) {
-	digest, err := policy.VerifySignedApproval(ctx, tx, signedApproval(approval))
+	digest, err := policy.VerifySignedApproval(ctx, tx, policy.SignedApproval(approval))
 	if err != nil {
 		return "", fmt.Errorf("verify rule approval: %w", err)
 	}
 	return digest, nil
-}
-
-func signedApproval(approval playbook.SignedApproval) policy.SignedApproval {
-	return policy.SignedApproval{TenantID: approval.TenantID, Approver: approval.Approver, Relay: approval.Relay,
-		RiskClass: approval.RiskClass, Message: approval.Message, Signature: approval.Signature}
 }

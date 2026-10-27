@@ -31,9 +31,9 @@ type Answer struct {
 // ProposedIntent is one intent of an Answer: its type, risk class and the
 // model-writable parameters.
 type ProposedIntent struct {
-	Type       string
-	Risk       string
-	Parameters map[string]any
+	Type       string         `json:"type"`
+	Risk       string         `json:"risk"`
+	Parameters map[string]any `json:"parameters"`
 }
 
 // Propose streams a produced decision for the answer the way Tamoz's

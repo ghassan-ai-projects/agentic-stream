@@ -21,7 +21,7 @@ const (
 	fanExperimentTimeout = 5 * time.Minute
 )
 
-var thermalModeCooling = proposal{intentType: "select_thermal_mode", risk: "R1", parameters: map[string]any{"mode": "bounded_cooling"}}
+var thermalModeCooling = proposal{Type: "select_thermal_mode", Risk: "R1", Parameters: map[string]any{"mode": "bounded_cooling"}}
 
 func TestTheFanExperimentClosesTheLoopThroughAPacedStreamsimTwin(t *testing.T) {
 	t.Parallel()

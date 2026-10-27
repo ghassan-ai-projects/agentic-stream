@@ -74,11 +74,7 @@ func diagnoseSnapshot(snapshotJSON []byte) (answer, error) {
 }
 
 func (a answer) workerAnswer() workerfake.Answer {
-	given := workerfake.Answer{Hypothesis: a.DiagnosisCode, DiagnosisCode: a.DiagnosisCode, Summary: "canned pump diagnosis"}
-	if a.Intent != nil {
-		given.Intent = &workerfake.ProposedIntent{Type: a.Intent.Type, Risk: a.Intent.Risk, Parameters: a.Intent.Parameters}
-	}
-	return given
+	return workerfake.Answer{Hypothesis: a.DiagnosisCode, DiagnosisCode: a.DiagnosisCode, Summary: "canned pump diagnosis", Intent: a.Intent}
 }
 
 // Draft proposes a rule for the keys the canned answers know a condition for

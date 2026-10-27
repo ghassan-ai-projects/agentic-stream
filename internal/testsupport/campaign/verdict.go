@@ -90,7 +90,7 @@ func readDetections(ctx context.Context, db *sql.DB, from string) ([]detection, 
 	if err != nil {
 		return nil, fmt.Errorf("read the detections: %w", err)
 	}
-	return append([]detection{}, detections...), nil
+	return detections, nil
 }
 
 func scanDetection(rows *sql.Rows) (detection, error) {
@@ -107,7 +107,7 @@ func readActions(ctx context.Context, db *sql.DB, from string) ([]action, error)
 	if err != nil {
 		return nil, fmt.Errorf("read the actions: %w", err)
 	}
-	return append([]action{}, actions...), nil
+	return actions, nil
 }
 
 func scanAction(rows *sql.Rows) (action, error) {

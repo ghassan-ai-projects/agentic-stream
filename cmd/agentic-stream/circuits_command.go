@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"time"
 
@@ -46,8 +45,7 @@ func newCircuitsCloseCommand() *cobra.Command {
 
 func closeCircuit(ctx context.Context, db *storage.DB, tenantID string, rule playbook.RuleKey, reason string) error {
 	return withRuntimeOwnership(ctx, db, func(ownership operatorOwnership) error {
-		fence := func(ctx context.Context, tx *sql.Tx) error { return ownership.owner.Assert(ctx, tx, ownership.epoch) }
-		if err := playbook.CloseCircuit(ctx, db, fence, tenantID, rule, reason, time.Now()); err != nil {
+		if err := playbook.CloseCircuit(ctx, db, ownership.fence, tenantID, rule, reason, time.Now()); err != nil {
 			return fmt.Errorf("close the circuit of rule %s v%d: %w", rule.ID, rule.Version, err)
 		}
 		return nil
