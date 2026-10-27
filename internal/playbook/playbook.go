@@ -98,6 +98,10 @@ var (
 	ErrNoPlaybookFile   = app.ErrNoPlaybookFile
 )
 
+// DefaultDraftAfter is how many verified, uncontradicted cases of a key ask
+// for a draft when the configuration names none.
+const DefaultDraftAfter = domain.DefaultDraftAfter
+
 // IsProposalID reports whether an approval id names a rule proposal.
 func IsProposalID(id string) bool { return domain.IsProposalID(id) }
 

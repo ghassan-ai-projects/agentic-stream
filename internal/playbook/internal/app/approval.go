@@ -94,8 +94,7 @@ func (s *Service) settleProposal(ctx context.Context, tx *store.Tx, proposal dom
 
 func (s *Service) writeRule(rule spec.Rule) (string, error) {
 	return s.file.update(func(book *spec.CompiledPlaybook) bool {
-		book.Rules = slices.DeleteFunc(book.Rules, func(kept spec.Rule) bool { return kept.ID == rule.ID })
-		book.Rules = append(book.Rules, rule)
+		book.PutRule(rule)
 		return true
 	})
 }
@@ -120,7 +119,7 @@ func (s *Service) Promote(ctx context.Context) (int, error) {
 func (s *Service) exitedShadowRules(ctx context.Context, tx *store.Tx) ([]spec.Rule, error) {
 	var due []spec.Rule
 	for _, rule := range s.rules.ShadowRules() {
-		agree, disagree, err := tx.ShadowTallies(ctx, domain.RuleKey{ID: rule.ID, Version: rule.Version})
+		agree, disagree, err := tx.ShadowTallies(ctx, domain.KeyOf(rule))
 		if err != nil {
 			return nil, err
 		}
@@ -134,7 +133,7 @@ func (s *Service) exitedShadowRules(ctx context.Context, tx *store.Tx) ([]spec.R
 func activate(book *spec.CompiledPlaybook, due []spec.Rule) bool {
 	changed := false
 	for i, rule := range book.Rules {
-		if rule.Mode == spec.RuleModeShadow && slices.ContainsFunc(due, func(d spec.Rule) bool { return d.ID == rule.ID && d.Version == rule.Version }) {
+		if rule.Mode == spec.RuleModeShadow && slices.ContainsFunc(due, func(d spec.Rule) bool { return domain.KeyOf(d) == domain.KeyOf(rule) }) {
 			book.Rules[i].Mode, changed = spec.RuleModeActive, true
 		}
 	}

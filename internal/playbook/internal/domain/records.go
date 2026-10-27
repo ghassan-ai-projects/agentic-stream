@@ -87,7 +87,7 @@ func AuditKey(fire Fire) string {
 }
 
 func RateCapCircuit(tenantID string, match Match, fires int, now time.Time) Circuit {
-	return Circuit{Rule: keyOf(match.Rule), TenantID: tenantID, Cause: CauseRateCap, OpenedAt: now,
+	return Circuit{Rule: KeyOf(match.Rule), TenantID: tenantID, Cause: CauseRateCap, OpenedAt: now,
 		Evidence: map[string]any{"fires_last_hour": fires, "rate_cap_per_hour": match.Rule.RateCapPerHour}}
 }
 
@@ -102,7 +102,7 @@ func (r *Rules) KindChanges(tenantID string, born map[string]string, now time.Ti
 	for _, compiled := range r.compiled {
 		pinned := compiled.rule.PinnedKind
 		if digest, seen := born[pinned.Name]; seen && digest != pinned.Digest {
-			circuits = append(circuits, Circuit{Rule: keyOf(compiled.rule), TenantID: tenantID, Cause: CauseKindChanged, OpenedAt: now,
+			circuits = append(circuits, Circuit{Rule: KeyOf(compiled.rule), TenantID: tenantID, Cause: CauseKindChanged, OpenedAt: now,
 				Evidence: map[string]any{"kind": pinned.Name, "pinned_digest": pinned.Digest, "born_digest": digest}})
 		}
 	}

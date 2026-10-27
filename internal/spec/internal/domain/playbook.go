@@ -3,6 +3,7 @@ package domain
 import (
 	"bytes"
 	"fmt"
+	"slices"
 
 	"gopkg.in/yaml.v3"
 
@@ -27,6 +28,11 @@ type CompiledPlaybook struct {
 
 	CanonicalJSON []byte `json:"-"`
 	Digest        string `json:"-"`
+}
+
+func (p *CompiledPlaybook) PutRule(rule Rule) {
+	p.Rules = slices.DeleteFunc(p.Rules, func(kept Rule) bool { return kept.ID == rule.ID })
+	p.Rules = append(p.Rules, rule)
 }
 
 type PlaybookMetadata struct {

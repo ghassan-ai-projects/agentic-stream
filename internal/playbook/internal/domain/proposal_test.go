@@ -160,6 +160,7 @@ func TestAnApprovalSignsTheProposalAndItsBinding(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	rule.AuditEvery, rule.ShadowExit = 3, &spec.ShadowExit{Agreeing: 10}
 	draft := NewDraft("t", driftKey, 2)
 	proposal, err := NewProposal(draft, rule, "R1", ReplayReport{}, driftProposal(rule.When, "e1"))
 	if err != nil || !IsProposalID(proposal.ProposalID) || proposal.Digest == "" || NewDraft("t", driftKey, 2).DraftID != draft.DraftID {

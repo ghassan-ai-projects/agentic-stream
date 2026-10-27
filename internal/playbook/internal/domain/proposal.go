@@ -97,18 +97,14 @@ func NewProposal(draft Draft, rule spec.Rule, risk string, replay ReplayReport, 
 func IsProposalID(id string) bool { return strings.HasPrefix(id, proposalPrefix) }
 
 func (r *Rules) Replay(rule spec.Rule, versions []ReplayVersion, source []KeyedCase) (ReplayReport, error) {
-	env, err := spec.NewCELEnv()
-	if err != nil {
-		return ReplayReport{}, fmt.Errorf("create rule condition environment: %w", err)
-	}
-	program, err := conditionProgram(env, rule)
+	compiled, err := compileRule(rule)
 	if err != nil {
 		return ReplayReport{}, err
 	}
-	report := sourceRates(Key{DiagnosisCode: rule.DiagnosisCode, KindDigest: rule.PinnedKind.Digest, Intent: rule.Recommend.Intent, Preset: rule.Recommend.Preset}, source)
+	report := sourceRates(keyOfRule(rule), source)
 	recommended := Recommendation{DiagnosisCode: rule.DiagnosisCode, Intent: rule.Recommend.Intent, Preset: rule.Recommend.Preset}
 	for _, version := range versions {
-		r.replayVersion(&report, compiledRule{rule: rule, program: program}, recommended, version)
+		r.replayVersion(&report, compiled, recommended, version)
 	}
 	return report, nil
 }
@@ -155,14 +151,13 @@ type Binding struct {
 }
 
 func (p Proposal) DefaultBinding(approver, relay string, approved bool) Binding {
-	return Binding{Approver: approver, Relay: relay, Approved: approved, AuditEvery: defaultAuditEvery,
-		RateCap: p.Rule.RateCapPerHour, ShadowExit: spec.ShadowExit{Agreeing: defaultShadowAgreeing}, Cap: p.Rule.Cap}
+	binding := Binding{Approver: approver, Relay: relay, Approved: approved, AuditEvery: p.Rule.AuditEvery,
+		RateCap: p.Rule.RateCapPerHour, Cap: p.Rule.Cap}
+	if p.Rule.ShadowExit != nil {
+		binding.ShadowExit = *p.Rule.ShadowExit
+	}
+	return binding
 }
-
-const (
-	defaultAuditEvery     = 3
-	defaultShadowAgreeing = 10
-)
 
 func (p Proposal) SigningBytes(binding Binding) ([]byte, error) {
 	document := map[string]any{

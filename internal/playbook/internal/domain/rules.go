@@ -40,19 +40,27 @@ func NewRules(compiled *spec.CompiledSpec, playbook *spec.CompiledPlaybook) (*Ru
 }
 
 func compileRules(rules []spec.Rule) ([]compiledRule, error) {
-	env, err := spec.NewCELEnv()
-	if err != nil {
-		return nil, fmt.Errorf("create rule condition environment: %w", err)
-	}
 	compiled := make([]compiledRule, 0, len(rules))
 	for _, rule := range rules {
-		program, err := conditionProgram(env, rule)
+		c, err := compileRule(rule)
 		if err != nil {
 			return nil, err
 		}
-		compiled = append(compiled, compiledRule{rule: rule, program: program})
+		compiled = append(compiled, c)
 	}
 	return compiled, nil
+}
+
+func compileRule(rule spec.Rule) (compiledRule, error) {
+	env, err := spec.NewCELEnv()
+	if err != nil {
+		return compiledRule{}, fmt.Errorf("create rule condition environment: %w", err)
+	}
+	program, err := conditionProgram(env, rule)
+	if err != nil {
+		return compiledRule{}, err
+	}
+	return compiledRule{rule: rule, program: program}, nil
 }
 
 func contextFeatures(compiled *spec.CompiledSpec) []string {
@@ -80,7 +88,7 @@ func (r *Rules) Features(facts map[string]any, evidence []string) map[string]any
 	return situations.CELFeatures(r.spec, facts, evidence)
 }
 
-func keyOf(rule spec.Rule) RuleKey {
+func KeyOf(rule spec.Rule) RuleKey {
 	return RuleKey{ID: rule.ID, Version: rule.Version}
 }
 
@@ -100,8 +108,7 @@ func (r *Rules) WithRule(rule spec.Rule) *spec.CompiledPlaybook {
 	if r.book != nil {
 		book.Metadata, book.Rules = r.book.Metadata, slices.Clone(r.book.Rules)
 	}
-	book.Rules = slices.DeleteFunc(book.Rules, func(kept spec.Rule) bool { return kept.ID == rule.ID })
-	book.Rules = append(book.Rules, rule)
+	book.PutRule(rule)
 	return book
 }
 

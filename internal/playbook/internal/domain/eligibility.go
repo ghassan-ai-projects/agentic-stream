@@ -33,14 +33,14 @@ func Eligible(key Key, cases []KeyedCase, history KeyHistory, draftAfter int, ru
 	if ruled || history.Pending || key.KindDigest == "" || key.DiagnosisCode == "" || key.DiagnosisCode == spec.UnknownDiagnosis || key.Intent == "" {
 		return false
 	}
-	verified := countVerified(key, cases)
+	verified := VerifiedCount(key, cases)
 	if verified < draftAfter || contradicted(key, cases) {
 		return false
 	}
 	return !history.Rejected || verified > history.RejectedEvidence
 }
 
-func countVerified(key Key, cases []KeyedCase) int {
+func VerifiedCount(key Key, cases []KeyedCase) int {
 	verified := 0
 	for _, c := range cases {
 		if c.Key == key && c.Verdict == CaseVerified {
@@ -79,9 +79,9 @@ func (r *Rules) Rules(key Key) []spec.Rule {
 }
 
 func (r *Rules) Ruled(key Key) bool {
-	return slices.ContainsFunc(r.Rules(key), func(rule spec.Rule) bool {
-		return rule.Recommend.Intent == key.Intent && rule.Recommend.Preset == key.Preset && rule.PinnedKind.Digest == key.KindDigest
-	})
+	return slices.ContainsFunc(r.Rules(key), func(rule spec.Rule) bool { return keyOfRule(rule) == key })
 }
 
-func VerifiedCount(key Key, cases []KeyedCase) int { return countVerified(key, cases) }
+func keyOfRule(rule spec.Rule) Key {
+	return Key{DiagnosisCode: rule.DiagnosisCode, KindDigest: rule.PinnedKind.Digest, Intent: rule.Recommend.Intent, Preset: rule.Recommend.Preset}
+}

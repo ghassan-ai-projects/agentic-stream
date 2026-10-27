@@ -70,15 +70,10 @@ func citedCases(request draftport.Request, ids []string) ([]draftport.Case, erro
 }
 
 func conditionHoldsFor(when string, cited []draftport.Case) error {
-	env, err := spec.NewCELEnv()
-	if err != nil {
-		return fmt.Errorf("create rule condition environment: %w", err)
-	}
-	program, err := conditionProgram(env, spec.Rule{ID: "proposal", When: when})
+	condition, err := compileRule(spec.Rule{ID: "proposal", When: when})
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrProposalRefused, err)
 	}
-	condition := compiledRule{program: program}
 	for _, c := range cited {
 		if !condition.matches(c.Features) {
 			return fmt.Errorf("%w: its condition does not hold for the cited case %s", ErrProposalRefused, c.EpisodeID)

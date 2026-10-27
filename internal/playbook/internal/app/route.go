@@ -80,7 +80,7 @@ func (s *Service) tripRateCap(ctx context.Context, tx *store.Tx, capped *domain.
 	if capped == nil {
 		return nil
 	}
-	fires := state.FiresLastHour[domain.RuleKey{ID: capped.Rule.ID, Version: capped.Rule.Version}]
+	fires := state.FiresLastHour[domain.KeyOf(capped.Rule)]
 	return tx.OpenCircuit(ctx, domain.RateCapCircuit(s.tenantID, *capped, fires, now))
 }
 
@@ -117,7 +117,7 @@ func (s *Service) recordOutsideEnvelope(ctx context.Context, tx *store.Tx, admis
 	if err := s.recordShadows(ctx, tx, admission, []domain.Match{*match}, now); err != nil {
 		return err
 	}
-	rule := domain.RuleKey{ID: match.Rule.ID, Version: match.Rule.Version}
+	rule := domain.KeyOf(match.Rule)
 	counts, err := tx.CapCounts(ctx, rule, admission.EventTime.Add(-domain.OutOfCapWindow))
 	if err != nil || !counts.MostlyOutside() {
 		return err

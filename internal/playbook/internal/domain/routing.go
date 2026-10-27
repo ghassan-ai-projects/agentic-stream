@@ -25,7 +25,7 @@ func (r *Rules) Route(features map[string]any, state State) Routing {
 	var routing Routing
 	var active []Match
 	for _, compiled := range r.compiled {
-		if state.Open[keyOf(compiled.rule)] || !compiled.matches(features) {
+		if state.Open[KeyOf(compiled.rule)] || !compiled.matches(features) {
 			continue
 		}
 		match := r.matchOf(compiled.rule, features)
@@ -47,7 +47,7 @@ func (r *Rules) answer(routing Routing, active []Match, state State) Routing {
 		return routing
 	}
 	match := active[0]
-	if state.FiresLastHour[keyOf(match.Rule)] >= match.Rule.RateCapPerHour {
+	if state.FiresLastHour[KeyOf(match.Rule)] >= match.Rule.RateCapPerHour {
 		routing.RateCapped = &match
 		return routing
 	}
