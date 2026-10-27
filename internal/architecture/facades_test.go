@@ -207,11 +207,11 @@ var facadeSpecs = []facadeSpec{
 	{
 		module:       "internal/playbook",
 		constructors: []string{"New", "applicationConfig"},
-		operations:   operations(to("app", "Digest", "Route", "Settle")),
+		operations:   operations(to("app", "Digest", "Route", "Settle", "Draft", "Promote", "PresentProposal", "ResolveProposal"), to("domain", "IsProposalID")),
 	},
 	{
 		module:     "internal/executor/remote",
-		operations: operations(where(reachesApp, "NewExecutor", "NewExecutorWithEvidence", "Execute")),
+		operations: operations(where(reachesApp, "NewExecutor", "NewExecutorWithEvidence", "Execute", "NewDrafter", "Draft")),
 	},
 	{
 		module:       "internal/plantwire",

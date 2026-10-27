@@ -24,6 +24,7 @@ type serveFlags struct {
 	plantWire                 plantWireFlags
 	listenAddress, liveSocket string
 	playbookPath              string
+	draftAfter                int
 	ownerLease, pollInterval  time.Duration
 	demoMode                  bool
 }
@@ -49,7 +50,8 @@ func newServeCommand() *cobra.Command {
 func registerServeFlags(cmd *cobra.Command, flags *serveFlags) {
 	cmd.Flags().StringVar(&flags.dbPath, "db", "", "SQLite runtime database path")
 	cmd.Flags().StringVar(&flags.specPath, "spec", "", "SituationSpec YAML path for continuous ingestion")
-	cmd.Flags().StringVar(&flags.playbookPath, "playbook", "", "playbook YAML path compiled against --spec at start; its rules answer the cases they cover without a model call")
+	cmd.Flags().StringVar(&flags.playbookPath, "playbook", "", "playbook YAML path compiled against --spec at start; its rules answer the cases they cover without a model call, and approved rules are written to it")
+	cmd.Flags().IntVar(&flags.draftAfter, "draft-after", 3, "verified, uncontradicted cases of one key that ask the worker to draft a playbook rule")
 	cmd.Flags().StringVar(&flags.tracePath, "trace", "", "append-only JSONL trace path for continuous ingestion")
 	cmd.Flags().StringVar(&flags.liveSocket, "live-socket", "", "Unix socket for live normalized JSONL telemetry ingestion")
 	cmd.Flags().StringVar(&flags.traceFormat, "trace-format", "normalized", "Trace format: normalized or simulator")

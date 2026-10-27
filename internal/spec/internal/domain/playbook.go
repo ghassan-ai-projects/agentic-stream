@@ -15,6 +15,9 @@ const (
 
 	defaultShadowExitAgreeing = 10
 	defaultAuditEvery         = 3
+
+	playbookAPIVersion = "agentic-stream/v1"
+	playbookKind       = "Playbook"
 )
 
 type CompiledPlaybook struct {
@@ -140,4 +143,12 @@ func sealPlaybook(playbook *CompiledPlaybook) (*CompiledPlaybook, error) {
 	playbook.CanonicalJSON = canonicalJSON
 	playbook.Digest = canonicaljson.EncodeDigest(sum)
 	return playbook, nil
+}
+
+func MarshalPlaybook(playbook *CompiledPlaybook) ([]byte, error) {
+	document, err := yaml.Marshal(rawPlaybook{APIVersion: playbookAPIVersion, Kind: playbookKind, Metadata: playbook.Metadata, Rules: playbook.Rules})
+	if err != nil {
+		return nil, fmt.Errorf("encode playbook yaml: %w", err)
+	}
+	return document, nil
 }

@@ -23,4 +23,12 @@
 | No effect | The circuit cause of a rule whose own case was not verified. | `CauseNoEffect`, `NoEffectCircuit` | `rule_circuits.cause` |
 | Envelope and cap | The envelope is the range of each feature a rule's verified source cases showed; the cap, which the approver may tighten, is the wider range a rule may grow into later. A match outside the envelope goes to the model and is recorded with whether it fell inside the cap. | `Match.InEnvelope`, `Match.InCap` | `rule_evaluations.in_envelope`, `in_cap` |
 | Out of cap | The circuit cause of a rule whose recent matches (24 h, at least four) mostly fell outside its cap. | `CauseOutOfCap`, `CapCounts` | `rule_circuits.cause` |
+| Key | Diagnosis code, kind digest, intent and preset: what a case answered and on which kind. Drafts, proposals and rules are per key. | `domain.Key`, `KeyedCase` | `case_verifications`, `rule_drafts`, `rule_proposals` |
+| Eligible key | A key with enough verified cases (`--draft-after`, three by default), none contradicting, no open draft or proposal, no rule answering it, and newer evidence after a rejection. | `domain.Eligible` | — |
+| Draft | One call asking the worker to generalize a key's verified cases into a condition (see `draftport`). | `Draft`, `domain.Draft` | `rule_drafts` |
+| Proposal | A runtime-built rule from a checked draft reply, with its replay report, awaiting a human. | `domain.Proposal`, `ProposalPresentation`, `ProposalResolution` | `rule_proposals`, `playbook.rule.proposed` |
+| Replay report | What a proposed rule would have done over the stored Situation history: versions examined, would fire, decided by the model, agreed and disagreed, and how the key's source cases ended. | `domain.ReplayReport` | `rule_proposals.replay_json` |
+| Binding | What an approver signs beside the proposal digest: the cap, the shadow exit, the audit rate and the rate cap. | `domain.Binding`, `Proposal.SigningBytes` | `rule_proposals.approval_digest` |
+| Playbook writer | Writes the next playbook version atomically, only if the file is still the one loaded; approvals add a rule in shadow, a met shadow exit marks it active. Takes effect at the next start. | `playbookFile`, `ErrPlaybookChanged`, `Promote` | `<site>.playbook.yaml` |
+| Shadow exit | Agreeing and disagreeing shadow evaluations that move a shadow rule to active (ten and none by default). | `domain.ExitMet` | `rules[].shadowExit` |
 

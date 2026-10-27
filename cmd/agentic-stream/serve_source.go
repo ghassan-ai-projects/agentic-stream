@@ -55,6 +55,7 @@ func (core *runtimeCore) loadDeployment(ctx context.Context, flags serveFlags) (
 		return nil, err
 	}
 	core.playbook, err = loadPlaybook(compiled, flags.playbookPath)
+	core.playbookPath, core.draftAfter = flags.playbookPath, flags.draftAfter
 	return compiled, err
 }
 

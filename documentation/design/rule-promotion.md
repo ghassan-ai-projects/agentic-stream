@@ -312,11 +312,47 @@ the remedy map's enforcement in proposals; the scenarios S3-S6 and S8-S11.
 | AS-4 | done | see git log | `plantwire.Host.BornKindDigests` (the digest each kind was last born with, quarantined or not); the playbook opens `kind_changed` circuits at routing time and in settle; S7 test with the probe-b world. Deviation: no separate plant wire notification; the circuit's own `playbook.rule.circuit_opened` notification alerts the human, and the query is a pull (A5: no adapter callbacks). |
 | AS-5 | done | see git log | `case_verifications` (one row per occurrence that dispatched an action), verified in event time; `no_effect` circuits; `plantwire.Host.EntityKindDigest` gives the case key's kind digest; the compiler refuses a rule whose diagnosis code has no settle window. **Blocker for AS-8/AS-9**: the simulator starts every run's world at 2026-01-01 while the consumer's database persists across runs, so later runs' events arrive far behind the watermark (late or dropped) and event-time windows overlap. The campaign needs a per-run world start offset in streamsim (for example, run index times duration) before a multi-run campaign is meaningful. |
 | AS-6 | done | see git log | Matching already required the envelope (AS-3); an active rule's single match outside its envelope is now recorded beside the model episode with `in_cap`, and when most of its matches in 24 h (at least 4) fall outside the cap its circuit opens (`out_of_cap`). The envelope proposal itself (source cases' range, cap widened by `envelopeMargin` of the width, or of the magnitude for a constant feature) lands with AS-7, its first caller. |
-| AS-7 | not started | | |
+| AS-7 | done | see git log | `DraftPlaybookRule` (proto, feature `draft_playbook_rule`), contract `internal/draftport`, `remote.Drafter`, `workerfake.ProposeWhen`/`DeclineDraft`, `rule_drafts`/`rule_proposals`, replay report, signed approval through `/v1/approvals/rprop_…` (`policy.VerifySignedApproval`), playbook writer and shadow-exit promotion; `serve --draft-after`. Deviations: the approver cannot edit the binding yet (defaults: cap as proposed, shadow exit 10/0, audit 1 in 3, rate cap 6/h); the approver's authority is any authority for the intent's risk class (rules span entities); a disagreement in shadow only keeps the rule in shadow (no new approval request yet); the drafter handshakes without requiring the feature and refuses with `ErrUnsupported`. |
 | AS-8 | not started | | |
 | AS-9 | session 4 | | |
 
-Hand off to session 3 (tamoz) with: the proto change (commit and file), the `decision-v1.json` change, the exact
+Hand-off to session 3 (tamoz), as delivered:
+
+- **Proto**: `proto/agenticstream/runtime/v1/runtime-v1.proto`, new
+  `rpc DraftPlaybookRule(DraftRequest) returns (stream DraftEvent)` on
+  `EpisodeWorker`, used only when the handshake response announces
+  `draft_playbook_rule` (the runtime does not put it in `requested_features`).
+  `DraftRequest`: `protocol_version`, `draft_id`, `tenant_id`, `key`
+  (`diagnosis_code`, `kind_digest`, `intent`, `preset`), `cases` (≤ 20:
+  `episode_id`, `diagnosis_code`, `intent`, `preset`, `verdict`,
+  `features_json` canonical JSON of the CEL feature map at decision time,
+  `summary` untrusted), `current_rules` (`rule_id`, `version`, `when`, `mode`),
+  `allowed_features`, `budget` (`wall_time`, `model_calls`, `input_tokens`,
+  `output_tokens`), `spec_sha256`. `DraftEvent`: oneof `diagnostic`,
+  `proposal` (`PlaybookProposal`: `diagnosis_code`, `intent`, `preset`, `when`,
+  `cited_episode_ids`, `rationale`), `no_proposal` (`reason`), plus `usage`.
+  Exactly one terminal (`proposal` or `no_proposal`). The change is additive
+  (new RPC and messages, nothing renumbered), so Tamoz's current vendored copy
+  keeps working for `Handshake` and `Execute`; the proto pin
+  (`TestExperimentWorkerProtocolIsUnchanged`) is updated here, and Tamoz must
+  re-vendor `runtime-v1.proto` in TZ-1 before it serves drafts. The `when` may read only
+  `features.<name>` of `allowed_features`, must be boolean, must hold for every
+  cited case, and must answer the request's key.
+- **Decision schema**: `decision-v1.json` gains optional `diagnosis_code`
+  (`^[a-z][a-z0-9_]{0,62}$`), refused when the spec's catalog lacks it; Tamoz
+  copies it into `gems/tamoz-stream/contracts/schemas/decision-v1.json`.
+- **Pump-station catalog**: `unknown`, `bearing_wear`, `misalignment`,
+  `overload`, `lubrication_due`, `sensor_drift`, `sensor_failure`,
+  `transient_none`; intents `install_watch_condition` (R0),
+  `schedule_maintenance` (R1, automatic, `work_order` model-writable, one
+  preset per work order: `bearing_wear`, `misalignment`, `sensor_drift`,
+  `sensor_failure`, `lubrication_due`), `reduce_load` (R2, approval,
+  `level: relieve`), `stop_motor` (R3, emergency, `reason: operator_stop`).
+- **workerfake**: `DraftFunc`; `ProposeWhen(when, usage)` proposes the
+  request's key citing every case; `DeclineDraft(reason)` answers
+  `no_proposal`; without a `DraftFunc` the call is `Unimplemented`.
+
+Original hand-off list: the proto change (commit and file), the `decision-v1.json` change, the exact
 `DraftRequest` and reply fields, the handshake feature name, the pump-station spec's diagnosis catalog and intents,
 and how `workerfake` answers, so Tamoz can match it.
 

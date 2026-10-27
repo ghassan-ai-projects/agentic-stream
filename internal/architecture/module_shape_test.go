@@ -15,6 +15,7 @@ var moduleShapeExceptions = map[string]string{
 	"internal/architecture":     "repository-wide gates: no production code beyond its package comment (README.md)",
 	"internal/executor/fixture": "demo executor used by composition; held for the owner",
 	"internal/executor/rule":    "in-process executor that turns a bound rule into a Decision; no rules of its own beyond reading its request",
+	"internal/draftport":        "contract-only port of the rule draft call: types and an interface, no rules",
 	"internal/kernel":           "shared pure vocabulary with no rules of its own to separate; one package by design (TestKernelHasNoSubpackages)",
 }
 

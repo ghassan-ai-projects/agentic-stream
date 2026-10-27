@@ -30,7 +30,10 @@ func (s *Service) settleIn(ctx context.Context, tx *store.Tx, now time.Time) (do
 	if report.Settled, report.Disagreements, err = s.settleEvaluations(ctx, tx, now); err != nil {
 		return report, err
 	}
-	return report, s.settleCases(ctx, tx, now)
+	if err := s.settleCases(ctx, tx, now); err != nil {
+		return report, err
+	}
+	return report, s.requestDrafts(ctx, tx, now)
 }
 
 func (s *Service) queueAudits(ctx context.Context, tx *store.Tx, now time.Time) (int, error) {

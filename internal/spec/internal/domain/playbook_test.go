@@ -246,3 +246,20 @@ func assertCompileErrorAt(t *testing.T, err error, path string) {
 		t.Fatalf("error = %v, want a compile error at %s", err, path)
 	}
 }
+
+func TestAMarshaledPlaybookCompilesToTheSameDigest(t *testing.T) {
+	t.Parallel()
+	compiled := compilePromotionSpec(t)
+	playbook, err := domain.CompilePlaybook(compiled, []byte(playbookYAML))
+	if err != nil {
+		t.Fatal(err)
+	}
+	written, err := domain.MarshalPlaybook(playbook)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := domain.CompilePlaybook(compiled, written)
+	if err != nil || again.Digest != playbook.Digest {
+		t.Fatalf("recompiled digest = %v (%v), want %s\n%s", again, err, playbook.Digest, written)
+	}
+}

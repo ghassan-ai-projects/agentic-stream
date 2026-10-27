@@ -204,6 +204,9 @@ func ParseDiagnosisCodes(catalog string) ([]string, error) {
 // spec. Its digest is its own: the spec and policy digests do not change.
 type CompiledPlaybook = domain.CompiledPlaybook
 
+// PlaybookMetadata names a playbook and the spec it is compiled against.
+type PlaybookMetadata = domain.PlaybookMetadata
+
 // Rule is one compiled playbook rule; Reads lists the features its condition
 // reads.
 type Rule = domain.Rule
@@ -217,11 +220,31 @@ type Range = domain.Range
 // PinnedKind is the device kind and digest a rule was learned on.
 type PinnedKind = domain.PinnedKind
 
+// Provenance names the episodes a rule was drafted from and the digest of its
+// approval.
+type Provenance = domain.Provenance
+
+// ShadowExit is the count of agreeing and disagreeing shadow evaluations that
+// moves a shadow rule to active.
+type ShadowExit = domain.ShadowExit
+
 // Rule modes.
 const (
 	RuleModeShadow = domain.RuleModeShadow
 	RuleModeActive = domain.RuleModeActive
 )
+
+// CompilePlaybook compiles playbook bytes against a compiled spec. Every
+// refusal is a CompileError naming the rule field.
+func CompilePlaybook(compiled *CompiledSpec, data []byte) (*CompiledPlaybook, error) {
+	return domain.CompilePlaybook(compiled, data)
+}
+
+// MarshalPlaybook writes a compiled playbook back as playbook YAML; compiling
+// the bytes against the same spec gives the same digest.
+func MarshalPlaybook(playbook *CompiledPlaybook) ([]byte, error) {
+	return domain.MarshalPlaybook(playbook)
+}
 
 // CompilePlaybookFile reads a playbook from path and compiles it against a
 // compiled spec. Every refusal is a CompileError naming the rule field.

@@ -2,6 +2,7 @@ package playbook_test
 
 import (
 	"database/sql"
+	"errors"
 	"strings"
 	"testing"
 
@@ -40,5 +41,35 @@ func TestTheFacadeRoutesAWornPumpToItsRuleAndSettles(t *testing.T) {
 	}
 	if _, err := playbook.New(playbook.Config{}); err == nil || !strings.Contains(err.Error(), "are required") {
 		t.Fatalf("New without configuration = %v, want it refused", err)
+	}
+}
+
+func TestTheFacadeDraftsPromotesAndRefusesUnknownProposals(t *testing.T) {
+	t.Parallel()
+	compiled, err := spec.CompileFile(t.Context(), "../../examples/pump-station/pump-station.situation.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	db := storagetest.OpenTemp(t)
+	service, err := playbook.New(playbook.Config{DB: db, Spec: compiled, TenantID: "t"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if drafted, err := service.Draft(t.Context()); err != nil || drafted {
+		t.Fatalf("draft without a drafter = %v, %v; want none", drafted, err)
+	}
+	if promoted, err := service.Promote(t.Context()); err != nil || promoted != 0 {
+		t.Fatalf("promote without a playbook file = %d, %v", promoted, err)
+	}
+	lookup := playbook.ProposalLookup{ID: "rprop_missing"}
+	err = db.WithTx(t.Context(), func(tx *sql.Tx) error {
+		if _, err := service.PresentProposal(t.Context(), tx, lookup); !errors.Is(err, playbook.ErrProposalNotFound) {
+			t.Fatalf("present a missing proposal = %v", err)
+		}
+		_, err := service.ResolveProposal(t.Context(), tx, playbook.ProposalResolution{ProposalLookup: lookup})
+		return err
+	})
+	if !errors.Is(err, playbook.ErrProposalNotFound) || !playbook.IsProposalID(lookup.ID) {
+		t.Fatalf("resolve a missing proposal = %v", err)
 	}
 }

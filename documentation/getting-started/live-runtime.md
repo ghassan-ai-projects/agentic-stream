@@ -102,6 +102,19 @@ An EvidenceTools reverse socket requires both `--evidence-socket` and a
 32-byte-or-longer hex `--evidence-key`. The worker receives scoped,
 short-lived capability tokens and read-only evidence access.
 
+## Playbook
+
+`--playbook <site>.playbook.yaml` loads a playbook of approved rules, compiled
+against `--spec` at start (`agentic-stream validate <spec> --playbook <file>`
+prints its digest; the spec and policy digests do not change). An active rule
+that matches a case inside its envelope answers it without a model call; shadow
+rules are judged against the model's decisions. With a worker that announces
+`draft_playbook_rule`, `--draft-after` verified, uncontradicted cases of one
+key (three by default) ask it to draft a rule; the proposal is approved like an
+intent, through the signed approval endpoint with its `rprop_` id, and the rule
+is written to the playbook file in shadow (taking effect at the next start).
+See the [playbook design](../design/playbook.md).
+
 ## Runtime controls
 
 `serve` can expose authenticated `POST /control/drain` and

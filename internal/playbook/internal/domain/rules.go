@@ -17,6 +17,7 @@ type RuleKey struct {
 
 type Rules struct {
 	spec     *spec.CompiledSpec
+	book     *spec.CompiledPlaybook
 	digest   string
 	context  []string
 	compiled []compiledRule
@@ -32,7 +33,7 @@ func NewRules(compiled *spec.CompiledSpec, playbook *spec.CompiledPlaybook) (*Ru
 	if playbook == nil {
 		return rules, nil
 	}
-	rules.digest = playbook.Digest
+	rules.digest, rules.book = playbook.Digest, playbook
 	var err error
 	rules.compiled, err = compileRules(playbook.Rules)
 	return rules, err
@@ -90,4 +91,39 @@ func (c compiledRule) matches(features map[string]any) bool {
 	}
 	matched, err := spec.CELBool(out)
 	return err == nil && matched
+}
+
+func (r *Rules) Spec() *spec.CompiledSpec { return r.spec }
+
+func (r *Rules) WithRule(rule spec.Rule) *spec.CompiledPlaybook {
+	book := &spec.CompiledPlaybook{SchemaVersion: "agentic-stream/v1", Metadata: spec.PlaybookMetadata{Name: "playbook", Spec: r.spec.Metadata.Name}}
+	if r.book != nil {
+		book.Metadata, book.Rules = r.book.Metadata, slices.Clone(r.book.Rules)
+	}
+	book.Rules = append(book.Rules, rule)
+	return book
+}
+
+func (r *Rules) NextVersion(ruleID string) int {
+	version := 0
+	for _, compiled := range r.compiled {
+		if compiled.rule.ID == ruleID {
+			version = max(version, compiled.rule.Version)
+		}
+	}
+	return version + 1
+}
+
+func (r *Rules) ShadowRules() []spec.Rule {
+	var shadow []spec.Rule
+	for _, compiled := range r.compiled {
+		if compiled.rule.Mode == spec.RuleModeShadow {
+			shadow = append(shadow, compiled.rule)
+		}
+	}
+	return shadow
+}
+
+func ExitMet(rule spec.Rule, agree, disagree int) bool {
+	return rule.ShadowExit != nil && agree >= rule.ShadowExit.Agreeing && disagree <= rule.ShadowExit.Disagreeing
 }

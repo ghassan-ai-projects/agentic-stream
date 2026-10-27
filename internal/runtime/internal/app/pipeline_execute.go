@@ -32,6 +32,9 @@ func (p *Pipeline) settlePlaybook(ctx context.Context) error {
 	if _, err := p.transactions.SettlePlaybook(ctx); err != nil {
 		return fmt.Errorf("settle playbook: %w", err)
 	}
+	if err := p.transactions.DraftPlaybook(ctx); err != nil {
+		return fmt.Errorf("draft playbook: %w", err)
+	}
 	return nil
 }
 

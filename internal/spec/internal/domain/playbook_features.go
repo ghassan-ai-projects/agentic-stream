@@ -67,3 +67,7 @@ func featureSelected(ident ast.NavigableExpr) (string, error) {
 	}
 	return parent.AsSelect().FieldName(), nil
 }
+
+func (s *CompiledSpec) ConditionReads(when string) ([]string, error) {
+	return ruleFeatureReads(when, s.FeatureNames(), "when")
+}

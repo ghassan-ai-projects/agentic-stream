@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/draftport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/playbook/internal/app"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/playbook/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/playbook/internal/store"
@@ -18,7 +19,10 @@ import (
 // that queues an audit item for a Situation version in a caller transaction
 // (nil: no audit is queued), the query of the kind digests devices were born
 // with (nil: no rule is switched off for a kind change) and the query of the
-// born kind digest of an entity's device (nil: cases carry no kind digest).
+// born kind digest of an entity's device (nil: cases carry no kind digest),
+// the playbook file approvals and shadow exits write (empty: none is
+// written), the worker that drafts rules (nil: none is drafted) and how many
+// verified, uncontradicted cases of a key ask for a draft (zero: three).
 type Config struct {
 	DB               *storage.DB
 	Spec             *spec.CompiledSpec
@@ -28,6 +32,9 @@ type Config struct {
 	QueueAudit       AuditQueue
 	KindDigests      func() map[string]string
 	EntityKindDigest func(entityID string) string
+	PlaybookPath     string
+	Drafter          draftport.Drafter
+	DraftAfter       int
 }
 
 // AuditQueue queues one audit scheduler item in the caller's transaction and
@@ -61,6 +68,30 @@ const (
 	RouteSkip  = domain.RouteSkip
 )
 
+// ProposalLookup names a rule proposal and who would sign its approval.
+type ProposalLookup = app.ProposalLookup
+
+// ProposalPresentation is a pending proposal with the bytes its approver signs.
+type ProposalPresentation = app.ProposalPresentation
+
+// ProposalResolution is a signed approval or rejection of a proposal.
+type ProposalResolution = app.ProposalResolution
+
+// ProposalResult is how a proposal was resolved and, approved, the digest of
+// the playbook file written with the rule in shadow.
+type ProposalResult = app.ProposalResult
+
+// Refusals of a proposal's approval and of the playbook writer.
+var (
+	ErrProposalNotFound = domain.ErrProposalNotFound
+	ErrProposalResolved = domain.ErrProposalResolved
+	ErrPlaybookChanged  = app.ErrPlaybookChanged
+	ErrNoPlaybookFile   = app.ErrNoPlaybookFile
+)
+
+// IsProposalID reports whether an approval id names a rule proposal.
+func IsProposalID(id string) bool { return domain.IsProposalID(id) }
+
 // ErrAuditNotAdmittable is the admission refusal of an audit that met a live
 // episode for its Situation; the caller leaves the item queued for a later
 // pass.
@@ -80,7 +111,8 @@ func New(cfg Config) (*Service, error) {
 
 func applicationConfig(cfg Config) app.Config {
 	return app.Config{Store: store.New(cfg.DB), Spec: cfg.Spec, Playbook: cfg.Playbook, TenantID: cfg.TenantID, Clock: cfg.Clock,
-		QueueAudit: cfg.QueueAudit, KindDigests: cfg.KindDigests, EntityKindDigest: cfg.EntityKindDigest}
+		QueueAudit: cfg.QueueAudit, KindDigests: cfg.KindDigests, EntityKindDigest: cfg.EntityKindDigest,
+		PlaybookPath: cfg.PlaybookPath, Drafter: cfg.Drafter, DraftAfter: cfg.DraftAfter}
 }
 
 // Digest is the digest of the playbook the rules were compiled from; empty
@@ -98,4 +130,30 @@ func (s *Service) Route(ctx context.Context, tx *sql.Tx, admission Admission) (R
 // audit disagreed with.
 func (s *Service) Settle(ctx context.Context) (Report, error) {
 	return s.app.Settle(ctx)
+}
+
+// Draft runs the oldest requested draft: it asks the worker, checks the reply,
+// builds the rule (envelope, cap, shadow mode), replays it over the stored
+// history and records a pending proposal. It reports whether a draft ran.
+func (s *Service) Draft(ctx context.Context) (bool, error) {
+	return s.app.Draft(ctx)
+}
+
+// Promote writes the shadow rules whose shadow exit is met as active, in the
+// playbook file; the change takes effect at the next start.
+func (s *Service) Promote(ctx context.Context) (int, error) {
+	return s.app.Promote(ctx)
+}
+
+// PresentProposal returns a pending proposal and the bytes its approver signs,
+// once the approver and relay are checked.
+func (s *Service) PresentProposal(ctx context.Context, tx *sql.Tx, lookup ProposalLookup) (ProposalPresentation, error) {
+	return s.app.PresentProposal(ctx, s.app.Store().Join(tx), lookup)
+}
+
+// ResolveProposal verifies a signed approval or rejection of a proposal; an
+// approval writes the rule to the playbook file in shadow, only if the file is
+// still the one loaded.
+func (s *Service) ResolveProposal(ctx context.Context, tx *sql.Tx, resolution ProposalResolution) (ProposalResult, error) {
+	return s.app.ResolveProposal(ctx, s.app.Store().Join(tx), resolution)
 }

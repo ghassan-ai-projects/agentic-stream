@@ -5,6 +5,7 @@ package architecture
 var packageLayers = map[string]int{
 	"internal/architecture":                       0,
 	"internal/actionport/internal/domain":         0,
+	"internal/draftport":                          0,
 	"internal/approvalledger/internal/domain":     0,
 	"internal/canonicaljson/internal/domain":      0,
 	"internal/episodeledger/internal/domain":      0,

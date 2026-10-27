@@ -8,6 +8,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 	runtimecontrol "github.com/ghassan-ai-projects/agentic-stream/internal/control"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/draftport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
@@ -25,6 +26,9 @@ type PipelineConfig struct {
 	Playbook          *spec.CompiledPlaybook
 	KindDigests       func() map[string]string
 	EntityKindDigest  func(entityID string) string
+	PlaybookPath      string
+	Drafter           draftport.Drafter
+	DraftAfter        int
 	TenantID          string
 	Owner             *runtimecontrol.RuntimeOwner
 	OwnerEpoch        string

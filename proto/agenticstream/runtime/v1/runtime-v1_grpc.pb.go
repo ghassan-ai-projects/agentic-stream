@@ -19,8 +19,9 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	EpisodeWorker_Handshake_FullMethodName = "/agenticstream.runtime.v1.EpisodeWorker/Handshake"
-	EpisodeWorker_Execute_FullMethodName   = "/agenticstream.runtime.v1.EpisodeWorker/Execute"
+	EpisodeWorker_Handshake_FullMethodName         = "/agenticstream.runtime.v1.EpisodeWorker/Handshake"
+	EpisodeWorker_Execute_FullMethodName           = "/agenticstream.runtime.v1.EpisodeWorker/Execute"
+	EpisodeWorker_DraftPlaybookRule_FullMethodName = "/agenticstream.runtime.v1.EpisodeWorker/DraftPlaybookRule"
 )
 
 // EpisodeWorkerClient is the client API for EpisodeWorker service.
@@ -32,6 +33,12 @@ type EpisodeWorkerClient interface {
 	// Executes one immutable, bounded episode. The final event must be Terminal.
 	// Cancellation of the RPC is the primary cancellation mechanism.
 	Execute(ctx context.Context, in *EpisodeRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[EpisodeEvent], error)
+	// Drafts one playbook rule from verified cases of one key. Called only when
+	// the worker announced the "draft_playbook_rule" feature in its handshake.
+	// The final event is exactly one PlaybookProposal or NoProposal; the
+	// runtime checks, envelopes, replays and stores a proposal, and a human
+	// approves it before it can answer a case.
+	DraftPlaybookRule(ctx context.Context, in *DraftRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[DraftEvent], error)
 }
 
 type episodeWorkerClient struct {
@@ -71,6 +78,25 @@ func (c *episodeWorkerClient) Execute(ctx context.Context, in *EpisodeRequest, o
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type EpisodeWorker_ExecuteClient = grpc.ServerStreamingClient[EpisodeEvent]
 
+func (c *episodeWorkerClient) DraftPlaybookRule(ctx context.Context, in *DraftRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[DraftEvent], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &EpisodeWorker_ServiceDesc.Streams[1], EpisodeWorker_DraftPlaybookRule_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[DraftRequest, DraftEvent]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type EpisodeWorker_DraftPlaybookRuleClient = grpc.ServerStreamingClient[DraftEvent]
+
 // EpisodeWorkerServer is the server API for EpisodeWorker service.
 // All implementations must embed UnimplementedEpisodeWorkerServer
 // for forward compatibility.
@@ -80,6 +106,12 @@ type EpisodeWorkerServer interface {
 	// Executes one immutable, bounded episode. The final event must be Terminal.
 	// Cancellation of the RPC is the primary cancellation mechanism.
 	Execute(*EpisodeRequest, grpc.ServerStreamingServer[EpisodeEvent]) error
+	// Drafts one playbook rule from verified cases of one key. Called only when
+	// the worker announced the "draft_playbook_rule" feature in its handshake.
+	// The final event is exactly one PlaybookProposal or NoProposal; the
+	// runtime checks, envelopes, replays and stores a proposal, and a human
+	// approves it before it can answer a case.
+	DraftPlaybookRule(*DraftRequest, grpc.ServerStreamingServer[DraftEvent]) error
 	mustEmbedUnimplementedEpisodeWorkerServer()
 }
 
@@ -95,6 +127,9 @@ func (UnimplementedEpisodeWorkerServer) Handshake(context.Context, *HandshakeReq
 }
 func (UnimplementedEpisodeWorkerServer) Execute(*EpisodeRequest, grpc.ServerStreamingServer[EpisodeEvent]) error {
 	return status.Error(codes.Unimplemented, "method Execute not implemented")
+}
+func (UnimplementedEpisodeWorkerServer) DraftPlaybookRule(*DraftRequest, grpc.ServerStreamingServer[DraftEvent]) error {
+	return status.Error(codes.Unimplemented, "method DraftPlaybookRule not implemented")
 }
 func (UnimplementedEpisodeWorkerServer) mustEmbedUnimplementedEpisodeWorkerServer() {}
 func (UnimplementedEpisodeWorkerServer) testEmbeddedByValue()                       {}
@@ -146,6 +181,17 @@ func _EpisodeWorker_Execute_Handler(srv interface{}, stream grpc.ServerStream) e
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type EpisodeWorker_ExecuteServer = grpc.ServerStreamingServer[EpisodeEvent]
 
+func _EpisodeWorker_DraftPlaybookRule_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(DraftRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(EpisodeWorkerServer).DraftPlaybookRule(m, &grpc.GenericServerStream[DraftRequest, DraftEvent]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type EpisodeWorker_DraftPlaybookRuleServer = grpc.ServerStreamingServer[DraftEvent]
+
 // EpisodeWorker_ServiceDesc is the grpc.ServiceDesc for EpisodeWorker service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -162,6 +208,11 @@ var EpisodeWorker_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "Execute",
 			Handler:       _EpisodeWorker_Execute_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "DraftPlaybookRule",
+			Handler:       _EpisodeWorker_DraftPlaybookRule_Handler,
 			ServerStreams: true,
 		},
 	},

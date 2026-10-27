@@ -42,3 +42,30 @@ func (p *PipelineStore) SettlePlaybook(ctx context.Context) (playbook.Report, er
 	}
 	return report, nil
 }
+
+func (p *PipelineStore) DraftPlaybook(ctx context.Context) error {
+	if p.Playbook == nil {
+		return nil
+	}
+	if _, err := p.Playbook.Draft(ctx); err != nil {
+		return fmt.Errorf("draft a playbook rule: %w", err)
+	}
+	if _, err := p.Playbook.Promote(ctx); err != nil {
+		return fmt.Errorf("promote playbook rules: %w", err)
+	}
+	return nil
+}
+
+func (p *PipelineStore) PresentRuleProposal(ctx context.Context, r playbook.ProposalLookup) (playbook.ProposalPresentation, error) {
+	if p.Playbook == nil {
+		return playbook.ProposalPresentation{}, playbook.ErrProposalNotFound
+	}
+	return inApprovalResult(ctx, p, "present rule proposal", r, p.Playbook.PresentProposal)
+}
+
+func (p *PipelineStore) ResolveRuleProposal(ctx context.Context, r playbook.ProposalResolution) (playbook.ProposalResult, error) {
+	if p.Playbook == nil {
+		return playbook.ProposalResult{}, playbook.ErrProposalNotFound
+	}
+	return inApprovalResult(ctx, p, "resolve rule proposal", r, p.Playbook.ResolveProposal)
+}

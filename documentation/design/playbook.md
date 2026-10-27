@@ -154,14 +154,32 @@ quarantined.
 
 ### Drafts and approvals (decisions 1, 6, 9, 11, F4)
 
-The playbook decides when a key (diagnosis code, kind digest, intent, preset)
-is eligible and asks the worker through the feature-gated `DraftPlaybookRule`
-call; the worker has no access to the workspace. The reply is checked, its
-envelope computed and replayed over the database's history, and stored as a
-pending proposal. A human approves it through the signed approval endpoint; the
-playbook writer then writes the next playbook version, only if the file's
-digest is still the one loaded. The rule enters in shadow and becomes active by
-a deterministic check of its shadow exit.
+After each settle the playbook looks at the settled cases: a key (diagnosis
+code, kind digest, intent, preset) with at least `--draft-after` verified cases
+(three by default), no contradicting case (a verified case with the same code
+and another answer, or a not-verified case with the same answer), no open draft
+or proposal, no rule already answering it and, after a rejection, newer
+evidence, gets a draft request. One draft runs per pass: the runtime sends the
+worker up to 20 verified cases through the feature-gated `DraftPlaybookRule`
+call (the contract is `internal/draftport`; the worker has no access to the
+workspace). The reply is checked: it answers the key, cites only cases it was
+sent, and its condition compiles over the spec's features and holds for every
+cited case. The runtime then builds the rule (identity, envelope from the cited
+cases' range, cap widened by the spec's `envelopeMargin`, pinned kind, shadow
+mode, default caps), compiles it into a candidate playbook (so every compiler
+refusal applies), replays it over the stored Situation history (would it fire,
+did the model's decision agree, how did the key's source cases end), and stores
+a pending proposal with a `playbook.rule.proposed` notification.
+
+A human approves or rejects it on the signed approval endpoint
+(`/v1/approvals/rprop_…`): the signed bytes bind the proposal digest, the cap,
+the shadow exit, the audit rate and the rate cap, and `policy` checks the relay,
+the approver's key and the approver's authority for the intent's risk class.
+An approval writes the next playbook version atomically, only if the file is
+still the one loaded (`ErrPlaybookChanged` otherwise); the rule enters in
+shadow. When a shadow rule's exit is met (ten agreeing, no disagreeing shadow
+evaluations by default), the writer marks it active. A written version takes
+effect at the next start.
 
 ## Dependency direction
 

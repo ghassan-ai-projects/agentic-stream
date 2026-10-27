@@ -55,6 +55,7 @@ historical design map where the code has chosen a more specific package name.
 | `internal/watch/internal/app/` | install, fire and expire use cases with busy retry |
 | `internal/watch/internal/store/` | opaque transactions, watch SQL and owner/interlock plumbing |
 | `internal/watch/internal/domain/` | pure payload rules, watch identity, CEL validation and evaluation |
+| `internal/draftport/` | contract of the rule draft call: request, reply and the Drafter port a worker adapter implements |
 | `internal/playbook/` | rule promotion facade: route an admission to a rule, an audit or the model; settle evidence |
 | `internal/playbook/internal/app/` | route, skip-audit and settle use cases in caller or own transactions |
 | `internal/playbook/internal/store/` | opaque transactions and the SQL of rule_fires, rule_evaluations and rule_circuits |

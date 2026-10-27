@@ -43,6 +43,8 @@ type runtimeCore struct {
 	epochControl *runtimecontrol.EpochControl
 	service      *runtime.Service
 	playbook     *spec.CompiledPlaybook
+	playbookPath string
+	draftAfter   int
 }
 
 type effects struct {
@@ -158,6 +160,7 @@ func (core *runtimeCore) startPipeline(ctx context.Context, compiled *spec.Compi
 		Executor: workerRuntime.Executor, Effector: opened.effector, GatewayEffector: opened.serial, DeviceEffector: opened.device, DispatchLease: opened.dispatchLease,
 		IDGenerator: sources.Random(), Telemetry: metrics, EpochControl: core.epochControl, DemoMode: demoMode,
 		KindDigests: opened.kindDigests(), EntityKindDigest: opened.entityKindDigest(),
+		PlaybookPath: core.playbookPath, Drafter: workerRuntime.Drafter(), DraftAfter: core.draftAfter,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create runtime pipeline: %w", err)
