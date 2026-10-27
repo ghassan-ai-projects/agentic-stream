@@ -1,6 +1,7 @@
 package workerfake
 
 import (
+	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,12 +21,14 @@ var proposalUsage = &runtimev1.Usage{InputTokens: 1200, OutputTokens: 300}
 var errSnapshotWithoutEntity = errors.New("snapshot has no entity id")
 
 // Answer is what a fake worker decides for one episode: a hypothesis, an
-// optional diagnosis code and at most one intent.
+// optional diagnosis code, its intents and the usage it reports (nil for a
+// fixed one).
 type Answer struct {
 	Hypothesis    string
 	DiagnosisCode string
 	Summary       string
-	Intent        *ProposedIntent
+	Intents       []ProposedIntent
+	Usage         *runtimev1.Usage
 }
 
 // ProposedIntent is one intent of an Answer: its type, risk class and the
@@ -44,14 +47,23 @@ func Propose(req *runtimev1.EpisodeRequest, emit func(*runtimev1.EpisodeEvent) e
 	if err != nil {
 		return err
 	}
-	if err := emit(episodeEvent(req, 2, &runtimev1.EpisodeEvent_Budget{Budget: &runtimev1.BudgetUpdated{CumulativeUsage: proposalUsage, ModelCallsUsed: 1}})); err != nil {
+	usage := cmp.Or(answer.Usage, proposalUsage)
+	if err := emit(episodeEvent(req, 2, &runtimev1.EpisodeEvent_Budget{Budget: &runtimev1.BudgetUpdated{CumulativeUsage: usage, ModelCallsUsed: 1}})); err != nil {
 		return err
 	}
 	if err := emit(decisionEvent(req, decisionJSON, digest)); err != nil {
 		return err
 	}
 	return emit(episodeEvent(req, 4, &runtimev1.EpisodeEvent_Terminal{Terminal: &runtimev1.Terminal{
-		Status: runtimev1.TerminalStatus_TERMINAL_STATUS_PRODUCED, ReasonCode: "decision_produced", Usage: proposalUsage,
+		Status: runtimev1.TerminalStatus_TERMINAL_STATUS_PRODUCED, ReasonCode: "decision_produced", Usage: usage,
+	}}))
+}
+
+// Fail ends the episode the way a worker does when it produces no decision: a
+// failed terminal event with its reason and usage.
+func Fail(req *runtimev1.EpisodeRequest, emit func(*runtimev1.EpisodeEvent) error, reason string, usage *runtimev1.Usage) error {
+	return emit(episodeEvent(req, 2, &runtimev1.EpisodeEvent_Terminal{Terminal: &runtimev1.Terminal{
+		Status: runtimev1.TerminalStatus_TERMINAL_STATUS_FAILED, ReasonCode: reason, Usage: usage,
 	}}))
 }
 
@@ -94,7 +106,7 @@ func decisionDocument(req *runtimev1.EpisodeRequest, answer Answer) (map[string]
 	}
 	decision := decisionBody(req, answer, scope, validUntil)
 	decision["intents"] = intents
-	if answer.Intent == nil {
+	if len(answer.Intents) == 0 {
 		decision["decision_type"] = "need_more_evidence"
 	}
 	if answer.DiagnosisCode != "" {
@@ -114,18 +126,22 @@ func decisionBody(req *runtimev1.EpisodeRequest, answer Answer, scope, validUnti
 }
 
 func answerIntents(req *runtimev1.EpisodeRequest, answer Answer, scope, validUntil string) ([]any, error) {
-	if answer.Intent == nil {
-		return []any{}, nil
+	intents := []any{}
+	if len(answer.Intents) == 0 {
+		return intents, nil
 	}
 	entityID, err := SnapshotEntityID(req.GetSnapshotJson())
 	if err != nil {
 		return nil, err
 	}
-	intent, err := intentDocument(req, *answer.Intent, scope, entityID, validUntil)
-	if err != nil {
-		return nil, err
+	for _, proposed := range answer.Intents {
+		intent, err := intentDocument(req, proposed, scope, entityID, validUntil)
+		if err != nil {
+			return nil, err
+		}
+		intents = append(intents, intent)
 	}
-	return []any{intent}, nil
+	return intents, nil
 }
 
 func intentDocument(req *runtimev1.EpisodeRequest, proposed ProposedIntent, scope, entityID, validUntil string) (map[string]any, error) {

@@ -1,6 +1,7 @@
 package campaign
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -12,42 +13,58 @@ import (
 const (
 	recordedEpisode = "episode"
 	recordedDraft   = "draft"
+	declined        = "no condition separates these cases"
 )
 
-var draftUsage = &runtimev1.Usage{InputTokens: 4000, OutputTokens: 600}
+var draftUsage = &usage{InputTokens: 4000, OutputTokens: 600}
 
-// Worker answers episodes and drafts like Tamoz would on the pump station,
-// from canned answers over the snapshot's features. Every answer goes through
-// the recording, so a campaign replays without the worker's judgement. An
-// abstaining worker stands for no model at all: it diagnoses nothing.
+// Worker answers episodes and drafts like Tamoz would on the pump station.
+// With an Upstream it forwards each call to that worker; without one it
+// answers from canned answers over the snapshot's features. Every answer goes
+// through the recording, so a campaign replays without the worker's
+// judgement. An abstaining worker stands for no model at all: it diagnoses
+// nothing.
 type Worker struct {
 	Recording *Recording
 	Abstain   bool
+	Upstream  runtimev1.EpisodeWorkerClient
 }
 
 // Server returns the worker on the episode protocol, drafting when asked to.
 func (w *Worker) Server(drafts bool) *workerfake.Server {
-	server := &workerfake.Server{WorkerName: "tamoz", WorkerVersion: "campaign-canned", ExecuteFunc: w.Execute}
+	server := &workerfake.Server{WorkerName: "tamoz", WorkerVersion: "campaign", ExecuteFunc: w.Execute}
 	if drafts {
 		server.SupportedFeatures, server.DraftFunc = []string{"draft_playbook_rule"}, w.Draft
 	}
 	return server
 }
 
-// Execute answers one episode with a diagnosis and at most one intent.
-func (w *Worker) Execute(_ context.Context, req *runtimev1.EpisodeRequest, emit func(*runtimev1.EpisodeEvent) error) error {
+// Execute answers one episode: forwarded, canned or replayed.
+func (w *Worker) Execute(ctx context.Context, req *runtimev1.EpisodeRequest, emit func(*runtimev1.EpisodeEvent) error) error {
 	entity, err := workerfake.SnapshotEntityID(req.GetSnapshotJson())
 	if err != nil {
 		return fmt.Errorf("episode %s: %w", req.GetEpisodeId(), err)
 	}
+	forwarded := false
+	fresh := func() (any, error) {
+		if w.Upstream == nil {
+			return w.diagnose(req.GetSnapshotJson())
+		}
+		forwarded = true
+		return forwardEpisode(ctx, w.Upstream, req, emit)
+	}
 	var given answer
-	if err := w.Recording.next(recordedEpisode, entity, func() (any, error) { return w.diagnose(req.GetSnapshotJson()) }, &given); err != nil {
-		return fmt.Errorf("episode %s: %w", req.GetEpisodeId(), err)
+	if err := w.Recording.next(recordedEpisode, entity, fresh, &given); err != nil || forwarded {
+		return wrapEpisode(req, err)
 	}
-	if err := workerfake.Propose(req, emit, given.workerAnswer()); err != nil {
-		return fmt.Errorf("episode %s: %w", req.GetEpisodeId(), err)
+	return wrapEpisode(req, given.give(req, emit))
+}
+
+func wrapEpisode(req *runtimev1.EpisodeRequest, err error) error {
+	if err == nil {
+		return nil
 	}
-	return nil
+	return fmt.Errorf("episode %s: %w", req.GetEpisodeId(), err)
 }
 
 func (w *Worker) diagnose(snapshotJSON []byte) (answer, error) {
@@ -73,20 +90,41 @@ func diagnoseSnapshot(snapshotJSON []byte) (answer, error) {
 	return diagnose(facts)
 }
 
-func (a answer) workerAnswer() workerfake.Answer {
-	return workerfake.Answer{Hypothesis: a.DiagnosisCode, DiagnosisCode: a.DiagnosisCode, Summary: "canned pump diagnosis", Intent: a.Intent}
+func (a answer) give(req *runtimev1.EpisodeRequest, emit func(*runtimev1.EpisodeEvent) error) error {
+	if a.Failed != "" {
+		return workerfake.Fail(req, emit, a.Failed, a.Usage.wire())
+	}
+	return workerfake.Propose(req, emit, workerfake.Answer{Hypothesis: cmp.Or(a.Hypothesis, a.DiagnosisCode), DiagnosisCode: a.DiagnosisCode,
+		Summary: cmp.Or(a.Summary, "canned pump diagnosis"), Intents: a.Intents, Usage: a.Usage.wire()})
 }
 
-// Draft proposes a rule for the keys the canned answers know a condition for
-// and declines the others.
+// Draft answers a draft: forwarded, canned or replayed. A canned draft
+// proposes a rule for the keys the canned answers know a condition for and
+// declines the others.
 func (w *Worker) Draft(ctx context.Context, req *runtimev1.DraftRequest) (*runtimev1.DraftEvent, error) {
-	code := req.GetKey().GetDiagnosisCode()
-	var when string
-	if err := w.Recording.next(recordedDraft, code, func() (any, error) { return draftCondition(code) }, &when); err != nil {
+	var forwardedEvent *runtimev1.DraftEvent
+	fresh := func() (any, error) {
+		if w.Upstream == nil {
+			return cannedDraft(req.GetKey().GetDiagnosisCode())
+		}
+		event, err := forwardDraft(ctx, w.Upstream, req)
+		forwardedEvent = event
+		return draftAnswerOf(event), err
+	}
+	var given draftAnswer
+	if err := w.Recording.next(recordedDraft, req.GetKey().GetDiagnosisCode(), fresh, &given); err != nil {
 		return nil, fmt.Errorf("draft %s: %w", req.GetDraftId(), err)
 	}
-	if when == "" {
-		return workerfake.DeclineDraft("no condition separates these cases")(ctx, req)
+	if forwardedEvent != nil {
+		return forwardedEvent, nil
 	}
-	return workerfake.ProposeWhen(when, draftUsage)(ctx, req)
+	return given.event(ctx, req)
+}
+
+func cannedDraft(diagnosisCode string) (draftAnswer, error) {
+	when, err := draftCondition(diagnosisCode)
+	if err != nil || when == "" {
+		return draftAnswer{Reason: declined}, err
+	}
+	return draftAnswer{When: when, Usage: draftUsage}, nil
 }

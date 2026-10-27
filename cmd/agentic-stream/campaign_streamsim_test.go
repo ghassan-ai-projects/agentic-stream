@@ -18,6 +18,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/testsupport/campaign"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/testsupport/workerfake"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/worker"
 	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
 )
@@ -28,6 +29,7 @@ const (
 	campaignRunsVariable   = "CAMPAIGN_RUNS"
 	campaignOutVariable    = "CAMPAIGN_OUT"
 	campaignReplayVariable = "CAMPAIGN_REPLAY"
+	campaignTamozVariable  = "CAMPAIGN_TAMOZ_SOCKET"
 	campaignApprovalToken  = "campaign-approval-token"
 	campaignRelay          = "campaign-relay"
 	campaignApprover       = "campaign-approver"
@@ -156,9 +158,24 @@ func serveCampaignWorker(t *testing.T, setup campaignSetup) {
 		t.Fatalf("listen worker socket: %v", err)
 	}
 	server := grpc.NewServer()
-	runtimev1.RegisterEpisodeWorkerServer(server, (&campaign.Worker{Recording: recording, Abstain: setup.arm.Static}).Server(setup.arm.Learning))
+	worker := &campaign.Worker{Recording: recording, Abstain: setup.arm.Static, Upstream: campaignTamoz(t, setup.arm)}
+	runtimev1.RegisterEpisodeWorkerServer(server, worker.Server(setup.arm.Learning))
 	go func() { _ = server.Serve(listener) }()
 	t.Cleanup(server.Stop)
+}
+
+func campaignTamoz(t *testing.T, arm campaign.Arm) runtimev1.EpisodeWorkerClient {
+	t.Helper()
+	socket := os.Getenv(campaignTamozVariable)
+	if socket == "" || arm.Static {
+		return nil
+	}
+	conn, err := workerfake.DialEvidenceSocket(t.Context(), socket)
+	if err != nil {
+		t.Fatalf("%s=%s: %v", campaignTamozVariable, socket, err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	return runtimev1.NewEpisodeWorkerClient(conn)
 }
 
 func (s campaignSetup) serve(t *testing.T) func(context.Context, campaign.Run) (campaign.Consumer, error) {

@@ -67,7 +67,7 @@ func proposeAfter(delay time.Duration, proposals []proposal) workerfake.ExecuteF
 		}
 		next := min(int(episodes.Add(1))-1, len(proposals)-1)
 		return workerfake.Propose(req, emit, workerfake.Answer{Hypothesis: "over_temperature", Summary: "sustained rise above the band",
-			Intent: &proposals[next]})
+			Intents: []workerfake.ProposedIntent{proposals[next]}})
 	}
 }
 

@@ -33,8 +33,12 @@ type diagnosis struct {
 }
 
 type answer struct {
-	DiagnosisCode string                     `json:"diagnosis_code"`
-	Intent        *workerfake.ProposedIntent `json:"intent,omitempty"`
+	DiagnosisCode string                      `json:"diagnosis_code"`
+	Hypothesis    string                      `json:"hypothesis,omitempty"`
+	Summary       string                      `json:"summary,omitempty"`
+	Intents       []workerfake.ProposedIntent `json:"intents,omitempty"`
+	Usage         *usage                      `json:"usage,omitempty"`
+	Failed        string                      `json:"failed,omitempty"`
 }
 
 var unknown = answer{DiagnosisCode: "unknown"}
@@ -46,7 +50,7 @@ func diagnose(facts map[string]float64) (answer, error) {
 	}
 	for _, d := range c.Diagnoses {
 		if rise(facts, d.Rises) > d.Above {
-			return answer{DiagnosisCode: d.DiagnosisCode, Intent: d.Intent}, nil
+			return answer{DiagnosisCode: d.DiagnosisCode, Intents: []workerfake.ProposedIntent{*d.Intent}}, nil
 		}
 	}
 	return unknown, nil

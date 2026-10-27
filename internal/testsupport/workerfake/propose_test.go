@@ -26,7 +26,7 @@ func proposed(t *testing.T, req *runtimev1.EpisodeRequest, answer Answer) ([]*ru
 func TestProposeStreamsABudgetTheDecisionAndAProducedTerminal(t *testing.T) {
 	t.Parallel()
 	events, err := proposed(t, proposeRequest(`{"entity":{"id":"pump-3"}}`), Answer{Hypothesis: "wear", DiagnosisCode: "bearing_wear",
-		Intent: &ProposedIntent{Type: "schedule_maintenance", Risk: "R1", Parameters: map[string]any{"work_order": "bearing_wear"}}})
+		Intents: []ProposedIntent{{Type: "schedule_maintenance", Risk: "R1", Parameters: map[string]any{"work_order": "bearing_wear"}}}})
 	if err != nil || len(events) != 3 || events[2].GetTerminal().GetStatus() != runtimev1.TerminalStatus_TERMINAL_STATUS_PRODUCED {
 		t.Fatalf("events = %v (%v), want budget, decision and a produced terminal", events, err)
 	}
@@ -54,7 +54,7 @@ func TestProposeWithoutIntentNeedsNoEntity(t *testing.T) {
 func TestProposeRefusesAnIntentWithoutTheSnapshotsEntity(t *testing.T) {
 	t.Parallel()
 	for snapshot, want := range map[string]string{`{}`: "snapshot has no entity id", `{`: "decode the snapshot"} {
-		_, err := proposed(t, proposeRequest(snapshot), Answer{Intent: &ProposedIntent{Type: "x", Risk: "R1"}})
+		_, err := proposed(t, proposeRequest(snapshot), Answer{Intents: []ProposedIntent{{Type: "x", Risk: "R1"}}})
 		if err == nil || !strings.Contains(err.Error(), want) {
 			t.Fatalf("snapshot %s: %v, want %q", snapshot, err, want)
 		}
