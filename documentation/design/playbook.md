@@ -76,8 +76,9 @@ an optional `remedyMap` and the two intent flags. A Decision gains an optional
 | Table | Holds |
 | --- | --- |
 | `rule_evaluations` | What a rule would have recommended for a situation version (shadow rules), and the verdict once the model's decision is stored. |
-| `rule_fires` | Each active fire (episode, version, time): the rate cap and the audit sample. |
-| `rule_circuits` | Circuit state per rule (open or closed), its cause and evidence. |
+| `rule_fires` | Each active fire (episode, version, the event time of the version it answered): the rate cap and the audit sample. |
+| `rule_circuits` | Circuit state per rule (open or closed), its cause and evidence, and an operator's reason for closing it. |
+| `rule_kind_digests` | The digest each device kind was last born with, as the playbook last saw it from plant wire; survives a restart. |
 | `case_verifications` | One record per case, an occurrence of a Situation whose decision dispatched an action: its key (diagnosis code, kind digest, intent, preset), the rule that handled it if any, the features at decision time, the settle window's end, and its verdict and reason (AS-5). |
 | `rule_drafts`, `rule_proposals` | Draft calls and the proposals with their replay reports and approvals (AS-7). |
 
@@ -141,13 +142,18 @@ After each batch the runtime calls `playbook.Settle`, which, in order:
 
 A rule whose circuit is open is treated as absent. Causes: `audit_disagreement`,
 `rate_cap`, `kind_changed` (AS-4), `no_effect` (AS-5) and `out_of_cap` (AS-6).
-Closing a circuit needs a human.
+An operator closes a circuit with `agentic-stream circuits close --rule --version
+--reason` while the runtime is stopped. The rate cap and the out-of-cap window
+count fires and matches by the event time of the Situation version they
+answered, never the wall clock, so a replay routes the same way.
 
 ### Kind pinning (decision 3)
 
-Plant wire remembers the kind digest each kind was last born with
+Plant wire reports the kind digest each kind was last born with
 (`plantwire.Host.BornKindDigests`, a query the composition hands to the
-playbook; no callback). A rule pinned to another digest for that kind opens its
+playbook; no callback), and the playbook records it in `rule_kind_digests`,
+which routing, case keys and drafts read. Rule promotion therefore needs plant
+wire as the source of kind digests. A rule pinned to another digest for that kind opens its
 circuit with cause `kind_changed`, at the next routing or settle, so it stops at
 the first birth on the new kind, whether that kind is commissioned or
 quarantined.
@@ -188,7 +194,11 @@ cmd ──► runtime ──► playbook ──► cognition, episodes, situatio
                  └► executor/rule ──► episodes
 ```
 
-`playbook` imports no `runtime`, `policy`, `actions`, executor or adapter.
+`playbook` imports no `runtime`, `policy`, `actions`, executor or adapter: the
+composition supplies policy's approval checks through the `Signatures` port.
+Situation occurrence times come from `engine` and the event-time watermark from
+`eventlog`; the case-candidate and replay-history joins are the playbook's
+read-only projections over the decision, intent and command tables.
 `episodes`, `cognition` and `policy` never import `playbook`. The `rule`
 executor imports only the episode contract.
 
