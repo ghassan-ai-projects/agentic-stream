@@ -193,7 +193,7 @@ func (s campaignSetup) serve(t *testing.T) func(context.Context, campaign.Run) (
 }
 
 func (s campaignSetup) serveFlags() []string {
-	flags := []string{"--worker-socket", filepath.Join(s.sockets, "worker.sock"), "--worker-name", "tamoz"}
+	flags := []string{"--worker-socket", filepath.Join(s.sockets, "worker.sock"), "--worker-name", "tamoz", "--device-catalog", pumpStationCatalog}
 	if s.playbook != "" {
 		flags = append(flags, "--playbook", s.playbook)
 	}

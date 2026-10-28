@@ -147,7 +147,7 @@ Starts the live runtime with HTTP health checks and notifications.
 | `--worker-server-name` | empty | expected worker certificate name |
 | `--evidence-socket` | empty | EvidenceTools Unix socket |
 | `--evidence-key` | empty | hex HMAC key for EvidenceTools |
-| `--plant-wire-socket` | empty | owner-only Unix socket a plant wire node dials (absolute path in a 0700 directory); a continuous source, exclusive with `--trace` and `--device-socket` |
+| `--plant-wire-socket` | empty | owner-only Unix socket a plant wire node dials (absolute path in a 0700 directory); a continuous source, exclusive with `--trace` and `--device-socket`; the `emulator` and `physical` profiles also need `--device-catalog`, without which no command would reach the plant |
 | `--plant-wire-environment` | `simulated` | plant wire nodes accepted: `simulated`, `hardware` or `mixed`; `hardware` and `mixed` need the physical profile with both consent flags |
 | `--plant-wire-kinds` | empty | directory of the commissioned kind files (`*.kind.json`); required with the socket |
 | `--plant-wire-site` | empty | site file kept outside the repository: checked against its schema and the commissioned kinds, its digest logged at start; without it no reading becomes an event, and with `--device-catalog` it is required (the site's devices are the ones the node must announce, and every route target must be one of them) |

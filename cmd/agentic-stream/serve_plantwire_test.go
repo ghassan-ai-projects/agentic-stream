@@ -21,8 +21,9 @@ func TestServeValidatesThePlantWireFlags(t *testing.T) {
 			f.plantWire.environment, f.plantWire.hardwareBoards = plantwire.EnvironmentMixed, []string{"mega-01"}
 		}, ""},
 		{"plant wire flags without the socket", func(f *serveFlags) {
-			f.effect.PlantWireSocket, f.liveSocket, f.effectProfile = "", "/tmp/live.sock", "simulated"
+			f.effect.PlantWireSocket, f.effect.DeviceCatalog, f.liveSocket, f.effectProfile = "", "", "/tmp/live.sock", "simulated"
 		}, "require --plant-wire-socket"},
+		{"a socket without a device catalog", func(f *serveFlags) { f.effect.DeviceCatalog = "" }, "requires --device-catalog"},
 		{"a socket without kind files", func(f *serveFlags) { f.plantWire.kindsDir = "" }, "--plant-wire-socket requires --plant-wire-kinds"},
 		{"a socket without a spec", func(f *serveFlags) { f.specPath = "" }, "--spec and one of --trace, --live-socket or --plant-wire-socket"},
 		{"a socket with a trace", func(f *serveFlags) { f.tracePath = "trace.jsonl" }, "--trace is mutually exclusive"},
@@ -57,6 +58,6 @@ func plantWireServeFlags() serveFlags {
 		plantWire:     plantWireFlags{environment: plantwire.EnvironmentSimulated, kindsDir: "kinds"},
 		listenAddress: "127.0.0.1:8080", pollInterval: time.Second,
 	}
-	flags.effect.PlantWireSocket = "/tmp/plantwire/host.sock"
+	flags.effect.PlantWireSocket, flags.effect.DeviceCatalog = "/tmp/plantwire/host.sock", "catalog.json"
 	return flags
 }

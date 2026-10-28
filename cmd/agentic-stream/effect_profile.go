@@ -30,9 +30,6 @@ type effectProfileOptions struct {
 	DispatchLease          time.Duration
 }
 
-// workerRuntimeFlagTargets contains the command-local storage for the shared
-// worker, evidence, and model flags. Keeping registration here prevents the
-// run-live and serve commands from drifting apart.
 type workerRuntimeFlagTargets struct {
 	workerSocket     *string
 	modelEndpoint    *string
@@ -48,7 +45,7 @@ type workerRuntimeFlagTargets struct {
 
 func (o effectProfileOptions) validate(replaySource bool) error {
 	if err := o.requireGatewayFlags(replaySource); err != nil {
-		return err
+		return fmt.Errorf("check the gateway flags: %w", err)
 	}
 	return checkEffectProfile("validate effect profile", o.profileConfig(replaySource))
 }
@@ -74,7 +71,7 @@ func (o effectProfileOptions) rejectGatewayFlags() error {
 
 func (o effectProfileOptions) requireGatewayOptions(profile device.EffectProfile) error {
 	if o.PlantWireSocket != "" {
-		return o.requirePlantWireLink()
+		return o.requirePlantWireLink(profile)
 	}
 	if o.DeviceSocket == "" {
 		return fmt.Errorf("%s effect profile requires --device-socket", profile)
@@ -88,9 +85,12 @@ func (o effectProfileOptions) requireGatewayOptions(profile device.EffectProfile
 	return nil
 }
 
-func (o effectProfileOptions) requirePlantWireLink() error {
+func (o effectProfileOptions) requirePlantWireLink(profile device.EffectProfile) error {
 	if o.DeviceSocket != "" {
 		return fmt.Errorf("one effect link per process: --device-socket and --plant-wire-socket are exclusive")
+	}
+	if o.DeviceCatalog == "" {
+		return fmt.Errorf("%s effect profile with --plant-wire-socket requires --device-catalog: without it no command reaches the plant", profile)
 	}
 	if len(o.AllowedFirmwareDigests) > 0 {
 		return fmt.Errorf("--device-firmware-digest applies to --device-socket only")
@@ -115,12 +115,9 @@ func checkEffectProfile(prefix string, config device.EffectProfileConfig) error 
 	return nil
 }
 
-// open creates the action-plane effector after the runtime owner has started.
-// Device profiles use a typed UDS gateway link; the serial effector remains
-// explicitly routed by runtime.NewPipeline.
 func (o effectProfileOptions) open(ctx context.Context, db *storage.DB, owner *runtimecontrol.RuntimeOwner, epochControl *runtimecontrol.EpochControl, epoch string, telemetryRuntime *telemetry.Runtime, replaySource bool) (actionport.RoutedEffector, *device.GatewayEffector, func() error, error) {
 	if err := o.validate(replaySource); err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, fmt.Errorf("open the effect profile: %w", err)
 	}
 	if o.profile() == device.EffectProfileSimulated {
 		return device.NewSimulatedEffector(), nil, nil, nil
@@ -139,7 +136,7 @@ func (o effectProfileOptions) open(ctx context.Context, db *storage.DB, owner *r
 func (o effectProfileOptions) connectDeviceGateway(ctx context.Context) (*device.UDSTransport, *device.CapabilityCatalog, error) {
 	catalog, err := o.loadDeviceCatalog()
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("connect device gateway: %w", err)
 	}
 	transport, err := device.DialUDSTransport(ctx, o.DeviceSocket)
 	if err != nil {
@@ -147,7 +144,7 @@ func (o effectProfileOptions) connectDeviceGateway(ctx context.Context) (*device
 	}
 	if err := o.validateGatewayLink(transport); err != nil {
 		_ = transport.Close()
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("connect device gateway: %w", err)
 	}
 	return transport, catalog, nil
 }
@@ -174,7 +171,7 @@ func (o effectProfileOptions) openGatewayEffector(ctx context.Context, db *stora
 	authority, err := newDeviceAuthority(db, owner, epochControl)
 	if err != nil {
 		_ = transport.Close()
-		return nil, nil, nil, err
+		return nil, nil, nil, fmt.Errorf("open gateway effector: %w", err)
 	}
 	serial, closeFn, err := device.NewGatewayEffector(ctx, o.gatewayEffectorConfig(authority, epoch, telemetryRuntime, transport, catalog))
 	if err != nil {

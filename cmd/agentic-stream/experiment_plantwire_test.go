@@ -18,7 +18,10 @@ import (
 
 const benchReadings = 6
 
-var benchPlantWire = filepath.Join("..", "..", "examples", "real-world-sensor", "testdata", "plant-wire")
+var (
+	benchPlantWire = filepath.Join("..", "..", "examples", "real-world-sensor", "testdata", "plant-wire")
+	benchCatalog   = filepath.Join(benchPlantWire, "thermal-bench.catalog.json")
+)
 
 type plantWireServe struct {
 	dir, socket, db string
@@ -59,10 +62,11 @@ func servePlantWire(t *testing.T, run plantWireServe, address, specPath, kindsDi
 
 func TestServeHostsPlantWireSessionsOneAfterAnother(t *testing.T) {
 	t.Parallel()
-	run := startPlantWireServe(t, testSpec, plantwirefake.KindsDir(t, "."), "")
+	kinds := plantwirefake.KindsDir(t, ".")
+	run := startPlantWireServe(t, testSpec, kinds, experimentSite(t), "--device-catalog", experimentCatalog, "--dispatch-lease", "2m")
 	for _, session := range []string{"s-1", "s-2"} {
 		node := plantwirefake.Dial(t, "unix", run.socket, session)
-		node.Send(plantwirefake.Fixture(t, ".", "NBIRTH.json"))
+		node.Send(plantwirefake.Birth(t, kinds, "board-01", "led-01", "fan-01"))
 		if state := node.Expect("STATE"); state["online"] != true || state["authority_epoch"] != json.Number("11") {
 			t.Fatalf("%s: STATE = %v, want online at epoch 11", session, state)
 		}
@@ -78,7 +82,7 @@ func TestServeHostsPlantWireSessionsOneAfterAnother(t *testing.T) {
 func TestServeIngestsTheBenchReadingsOfAPlantWireNodeAndOpensASituation(t *testing.T) {
 	t.Parallel()
 	kinds := filepath.Join(benchPlantWire, "kinds")
-	run := startPlantWireServe(t, benchSpec, kinds, filepath.Join(benchPlantWire, "thermal-bench.site.json"))
+	run := startPlantWireServe(t, benchSpec, kinds, filepath.Join(benchPlantWire, "thermal-bench.site.json"), "--device-catalog", benchCatalog)
 	node := plantwirefake.Dial(t, "unix", run.socket, "bench-1")
 	node.Send(plantwirefake.Birth(t, kinds, "mega-01", "zone-01", "led-01", "fan-01"))
 	node.Expect("STATE")
@@ -182,7 +186,7 @@ func TestServeMakesThePlantWireHostTheDeviceEffectorOfItsCatalog(t *testing.T) {
 	if err := cmd.ExecuteContext(t.Context()); err == nil || !strings.Contains(err.Error(), `route "select_thermal_mode" has no effector`) {
 		t.Fatalf("serve with a catalog missing a dispatched route = %v, want the route refused at start", err)
 	}
-	startPlantWireServe(t, benchSpec, kinds, site, "--device-catalog", filepath.Join(benchPlantWire, "thermal-bench.catalog.json"))
+	startPlantWireServe(t, benchSpec, kinds, site, "--device-catalog", benchCatalog)
 }
 
 func writePrivateFile(t *testing.T, path, content string) {

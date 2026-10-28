@@ -13,7 +13,10 @@ import (
 
 const pumpStationSpec = "../../examples/pump-station/pump-station.situation.yaml"
 
-var pumpStationPlantWire = filepath.Join("..", "..", "examples", "pump-station", "testdata", "plant-wire")
+var (
+	pumpStationPlantWire = filepath.Join("..", "..", "examples", "pump-station", "testdata", "plant-wire")
+	pumpStationCatalog   = filepath.Join(pumpStationPlantWire, "pump-station.catalog.json")
+)
 
 func compilePumpStation(t *testing.T) *spec.CompiledSpec {
 	t.Helper()
@@ -37,7 +40,7 @@ func TestThePumpStationOpensAConditionOnTheWornPump(t *testing.T) {
 	t.Parallel()
 	binary, repository := streamsimNode(t)
 	run := startPlantWireServe(t, pumpStationSpec, filepath.Join(pumpStationPlantWire, "kinds"),
-		filepath.Join(pumpStationPlantWire, "pump-station.site.json"))
+		filepath.Join(pumpStationPlantWire, "pump-station.site.json"), "--device-catalog", pumpStationCatalog)
 	plan := writePumpStationPlan(t, run.socket, "pump-station", map[string]any{"at_s": 3600, "instance": "site-a/pump-3", "fault": "bearing_wear"})
 	startPumpStationNode(t, binary, repository, plan, filepath.Join(run.dir, "run"))
 	opened := func() bool { return openedConditions(t, run.db)["site-a:pump-3"] > 0 }
@@ -86,7 +89,8 @@ func TestRulesPinnedToTheOldPumpKindStopAtTheFirstProbeBBirth(t *testing.T) {
 	t.Parallel()
 	binary, repository := streamsimNode(t)
 	run := startPlantWireServe(t, pumpStationSpec, filepath.Join(pumpStationPlantWire, "kinds-probe-b"),
-		filepath.Join(pumpStationPlantWire, "pump-station.site.json"), "--playbook", filepath.Join(pumpStationPlantWire, "..", "site-a.playbook.yaml"))
+		filepath.Join(pumpStationPlantWire, "pump-station.site.json"), "--playbook", filepath.Join(pumpStationPlantWire, "..", "site-a.playbook.yaml"),
+		"--device-catalog", pumpStationCatalog)
 	plan := writePumpStationPlan(t, run.socket, "pump-station-probe-b", map[string]any{"at_s": 3600, "instance": "site-a/pump-3", "fault": "bearing_wear"})
 	startPumpStationNode(t, binary, repository, plan, filepath.Join(run.dir, "run"))
 	switchedOff := func() bool {

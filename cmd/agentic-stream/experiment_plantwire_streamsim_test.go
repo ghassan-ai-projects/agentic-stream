@@ -25,7 +25,7 @@ func TestServeHostsTwoSessionsOfTheStreamsimNodeWithoutARestart(t *testing.T) {
 	t.Parallel()
 	binary, repository := streamsimNode(t)
 	kinds := filepath.Join(repository, "examples", "devices", "thermal-board")
-	run := startPlantWireServe(t, benchSpec, kinds, filepath.Join(benchPlantWire, "thermal-bench.site.json"))
+	run := startPlantWireServe(t, benchSpec, kinds, filepath.Join(benchPlantWire, "thermal-bench.site.json"), "--device-catalog", benchCatalog)
 	domains := t.TempDir()
 	copyFile(t, filepath.Join(kinds, "thermal-board.domain.json"), domains)
 	for _, session := range []string{"first", "second"} {

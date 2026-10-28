@@ -20,43 +20,34 @@ import (
 	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
 )
 
-// The experiment's other two processes, reduced to what this repository can
-// observe at its boundaries: a Tamoz-shaped worker on the gRPC protocol and a
-// Streams-Simulator-shaped device on the device wire. Both speak only the
-// public contracts.
-
-// standInFirmwareDigest is the firmware the stand-in device reports.
 const standInFirmwareDigest = "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
 
-// serveTamozStandIn serves an EpisodeWorker that answers like Tamoz's
-// DecisionBuilder: one actionable intent from the request's catalog, with the
-// model writing only the catalog's model-writable field. It reasons for delay
-// before deciding, as a model call does.
 func serveTamozStandIn(t *testing.T, socketPath string, delay time.Duration) {
 	t.Helper()
 	serveWorkerProposing(t, socketPath, delay, indicatorAlert)
 }
 
-// proposal is one intent the stand-in worker proposes: its type, risk class
-// and the model-writable parameters.
 type proposal = workerfake.ProposedIntent
 
 var indicatorAlert = proposal{Type: "set_indicator", Risk: "R1", Parameters: map[string]any{"state": "alert"}}
 
 func serveWorkerProposing(t *testing.T, socketPath string, delay time.Duration, proposals ...proposal) {
 	t.Helper()
+	serveWorker(t, socketPath, proposeAfter(delay, proposals))
+}
+
+func serveWorker(t *testing.T, socketPath string, execute workerfake.ExecuteFunc) {
+	t.Helper()
 	listener, err := worker.ListenEvidenceSocket(socketPath)
 	if err != nil {
 		t.Fatalf("listen worker socket: %v", err)
 	}
 	server := grpc.NewServer()
-	runtimev1.RegisterEpisodeWorkerServer(server, &workerfake.Server{WorkerName: "tamoz", WorkerVersion: "stand-in", ExecuteFunc: proposeAfter(delay, proposals)})
+	runtimev1.RegisterEpisodeWorkerServer(server, &workerfake.Server{WorkerName: "tamoz", WorkerVersion: "stand-in", ExecuteFunc: execute})
 	go func() { _ = server.Serve(listener) }()
 	t.Cleanup(server.Stop)
 }
 
-// proposeAfter proposes one intent per episode, as a decision carries at most
-// one actionable intent: the proposals in order, then the last one again.
 func proposeAfter(delay time.Duration, proposals []proposal) workerfake.ExecuteFunc {
 	var episodes atomic.Int64
 	return func(ctx context.Context, req *runtimev1.EpisodeRequest, emit func(*runtimev1.EpisodeEvent) error) error {
@@ -71,9 +62,6 @@ func proposeAfter(delay time.Duration, proposals []proposal) workerfake.ExecuteF
 	}
 }
 
-// deviceStandIn is a device on the wire contract that remembers its output, so
-// query_state reports what the last command did, as the Streams Simulator
-// emulator and the bench firmware do.
 type deviceStandIn struct {
 	capabilityDigest string
 	mu               sync.Mutex
@@ -133,8 +121,6 @@ func (d *deviceStandIn) answer(conn net.Conn, line []byte) error {
 	return d.write(conn, map[string]any{"message_type": "result", "protocol_version": 1, "command_id": frame["command_id"], "boot_id": "boot-A", "status": status, "completed_mono_us": 2})
 }
 
-// apply records the command and sets the output to its single numeric
-// parameter, the way the firmware drives an LED level or a fan duty.
 func (d *deviceStandIn) apply(command map[string]any) string {
 	d.mu.Lock()
 	defer d.mu.Unlock()
