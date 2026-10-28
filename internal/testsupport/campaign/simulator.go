@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 )
 
+const reasoningPaceCapMS = "240000"
+
 // Simulator runs streams-simulator sessions and grades them.
 type Simulator struct {
 	Binary     string
@@ -30,7 +32,8 @@ func (s Simulator) Connect(plan, out string) (*Session, error) {
 	output := &bytes.Buffer{}
 	session := &Session{Out: out, output: output, ended: make(chan struct{}), cmd: &exec.Cmd{Path: s.Binary, Stdout: output, Stderr: output,
 		Args: []string{s.Binary, "plantwire", "connect", "--plan", plan, "--domains-dir", s.station(),
-			"--kinds-dir", filepath.Join(s.station(), "kinds"), "--adapters-dir", s.adapters(), "--slice-s", "60", "--out", out}}}
+			"--kinds-dir", filepath.Join(s.station(), "kinds"), "--adapters-dir", s.adapters(), "--slice-s", "60",
+			"--barrier-cap-ms", reasoningPaceCapMS, "--out", out}}}
 	if err := session.cmd.Start(); err != nil {
 		return nil, fmt.Errorf("start the session of %s: %w", plan, err)
 	}

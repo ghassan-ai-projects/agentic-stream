@@ -69,7 +69,9 @@ skips its remaining learn runs once learning has settled (no draft or proposal
 in flight and every playbook rule active) and keeps the database its learning
 ended with as `learned.db`, so arm A can play the holdout from the same state; a
 run whose planned world start lies past a gap starts where the database's world
-ended:
+ended. The node waits up to 240 s at each barrier, an episode's wall-time
+budget, so the world does not move on while the consumer reasons; a session that
+ends before its run's end fails the run:
 
 ```bash
 STREAMSIM_BIN=/tmp/streamsim STREAMSIM_REPO=<streams-simulator checkout> CAMPAIGN_DIR=<campaign> \
