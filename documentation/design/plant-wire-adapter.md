@@ -61,7 +61,8 @@ the code implements.
    `environment_mismatch`, `contract_unsupported` (exact contract version and
    digest), `version_unsupported`, `inventory_mismatch` (a kind digest that does
    not recompute, a kind announced twice, a required device missing). The host
-   answers `STATE` and then sends a heartbeat every second. Every later
+   answers `STATE` and then sends a heartbeat every second, also while a
+   barrier answer is held (rule 4). Every later
    `NBIRTH` of the session (the rebirth) is admitted by the same rules: a
    rebirth that contradicts them is refused with `STATE{online:false}` and ends
    the session, and a rebirth whose `bd_seq` does not advance is dropped.
@@ -79,11 +80,13 @@ the code implements.
    host polls the check, which `serve` wires to the episode ledger, only after
    the queue has drained, and the node's own barrier cap still bounds the
    wait. Commands are not part of the wait: an episode's command is dispatched
-   only after the episode ends, and while an answer is held the host sends
-   nothing else, so waiting on a command would stall until the cap. While an
-   answer is held, the host sends nothing else (its records are sequenced) and
-   keeps reading. A node that floods the queue without waiting for barriers
-   still ends the session: the pipeline fell behind.
+   only after the episode ends, so waiting on a command would stall until the
+   cap. While an answer is held the host keeps reading and keeps its heartbeat,
+   so the node can tell a busy host from a lost one; the node's barrier cap
+   only paces the world. The held answers are numbered when they are sent, not
+   when the `NSYNC` is read, so the records stay in `seq` order around the
+   heartbeats sent meanwhile. A node that floods the queue without waiting
+   for barriers still ends the session: the pipeline fell behind.
 5. A sequence gap asks for one rebirth. A socket loss or `NDEATH` ends the
    session: claims are released, commands in flight are settled as the contract
    says, devices go offline. The host then accepts the next session without a

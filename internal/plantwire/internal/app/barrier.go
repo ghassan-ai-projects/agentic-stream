@@ -11,7 +11,7 @@ import (
 
 const reasoningPollInterval = 50 * time.Millisecond
 
-func (s *session) holdUntilDrained(replies []map[string]any) bool {
+func (s *session) holdUntilDrained(replies []domain.Record) bool {
 	if s.held == nil && !s.shouldHold(replies) {
 		return false
 	}
@@ -19,7 +19,7 @@ func (s *session) holdUntilDrained(replies []map[string]any) bool {
 	return true
 }
 
-func (s *session) shouldHold(replies []map[string]any) bool {
+func (s *session) shouldHold(replies []domain.Record) bool {
 	return s.mayHoldBarriers() && slices.ContainsFunc(replies, isBarrierAnswer)
 }
 
@@ -55,7 +55,7 @@ func (s *session) releaseHeld(ctx context.Context) string {
 	}
 	held := s.held
 	s.held = nil
-	if err := s.send(held); err != nil {
+	if err := s.send(s.conversation.Transmit(held)); err != nil {
 		return endWriteFailed
 	}
 	return ""
@@ -83,6 +83,6 @@ func (s *session) stopRecheck() {
 	}
 }
 
-func isBarrierAnswer(record map[string]any) bool {
-	return record["type"] == domain.TypeHostSync
+func isBarrierAnswer(record domain.Record) bool {
+	return record.Type == domain.TypeHostSync
 }

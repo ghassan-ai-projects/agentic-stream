@@ -48,7 +48,7 @@ type session struct {
 	claims       map[string]authority.TargetClaim
 	mailboxes    map[string]chan<- domain.Settlement
 	watchers     map[string]chan<- domain.Verification
-	held         []map[string]any
+	held         []domain.Record
 	reasoning    ReasoningInFlight
 	recheck      timer
 	born         *bornKinds
@@ -81,7 +81,7 @@ func (s *session) run(ctx context.Context) string {
 func (s *session) step(ctx context.Context) string {
 	select {
 	case <-ctx.Done():
-		_ = s.send(append(s.held, s.conversation.Goodbye()...))
+		_ = s.send(append(s.conversation.Transmit(s.held), s.conversation.Goodbye()...))
 		return endHostStopping
 	case read := <-s.lines:
 		return s.receive(ctx, read)
@@ -115,7 +115,7 @@ func (s *session) answer(ctx context.Context, reaction domain.Reaction) string {
 	if s.holdUntilDrained(reaction.Replies) {
 		return cmp.Or(reaction.End, s.releaseHeld(ctx))
 	}
-	if err := s.send(reaction.Replies); err != nil {
+	if err := s.send(s.conversation.Transmit(reaction.Replies)); err != nil {
 		slog.WarnContext(ctx, "plant wire host record not written", "error", err)
 		return endWriteFailed
 	}
@@ -143,7 +143,7 @@ func (s *session) heartbeat() string {
 }
 
 func (s *session) beats() <-chan time.Time {
-	if s.beat == nil || s.held != nil {
+	if s.beat == nil {
 		return nil
 	}
 	return s.beat.C()

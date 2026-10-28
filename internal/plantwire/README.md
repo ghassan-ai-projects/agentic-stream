@@ -24,8 +24,8 @@ directory, 0600 socket) and hands it to `New`. A session's reader never waits on
 the host: records are read on their own goroutine and answered from one loop,
 so a barrier is answered at once unless the ingest queue is backed up (a
 quarter of it in use); then the answer is held until the queue drains (the
-feeder signals each time it does; while an answer is held the session sends
-nothing else and runs no command). With `Config.ReasoningInFlight` (`serve`
+feeder signals each time it does; while an answer is held the session keeps its
+heartbeat, numbers the held answers when they are sent, and runs no command). With `Config.ReasoningInFlight` (`serve`
 wires `episodeledger.ReasoningInFlight`) every barrier answer is held until the
 queue is empty and the check reports no reasoning in flight, polled every 50 ms
 on the injected clock; a failing check is logged and counts as none. The session's state is the pure
