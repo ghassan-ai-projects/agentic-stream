@@ -125,7 +125,8 @@ import rules can be set before code.
    (`shadow`/`active`), `shadow_exit` (default 10 agreeing, 0 disagreeing), `audit_rate` (default 1 in 3),
    `rate_cap` (per hour), `provenance` (source episode ids, approval digest).
 2. **Checks** (each a `CompileError` with a path): the `when` compiles in the existing CEL env and reads only
-   allowed features (the spec's features plus its declared `contextFeatures`); the intent and preset exist; the
+   allowed features (the spec's features, its operator outputs, plus its declared `contextFeatures`; a reducer's
+   list such as `evidence` is lineage, not a feature); the intent and preset exist; the
    diagnosis code is in the catalog and is not `unknown`; **denylist**: the intent's risk is below R3 and it is
    not marked `emergency` or `safetyFunction` (two new optional intent flags); envelope inside cap.
 3. **Spec additions**: `settleWindows` (diagnosis code to duration), `contextFeatures`, optional `remedyMap`
@@ -327,7 +328,7 @@ Hand-off to session 3 (tamoz), as delivered:
   `DraftRequest`: `protocol_version`, `draft_id`, `tenant_id`, `key`
   (`diagnosis_code`, `kind_digest`, `intent`, `preset`), `cases` (≤ 20:
   `episode_id`, `diagnosis_code`, `intent`, `preset`, `verdict`,
-  `features_json` canonical JSON of the CEL feature map at decision time,
+  `features_json` canonical JSON of the allowed features at decision time,
   `summary` untrusted), `current_rules` (`rule_id`, `version`, `when`, `mode`),
   `allowed_features`, `budget` (`wall_time`, `model_calls`, `input_tokens`,
   `output_tokens`), `spec_sha256`. `DraftEvent`: oneof `diagnostic`,

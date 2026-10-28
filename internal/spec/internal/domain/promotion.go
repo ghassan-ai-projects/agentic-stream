@@ -73,14 +73,9 @@ func ParseDiagnosisCodes(source string) ([]string, error) {
 }
 
 func (s *CompiledSpec) FeatureNames() []string {
-	names := make([]string, 0, len(s.Operators)+len(s.Situation.Reducers))
+	names := make([]string, 0, len(s.Operators))
 	for _, op := range s.Operators {
 		names = append(names, op.Output)
-	}
-	for _, reducer := range s.Situation.Reducers {
-		if reducer.Strategy == "set_union" {
-			names = append(names, reducer.Field)
-		}
 	}
 	return names
 }

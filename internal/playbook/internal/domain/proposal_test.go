@@ -56,6 +56,17 @@ func driftRequest(rules *Rules) draftport.Request {
 	return rules.DraftRequestFor("rdraft_1", "t", driftKey, cases)
 }
 
+func TestADraftSendsEachCaseWithOnlyTheFeaturesARuleMayRead(t *testing.T) {
+	t.Parallel()
+	withEvidence := driftCase("e1", CaseVerified, 4.0)
+	withEvidence.Features["evidence"] = []any{"evt-1", "evt-2"}
+	request := pumpRules(t).DraftRequestFor("rdraft_1", "t", driftKey, []KeyedCase{withEvidence})
+	features := request.Cases[0].Features
+	if _, sent := features["evidence"]; sent || slices.Contains(request.AllowedFeatures, "evidence") || features["vibration_mean_15m"] != 4.0 {
+		t.Fatalf("case features = %v, allowed = %v; want the scalar features only", features, request.AllowedFeatures)
+	}
+}
+
 func driftProposal(when string, cited ...string) draftport.Proposal {
 	return draftport.Proposal{DiagnosisCode: driftKey.DiagnosisCode, Intent: driftKey.Intent, Preset: driftKey.Preset, When: when, CitedEpisodeIDs: cited}
 }

@@ -23,16 +23,27 @@ var ErrProposalRefused = errors.New("playbook proposal refused")
 var DraftBudget = draftport.Budget{WallTime: time.Minute, ModelCalls: 6, InputTokens: 30000, OutputTokens: 5000}
 
 func (r *Rules) DraftRequestFor(draftID, tenantID string, key Key, cases []KeyedCase) draftport.Request {
+	allowed := r.spec.FeatureNames()
 	var cited []draftport.Case
 	for _, c := range slices.Backward(cases) {
 		if c.Key == key && c.Verdict == CaseVerified && len(cited) < maxCitedCases {
 			cited = append(cited, draftport.Case{EpisodeID: c.EpisodeID, DiagnosisCode: c.DiagnosisCode, Intent: c.Intent,
-				Preset: c.Preset, Verdict: c.Verdict, Features: c.Features, Summary: c.Summary})
+				Preset: c.Preset, Verdict: c.Verdict, Features: allowedFeatures(c.Features, allowed), Summary: c.Summary})
 		}
 	}
 	slices.Reverse(cited)
 	return draftport.Request{DraftID: draftID, TenantID: tenantID, Key: draftport.Key(key), Cases: cited,
-		CurrentRules: r.draftRules(key), AllowedFeatures: r.spec.FeatureNames(), SpecDigest: r.spec.Digest, Budget: DraftBudget}
+		CurrentRules: r.draftRules(key), AllowedFeatures: allowed, SpecDigest: r.spec.Digest, Budget: DraftBudget}
+}
+
+func allowedFeatures(features map[string]any, allowed []string) map[string]any {
+	kept := make(map[string]any, len(allowed))
+	for _, name := range allowed {
+		if value, ok := features[name]; ok {
+			kept[name] = value
+		}
+	}
+	return kept
 }
 
 func (r *Rules) draftRules(key Key) []draftport.Rule {
