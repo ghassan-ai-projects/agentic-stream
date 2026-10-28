@@ -42,6 +42,15 @@ func forwardEpisode(ctx context.Context, upstream runtimev1.EpisodeWorkerClient,
 	return relayAll(stream, emit)
 }
 
+func withoutStarted(emit func(*runtimev1.EpisodeEvent) error) func(*runtimev1.EpisodeEvent) error {
+	return func(event *runtimev1.EpisodeEvent) error {
+		if event.GetStarted() != nil {
+			return nil
+		}
+		return emit(event)
+	}
+}
+
 func relayAll(stream runtimev1.EpisodeWorker_ExecuteClient, emit func(*runtimev1.EpisodeEvent) error) (answer, error) {
 	var given answer
 	for {

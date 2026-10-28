@@ -63,7 +63,7 @@ func (w *Worker) freshEpisode(ctx context.Context, req *runtimev1.EpisodeRequest
 		}
 		*forwarded = true
 		call := w.call(recordedEpisode, req)
-		given, err := forwardEpisode(ctx, w.Upstream, req, call.passing(emit))
+		given, err := forwardEpisode(ctx, w.Upstream, req, call.passing(withoutStarted(emit)))
 		return given, call.end(err)
 	}
 }

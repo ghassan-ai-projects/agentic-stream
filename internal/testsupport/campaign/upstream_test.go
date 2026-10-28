@@ -4,8 +4,12 @@ import (
 	"context"
 	"path/filepath"
 	"testing"
+	"time"
+
+	"google.golang.org/protobuf/types/known/durationpb"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/testsupport/workerfake"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/worker"
 	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
 )
 
@@ -16,6 +20,9 @@ type upstreamWorker struct {
 }
 
 func (u upstreamWorker) Execute(req *runtimev1.EpisodeRequest, stream runtimev1.EpisodeWorker_ExecuteServer) error {
+	if err := stream.Send(workerfake.StartedEvent(req, "tamoz", "upstream", time.Now())); err != nil {
+		return err
+	}
 	if u.failed != "" {
 		return workerfake.Fail(req, stream.Send, u.failed, &runtimev1.Usage{InputTokens: 77})
 	}
@@ -100,4 +107,34 @@ func TestAForwardedDraftReplaysItsConditionAndUsage(t *testing.T) {
 	if err != nil || again.GetProposal().GetWhen() != forwarded.GetProposal().GetWhen() || again.GetUsage().GetInputTokens() != 3100 {
 		t.Fatalf("replayed draft = %v, %v; want the forwarded condition and usage", again, err)
 	}
+}
+
+func TestAForwardedEpisodePassesTheServersStreamChecks(t *testing.T) {
+	t.Parallel()
+	upstream := upstreamWorker{answer: workerfake.Answer{DiagnosisCode: "bearing_wear", Hypothesis: "worn bearing"}}
+	forwarding := &Worker{Recording: Record(filepath.Join(t.TempDir(), "responses.jsonl")), Upstream: workerfake.ConnectClient(t, upstream)}
+	stream, err := workerfake.ConnectClient(t, forwarding.Server(false)).Execute(t.Context(), servedRequest())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var terminal *runtimev1.Terminal
+	for terminal == nil {
+		event, err := stream.Recv()
+		if err != nil {
+			t.Fatalf("the forwarded stream broke before its terminal: %v", err)
+		}
+		terminal = event.GetTerminal()
+	}
+	if terminal.GetStatus() != runtimev1.TerminalStatus_TERMINAL_STATUS_PRODUCED {
+		t.Fatalf("terminal = %v, want the forwarded decision produced", terminal)
+	}
+}
+
+func servedRequest() *runtimev1.EpisodeRequest {
+	req := episodeRequest(wornFacts)
+	req.ProtocolVersion, req.SpecSha256, req.Traceparent = worker.ProtocolVersion, make([]byte, 32), "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+	req.Kind, req.Lane, req.RiskCeiling = runtimev1.EpisodeKind_EPISODE_KIND_DIAGNOSE, runtimev1.EpisodeLane_EPISODE_LANE_DEEP, runtimev1.RiskClass_RISK_CLASS_R1
+	req.DecisionSchemaJson, req.ToolCatalogJson = []byte("{}"), []byte("[]")
+	req.Budget = &runtimev1.EpisodeBudget{WallTime: durationpb.New(time.Minute)}
+	return req
 }
