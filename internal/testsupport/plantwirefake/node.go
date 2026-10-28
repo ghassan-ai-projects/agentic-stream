@@ -68,18 +68,27 @@ func (n *Node) SendLine(line []byte) {
 // Skip moves the node's next sequence number forward, leaving a gap.
 func (n *Node) Skip() { n.next++ }
 
-// Expect reads the host's next record and fails the test unless it has the
-// given type.
+// Expect reads the host's next record of the given type and fails the test
+// when another record comes first. The host's heartbeats in between are
+// skipped: it keeps them while it holds a barrier answer.
 func (n *Node) Expect(recordType string) map[string]any {
 	n.tb.Helper()
-	record, err := n.read()
-	if err != nil {
-		n.tb.Fatalf("read a %s from the host: %v", recordType, err)
+	for {
+		record, err := n.read()
+		if err != nil {
+			n.tb.Fatalf("read a %s from the host: %v", recordType, err)
+		}
+		if record["type"] == recordType {
+			return record
+		}
+		if !isHeartbeat(record) {
+			n.tb.Fatalf("the host sent %v, want %s", record, recordType)
+		}
 	}
-	if record["type"] != recordType {
-		n.tb.Fatalf("the host sent %v, want %s", record, recordType)
-	}
-	return record
+}
+
+func isHeartbeat(record map[string]any) bool {
+	return record["type"] == "STATE" && record["online"] == true && record["heartbeat"] != json.Number("0")
 }
 
 // Next reads the host's next record, or reports false when none arrives
@@ -90,11 +99,15 @@ func (n *Node) Next(within time.Duration) (map[string]any, bool) {
 }
 
 // Closed reports whether the host closed the session before sending another
-// record.
+// record than a heartbeat.
 func (n *Node) Closed() bool {
 	n.tb.Helper()
-	_, err := n.read()
-	return err != nil
+	for {
+		record, err := n.read()
+		if err != nil || !isHeartbeat(record) {
+			return err != nil
+		}
+	}
 }
 
 // Close ends the node's side of the session.
