@@ -7,7 +7,7 @@ import (
 
 const (
 	ProtocolVersion int64 = 1
-	ContractVersion       = "1.4.0"
+	ContractVersion       = "1.5.0"
 	HostID                = "agentic-stream"
 	TypeNodeBirth         = "NBIRTH"
 	TypeDeviceBirth       = "DBIRTH"

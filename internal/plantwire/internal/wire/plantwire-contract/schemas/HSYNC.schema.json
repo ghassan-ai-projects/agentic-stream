@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:plant-wire:v1:HSYNC",
   "title": "HSYNC",
-  "description": "Barrier reply: the host has processed every node record up to through_seq and sent its commands for that slice.",
+  "description": "Barrier reply: the host has processed every node record up to through_seq and sent its commands for that slice. The host may hold it for as long as it reasons; it keeps sending STATE heartbeats meanwhile.",
   "type": "object",
   "required": [
     "type",

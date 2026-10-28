@@ -1,6 +1,6 @@
 # Plant wire v1 — specification
 
-- **Status**: contract v1.4.0, pre-release. Versioning rules apply from v1; compatibility is promised from the first field
+- **Status**: contract v1.5.0, pre-release. Versioning rules apply from v1; compatibility is promised from the first field
   deployment.
 - **Scope**: the session between a **node** (a simulated world, or an edge gateway in front of hardware) and a **host** (a plant
   supervisor). Field protocols below a gateway are out of scope; section 13 maps the one this contract meets first.
@@ -148,17 +148,20 @@ the `NBIRTH` that answers it arrives.
 
 ## 8. Time
 
-- **Time base.** A simulated node runs in **virtual time**: `deadline_ns`, `not_before_ns`, `event_time_ns` and heartbeats are
+- **Time base.** A simulated node runs in **virtual time**: `deadline_ns`, `not_before_ns`, and `event_time_ns` are
   world time. A hardware node runs in wall time (UTC), and its `uncertainty_ms` covers clock skew.
 - **Barrier (quiescence).** A simulated world advances in slices. At the end of a slice the node sends `NSYNC {through_seq,
   world_time_ns}` and waits for `HSYNC` whose `through_seq` is at least the `NSYNC` record's own `seq` (so the barrier
   covers the `NSYNC` itself, and a late answer to an earlier slice never satisfies a later one). The node processes host records only at
   slice ends; a host record takes the world time of the slice end at which it is processed, so its effect is deterministic and
   recorded in the run's command log. The wall time waited is recorded as host latency. If no `HSYNC` arrives within the run's
-  `barrier_wall_cap_ms`, the node records a missed barrier and advances; a slow host is never outrun silently.
-- **Liveness.** The host sends `STATE` with an increasing `heartbeat` every `heartbeat_interval_ms` (wall time). A hardware
-  node treats three missed heartbeats as host loss; a simulated node treats three consecutive missed barriers as host loss, and
-  records it in the command log. On host loss the node stops executing commands, flushes its queue, lets leases lapse into their
+  `barrier_wall_cap_ms`, the node records a missed barrier and advances; a slow host is never outrun silently. The cap bounds
+  pacing only: a missed barrier says the host is slow, never that it is lost (Liveness).
+- **Liveness.** The host sends `STATE` with an increasing `heartbeat` every `heartbeat_interval_ms` (wall time), and keeps
+  sending it while it holds an `HSYNC`, however long. Every node, hardware or simulated, treats three missed heartbeats (wall
+  time, counted from the host's first `STATE` with a `heartbeat` above 0) as host loss, during a barrier wait and while a
+  paced world is held alike, and a simulated node records it in the command log. A host that heartbeats is alive however many
+  barriers it misses. On host loss the node stops executing commands, flushes its queue, lets leases lapse into their
   fallback and buffers data. `STATE {online: false}` is a graceful goodbye only.
 - **Deterministic ids.** A simulated node derives `session_id`, `boot_id` and `bd_seq` from the run and its counters, never from
   the wall clock.
@@ -279,6 +282,7 @@ declares at most 256 kinds and 4096 boards of at most 4096 devices.
 | 1.2.0 | Every board in `NBIRTH.boards` carries `environment` (`simulated` or `hardware`, required); `NBIRTH.environment` gains `mixed`; the host checks the node against its boards and against its own setting, which now has the same three values (section 2). |
 | 1.3.0 | Optional HSYNC command_evidence carries explicit host feedback decisions, independently of board acknowledgement and self-report. |
 | 1.4.0 | The board mapping file (`BOARD`, section 15) carries a board type's raw values, its lease and `board_digest`; the folder gains `VERSION`; section 9 says why a host that repeats a command on purpose needs a fresh `idempotency_key`. No record changes. |
+| 1.5.0 | Behaviour change, no record changes: a host keeps sending its `STATE` heartbeat while it holds an `HSYNC`, and a simulated node judges host loss by three missed heartbeats only, like a hardware node; missed barriers are recorded and the world advances, but they no longer count toward host loss (section 8). |
 
 ## 15. Board mapping
 
