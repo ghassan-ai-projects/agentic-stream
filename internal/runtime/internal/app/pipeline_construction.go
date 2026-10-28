@@ -14,7 +14,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/watch"
 )
 
-// PipelineDependencies are fully composed planes; app owns no database handle.
 type PipelineDependencies struct {
 	Log          *eventlog.EventLog
 	Engine       *engine.Service
@@ -31,7 +30,6 @@ type PipelineDependencies struct {
 	MaintenanceInterval time.Duration
 }
 
-// NewPipeline joins the supplied planes into one owner-scoped orchestrator.
 func NewPipeline(d PipelineDependencies) *Pipeline {
-	return &Pipeline{log: d.Log, engine: d.Engine, admission: d.Admission, runner: d.Runner, dispatcher: d.Dispatcher, watch: d.Watch, telemetry: d.Telemetry, transactions: d.Transactions, sources: d.Sources, clk: d.Clock, tenantID: d.TenantID, maintenanceInterval: d.MaintenanceInterval}
+	return &Pipeline{log: d.Log, engine: d.Engine, admission: d.Admission, runner: d.Runner, dispatcher: d.Dispatcher, watch: d.Watch, situationFeatures: d.Engine.SituationFeatures, telemetry: d.Telemetry, transactions: d.Transactions, sources: d.Sources, clk: d.Clock, tenantID: d.TenantID, maintenanceInterval: d.MaintenanceInterval}
 }

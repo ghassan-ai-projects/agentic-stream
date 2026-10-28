@@ -10,7 +10,7 @@ Read [the vocabulary](UBIQUITOUS_LANGUAGE.md) before changing rules.
 
 | Layer | Responsibility |
 | --- | --- |
-| Facade | `New(ctx, Config)`, `RunGlobal`, and the named `ReplayOwnership` check |
+| Facade | `New(ctx, Config)`, `RunGlobal`, `SituationFeatures` (the CEL features of a Situation's current runtime state) and the named `ReplayOwnership` check |
 | App | Serialised runs, per-record transactions, timers, heartbeat arming, and rebuild of in-memory Situations after a rollback |
 | Domain | Watermarks, persisted Situation state integrity, version-write derivation, collision-free lineage identity, timer matching with boot fencing, heartbeat timer identity |
 | Store | Opaque transactions, engine SQL, the owner fence on the original transaction, busy retry, WAL checkpoint, operator-state and timer-payload codecs |

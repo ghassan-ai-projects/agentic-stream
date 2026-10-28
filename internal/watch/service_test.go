@@ -61,7 +61,7 @@ func TestAWatchIsInstalledFiredAndReadBackThroughTheFacade(t *testing.T) {
 	if _, err := service.Dispatch(t.Context(), command); err != nil {
 		t.Fatalf("idempotent reinstall: %v", err)
 	}
-	if fired, err := service.FireEvent(t.Context(), "evt-1", "motor-1", map[string]any{"t": 5}); err != nil || fired != 1 {
+	if fired, err := service.FireEvent(t.Context(), "evt-1", "motor-1", featuresOf(map[string]any{"t": 5})); err != nil || fired != 1 {
 		t.Fatalf("fired=%d err=%v", fired, err)
 	}
 	if err := service.Expire(t.Context()); err != nil {
@@ -74,4 +74,8 @@ func TestAWatchIsInstalledFiredAndReadBackThroughTheFacade(t *testing.T) {
 	if _, found, err := watch.Watch(t.Context(), db, "other-tenant", "cmd-1"); err != nil || found {
 		t.Fatalf("another tenant read the watch: found=%v err=%v", found, err)
 	}
+}
+
+func featuresOf(features map[string]any) watch.FeatureSource {
+	return func(context.Context, string) (map[string]any, bool, error) { return features, true, nil }
 }

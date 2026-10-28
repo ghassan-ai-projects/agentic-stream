@@ -249,7 +249,7 @@ func (p *Pipeline) fireWatchRecord(ctx context.Context, cursor eventlog.LogPosit
 	(*read)++
 	*lastPosition = record.Position
 	telemetry.AddLinkFromW3C(span, record.Envelope.Traceparent, record.Envelope.Tracestate)
-	if _, err := p.watch.FireEvent(ctx, record.EventID, record.EntityID, record.Envelope.Data); err != nil {
+	if _, err := p.watch.FireEvent(ctx, record.EventID, record.EntityID, p.situationFeatures); err != nil {
 		return fmt.Errorf("event %s: %w", record.EventID, err)
 	}
 	return nil

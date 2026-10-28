@@ -17,3 +17,11 @@ type Service struct{ app *app.Service }
 func (s *Service) RunGlobal(ctx context.Context, beforeApply func(eventlog.Record) error) (int, error) {
 	return s.app.RunGlobal(ctx, beforeApply)
 }
+
+// SituationFeatures reads the CEL `features` view of a Situation from its
+// current runtime state: the reduced facts as of the latest applied event, not
+// as of its last published version. A Situation the engine does not hold
+// reports found as false.
+func (s *Service) SituationFeatures(ctx context.Context, situationID string) (map[string]any, bool, error) {
+	return s.app.SituationFeatures(ctx, situationID)
+}

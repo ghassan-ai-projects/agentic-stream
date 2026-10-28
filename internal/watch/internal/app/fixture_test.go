@@ -85,3 +85,7 @@ func openDB(t *testing.T) *storage.DB {
 	t.Helper()
 	return storagetest.OpenTemp(t)
 }
+
+func featuresOf(features map[string]any) app.FeatureSource {
+	return func(context.Context, string) (map[string]any, bool, error) { return features, true, nil }
+}

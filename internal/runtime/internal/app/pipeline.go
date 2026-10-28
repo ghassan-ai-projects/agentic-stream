@@ -25,16 +25,17 @@ type PipelineReport = domain.PipelineReport
 const defaultWatchPageSize = 1000
 
 type Pipeline struct {
-	transactions *store.PipelineStore
-	sources      *transport.Sources
-	log          *eventlog.EventLog
-	engine       *engine.Service
-	admission    *Admitter
-	runner       *episodes.Service
-	dispatcher   *actions.Service
-	watch        *watch.Service
-	clk          sources.Clock
-	tenantID     string
+	transactions      *store.PipelineStore
+	sources           *transport.Sources
+	log               *eventlog.EventLog
+	engine            *engine.Service
+	admission         *Admitter
+	runner            *episodes.Service
+	dispatcher        *actions.Service
+	watch             *watch.Service
+	situationFeatures watch.FeatureSource
+	clk               sources.Clock
+	tenantID          string
 
 	maintenanceInterval time.Duration
 	watchPageSize       int

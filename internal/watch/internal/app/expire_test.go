@@ -22,7 +22,7 @@ func TestAnExpiredWatchIsMarkedExpiredKeptForAuditAndNeverFires(t *testing.T) {
 	clock := sources.NewVirtual(fixtureNow)
 	service := newServiceAt(t, db, clock)
 	install(t, service, watchCommand("cmd-1", "features.temperature > 90", "motor-1", 2, fixtureNow.Add(time.Minute)))
-	if fired, err := service.FireEvent(t.Context(), "evt-low", "motor-1", map[string]any{"temperature": 10}); err != nil || fired != 0 {
+	if fired, err := service.FireEvent(t.Context(), "evt-low", "motor-1", featuresOf(map[string]any{"temperature": 10})); err != nil || fired != 0 {
 		t.Fatalf("a false expression fired %d, %v", fired, err)
 	}
 
@@ -30,7 +30,7 @@ func TestAnExpiredWatchIsMarkedExpiredKeptForAuditAndNeverFires(t *testing.T) {
 	if err := service.Expire(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if fired, err := service.FireEvent(t.Context(), "evt-late", "motor-1", map[string]any{"temperature": 100}); err != nil || fired != 0 {
+	if fired, err := service.FireEvent(t.Context(), "evt-late", "motor-1", featuresOf(map[string]any{"temperature": 100})); err != nil || fired != 0 {
 		t.Fatalf("an expired watch fired %d, %v", fired, err)
 	}
 	if got, want := readWatch(t, db, "cmd-1"), (watchState{Status: "expired", Remaining: 2}); got != want {
@@ -45,7 +45,7 @@ func TestExpiringLeavesActiveAndSpentWatchesAlone(t *testing.T) {
 	service := newServiceAt(t, db, clock)
 	install(t, service, watchCommand("cmd-active", "features.t > 1", "motor-1", 1, fixtureNow.Add(time.Hour)))
 	install(t, service, watchCommand("cmd-spent", "features.t > 1", "motor-2", 1, fixtureNow.Add(time.Minute)))
-	if fired, err := service.FireEvent(t.Context(), "evt-1", "motor-2", map[string]any{"t": 5}); err != nil || fired != 1 {
+	if fired, err := service.FireEvent(t.Context(), "evt-1", "motor-2", featuresOf(map[string]any{"t": 5})); err != nil || fired != 1 {
 		t.Fatalf("fired = %d, %v", fired, err)
 	}
 	clock.Advance(2 * time.Minute)
