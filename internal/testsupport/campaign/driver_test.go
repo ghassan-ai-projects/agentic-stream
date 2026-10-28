@@ -30,7 +30,17 @@ score) printf '{"graded":true}';;
 esac
 `
 
+const hostLostStreamsim = `#!/bin/sh
+echo "plantwire connect: plantwire: host lost"
+exit 1
+`
+
 func fakeSimulator(t *testing.T) Simulator {
+	t.Helper()
+	return fakeSimulatorRunning(t, fakeStreamsim)
+}
+
+func fakeSimulatorRunning(t *testing.T, script string) Simulator {
 	t.Helper()
 	dir := t.TempDir()
 	root, err := os.OpenRoot(dir)
@@ -38,7 +48,7 @@ func fakeSimulator(t *testing.T) Simulator {
 		t.Fatal(err)
 	}
 	defer func() { _ = root.Close() }()
-	if err := root.WriteFile("streamsim", []byte(fakeStreamsim), 0o700); err != nil {
+	if err := root.WriteFile("streamsim", []byte(script), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	if err := syscall.Mkfifo(filepath.Join(dir, "ready"), 0o600); err != nil {
@@ -107,6 +117,19 @@ func TestTheDriverStopsWhenTheConsumerCannotStart(t *testing.T) {
 		Serve: func(context.Context, Run) (Consumer, error) { return Consumer{}, os.ErrNotExist }}
 	if _, err := driver.Drive(t.Context(), 1); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("Drive without a consumer = %v, want the consumer's error", err)
+	}
+}
+
+func TestTheDriverFailsTheRunWhenTheSessionEndsBeforeTheRunsEnd(t *testing.T) {
+	t.Parallel()
+	db := storagetest.OpenTempWithoutForeignKeys(t).DB
+	driver := Driver{Campaign: writeCampaign(t), Arm: Arm{Name: "A"}, Simulator: fakeSimulatorRunning(t, hostLostStreamsim), Dir: t.TempDir(),
+		Serve: func(context.Context, Run) (Consumer, error) {
+			return Consumer{DB: db, Desk: &Desk{Approver: ApproveAll{}}, Stop: func() error { return nil }}, nil
+		}}
+	_, err := driver.Drive(t.Context(), 1)
+	if !errors.Is(err, errSessionEnded) || !strings.Contains(err.Error(), "host lost") {
+		t.Fatalf("Drive with a session that lost its host = %v, want the session's end with its output", err)
 	}
 }
 

@@ -3,6 +3,7 @@ package campaign
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,6 +13,8 @@ import (
 )
 
 const pollEvery = 500 * time.Millisecond
+
+var errSessionEnded = errors.New("the session ended before the run's end")
 
 const worldGapTolerance = time.Hour
 
@@ -92,7 +95,7 @@ func (d Driver) play(ctx context.Context, run Run, consumer Consumer, since time
 	if err != nil {
 		return RunResult{}, err
 	}
-	if err := d.await(ctx, run, consumer, since); err != nil {
+	if err := d.await(ctx, run, consumer, session, since); err != nil {
 		_ = session.Stop()
 		return RunResult{}, err
 	}
@@ -165,7 +168,7 @@ func (d Driver) closeLearning(ctx context.Context, run Run, db *sql.DB) (bool, e
 
 func (d Driver) plansDir() string { return filepath.Join(d.Dir, "plans") }
 
-func (d Driver) await(ctx context.Context, run Run, consumer Consumer, since time.Time) error {
+func (d Driver) await(ctx context.Context, run Run, consumer Consumer, session *Session, since time.Time) error {
 	ticker := time.NewTicker(pollEvery)
 	defer ticker.Stop()
 	for {
@@ -173,12 +176,32 @@ func (d Driver) await(ctx context.Context, run Run, consumer Consumer, since tim
 		if err != nil || done {
 			return err
 		}
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("wait for the run's end: %w", ctx.Err())
-		case <-ticker.C:
+		if err := nextPoll(ctx, ticker, session); err != nil {
+			return d.lastTick(ctx, run, consumer, since, err)
 		}
 	}
+}
+
+func nextPoll(ctx context.Context, ticker *time.Ticker, session *Session) error {
+	select {
+	case <-ctx.Done():
+		return fmt.Errorf("wait for the run's end: %w", ctx.Err())
+	case <-session.Ended():
+		return fmt.Errorf("%w: %s", errSessionEnded, session.output.Bytes())
+	case <-ticker.C:
+		return nil
+	}
+}
+
+func (d Driver) lastTick(ctx context.Context, run Run, consumer Consumer, since time.Time, cause error) error {
+	if ctx.Err() != nil {
+		return cause
+	}
+	done, err := d.tick(ctx, run, consumer, since)
+	if err != nil || !done {
+		return errors.Join(cause, err)
+	}
+	return nil
 }
 
 func (d Driver) tick(ctx context.Context, run Run, consumer Consumer, since time.Time) (bool, error) {
