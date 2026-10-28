@@ -112,7 +112,7 @@ func (s *Service) applyDueTimers(ctx context.Context, tx *store.Tx, partitionID 
 }
 
 func (s *Service) timerFeatures(ctx context.Context, tx *store.Tx, partitionID int, watermark, now time.Time) (*operators.PartitionState, []operators.Feature, error) {
-	state, err := tx.LoadOperatorState(ctx, partitionID, "")
+	state, err := tx.LoadHeartbeatState(ctx, partitionID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("load operator state of partition %d: %w", partitionID, err)
 	}

@@ -111,9 +111,9 @@ func (s *Service) recordLateness(ctx context.Context, tx *store.Tx, partitionID 
 }
 
 func (s *Service) applyEventFeatures(ctx context.Context, tx *store.Tx, partitionID int, record eventlog.Record, watermark time.Time) (*operators.PartitionState, error) {
-	operatorState, err := tx.LoadOperatorState(ctx, partitionID, record.Envelope.Entity.ID)
+	operatorState, err := s.entityOperatorState(ctx, tx, operatorScope{partitionID, record.Envelope.Entity.ID})
 	if err != nil {
-		return nil, fmt.Errorf("load operator state: %w", err)
+		return nil, err
 	}
 	features, newState, err := s.opRuntime.ApplyEventAt(ctx, operatorState, record.Envelope, watermark, s.clock.Now().UTC())
 	if err != nil {
@@ -140,6 +140,7 @@ func (s *Service) persistOperatorState(ctx context.Context, tx *store.Tx, partit
 	if err := tx.SaveOperatorState(ctx, partitionID, entityID, state, s.clock.Now().UTC()); err != nil {
 		return fmt.Errorf("save operator state: %w", err)
 	}
+	s.operatorStates.remember(operatorScope{partitionID, entityID}, state)
 	if err := s.scheduleHeartbeatTimers(ctx, tx, partitionID, state); err != nil {
 		return fmt.Errorf("schedule heartbeat timers: %w", err)
 	}

@@ -39,7 +39,7 @@ func TestALateEventChangesStateOnlyWhenItsPolicyCorrectsWithinAllowedLateness(t 
 			if got := queryText(t, rig.db, "SELECT disposition || '|' || late_policy FROM event_time_dispositions WHERE event_id = 'evt-late'"); got != tc.wantDisposition+"|"+tc.policy {
 				t.Fatalf("late event audit = %q, want %s under %s", got, tc.wantDisposition, tc.policy)
 			}
-			if got := countRows(t, rig.db, "SELECT COUNT(*) FROM operator_state WHERE CAST(state_blob AS TEXT) LIKE '%evt-late%'"); got != tc.wantInWindow {
+			if got := countRows(t, rig.db, "SELECT COUNT(*) FROM operator_window_samples WHERE event_id = 'evt-late'"); got != tc.wantInWindow {
 				t.Fatalf("operator states holding the late event = %d, want %d", got, tc.wantInWindow)
 			}
 			if got := countRows(t, rig.db, "SELECT COUNT(*) FROM event_inbox WHERE event_id = 'evt-late'"); got != 1 {
@@ -100,7 +100,7 @@ func TestASkewedDeviceCannotPushItsNeighborsIntoLateness(t *testing.T) {
 	if got := queryText(t, rig.db, "SELECT group_concat(event_id || ':' || disposition) FROM event_time_dispositions"); got != "evt-skewed:clock_skew" {
 		t.Fatalf("dispositions = %q, want only the skewed event refused", got)
 	}
-	if got := countRows(t, rig.db, "SELECT COUNT(*) FROM operator_state WHERE CAST(state_blob AS TEXT) LIKE '%evt-neighbor%'"); got != 1 {
+	if got := countRows(t, rig.db, "SELECT COUNT(*) FROM operator_window_samples WHERE event_id = 'evt-neighbor'"); got != 1 {
 		t.Fatalf("operator states holding the neighbor's event = %d, want it applied on time", got)
 	}
 }

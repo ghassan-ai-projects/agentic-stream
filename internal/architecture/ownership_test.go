@@ -50,6 +50,7 @@ var durableOwners = map[string]string{
 	"notification_poison_attempts":  "internal/notify/internal/store",
 	"notifications":                 "internal/notify/internal/store",
 	"operator_state":                "internal/engine/internal/store",
+	"operator_window_samples":       "internal/engine/internal/store",
 	"outbox":                        "internal/actions/internal/store",
 	"outcomes":                      "internal/actions/internal/store",
 	"partition_checkpoints":         "internal/engine/internal/store",

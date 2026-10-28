@@ -24,14 +24,14 @@ func TestOperatorStateScopeIsAnEntityAndItsCompositeKeysOnly(t *testing.T) {
 		if err != nil || len(m1.OperatorStates["op"]) != 2 {
 			t.Fatalf("m1 scope = %v err=%v, want m1 and its composite key but not m10", m1.OperatorStates, err)
 		}
-		all, err := tx.LoadOperatorState(t.Context(), 0, "")
+		all, err := tx.LoadHeartbeatState(t.Context(), 0)
 		if err != nil || len(all.OperatorStates["op"]) != 3 {
 			t.Fatalf("partition scope = %v err=%v, want all three keys", all.OperatorStates, err)
 		}
 		return tx.SaveOperatorState(t.Context(), 0, "m1", operatorState("m1"), testNow)
 	})
 	inTx(t, s, func(tx *Tx) error {
-		all, err := tx.LoadOperatorState(t.Context(), 0, "")
+		all, err := tx.LoadHeartbeatState(t.Context(), 0)
 		if err != nil || len(all.OperatorStates["op"]) != 2 {
 			t.Fatalf("saving m1 must replace only m1's scope: %v err=%v", all.OperatorStates, err)
 		}
@@ -100,7 +100,7 @@ func TestCorruptOperatorStateRefusesTheLoadInEitherScope(t *testing.T) {
 				t.Fatal(err)
 			}
 			err := s.WithTx(t.Context(), func(tx *Tx) error {
-				_, err := tx.LoadOperatorState(t.Context(), 0, entityID)
+				_, err := loadScope(t, tx, entityID)
 				return err
 			})
 			if err == nil || !strings.Contains(err.Error(), want) {
@@ -110,11 +110,19 @@ func TestCorruptOperatorStateRefusesTheLoadInEitherScope(t *testing.T) {
 	}
 }
 
+func loadScope(t *testing.T, tx *Tx, entityID string) (*operators.PartitionState, error) {
+	t.Helper()
+	if entityID == "" {
+		return tx.LoadHeartbeatState(t.Context(), 0)
+	}
+	return tx.LoadOperatorState(t.Context(), 0, entityID)
+}
+
 func TestOperatorStateStatementsNameTheirFailure(t *testing.T) {
 	t.Parallel()
 	cases := []txFailure{
 		{"entity load", "operator_state", func(ctx context.Context, tx *Tx) error { _, err := tx.LoadOperatorState(ctx, 0, "m1"); return err }, "query operator state"},
-		{"partition load", "operator_state", func(ctx context.Context, tx *Tx) error { _, err := tx.LoadOperatorState(ctx, 0, ""); return err }, "query partition operator state"},
+		{"partition load", "operator_state", func(ctx context.Context, tx *Tx) error { _, err := tx.LoadHeartbeatState(ctx, 0); return err }, "query partition operator state"},
 		{"save", "operator_state", func(ctx context.Context, tx *Tx) error {
 			return tx.SaveOperatorState(ctx, 0, "m1", operatorState("m1"), testNow)
 		}, "query stored operator state digests"},
