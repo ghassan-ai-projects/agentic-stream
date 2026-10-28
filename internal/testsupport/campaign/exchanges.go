@@ -11,6 +11,7 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
 )
 
@@ -73,7 +74,7 @@ func (c *workerCall) exchangeLine(callErr error) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	line, err := json.Marshal(exchange{Kind: c.kind, SentAt: c.sentAt.UTC().Format(time.RFC3339Nano), EndedAt: time.Now().UTC().Format(time.RFC3339Nano),
+	line, err := json.Marshal(exchange{Kind: c.kind, SentAt: kernel.FormatTime(c.sentAt), EndedAt: kernel.FormatTime(time.Now()),
 		Request: request, Response: response, Error: errorText(callErr)})
 	if err != nil {
 		return nil, fmt.Errorf("encode the exchange: %w", err)

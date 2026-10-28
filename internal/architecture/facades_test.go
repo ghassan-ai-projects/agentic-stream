@@ -165,7 +165,7 @@ var facadeSpecs = []facadeSpec{
 				"Rebind", "BindRequest", "AbandonRebind", "Abandon", "Conclude", "RetainForRetry", "SupersedeEpoch", "SupersedeCoalesced",
 				"UpsertSchedulerItem", "MarkSchedulerItemAdmitted", "CoalesceSchedulerItems", "CoalesceCostRejectedItem", "CoalesceSkippedItem",
 				"DueSchedulerItems", "PollSchedulerQueue", "ExpireSchedulerItem", "Scheduling", "Episode",
-				"ReadEpisodeFence", "ReadAttemptStatus", "ReadEpisodeLifecycle", "NextDispatchableEpisode", "ReadAdmission"),
+				"ReadEpisodeFence", "ReadAttemptStatus", "ReadEpisodeLifecycle", "NextDispatchableEpisode", "ReadAdmission", "ReasoningInFlight"),
 			to("domain", "IsTerminalAttempt", "AttemptSQL"),
 		),
 	},
