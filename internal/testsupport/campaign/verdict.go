@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
@@ -14,14 +13,21 @@ import (
 
 const verdictFile = "verdict.json"
 
-const detectionsQuery = `SELECT s.entity_id, s.first_event_time, COALESCE((SELECT json_extract(d.raw_json, '$.diagnosis_code')
-		FROM decisions d WHERE d.situation_id = s.situation_id AND d.validation_status = 'accepted'
-		ORDER BY d.situation_version DESC, d.created_at DESC LIMIT 1), '')
-	FROM situations s WHERE s.created_at >= ?1 ORDER BY s.first_event_time, s.entity_id`
+const decidedSQL = `FROM decisions d JOIN episodes e ON e.episode_id = d.episode_id
+	JOIN situations s ON s.situation_id = e.situation_id
+	JOIN situation_versions v ON v.situation_id = e.situation_id AND v.version = e.situation_version
+	WHERE d.validation_status = 'accepted' AND e.dispatch_policy != 'shadow' AND v.event_horizon >= ?1 AND v.event_horizon <= ?2`
 
-const actionsQuery = `SELECT 'sha256:' || lower(hex(c.idempotency_key)), c.effector_route, c.normalized_target, s.latest_event_time, c.status
-	FROM commands c JOIN intents i ON i.intent_id = c.intent_id JOIN situations s ON s.situation_id = i.situation_id
-	WHERE c.created_at >= ?1 ORDER BY c.created_at, c.command_id`
+const detectionsQuery = `SELECT entity_id, decided_at, label FROM (
+	SELECT s.entity_id AS entity_id, v.event_horizon AS decided_at, COALESCE(json_extract(d.raw_json, '$.diagnosis_code'), '') AS label,
+		ROW_NUMBER() OVER (PARTITION BY s.entity_id ORDER BY v.event_horizon, d.created_at, d.decision_id) AS n
+	` + decidedSQL + `) WHERE n = 1 ORDER BY decided_at, entity_id`
+
+const actionsQuery = `SELECT 'sha256:' || lower(hex(c.idempotency_key)), c.effector_route, c.normalized_target, v.event_horizon, c.status
+	FROM commands c JOIN intents i ON i.intent_id = c.intent_id JOIN decisions d ON d.decision_id = i.decision_id
+	JOIN episodes e ON e.episode_id = d.episode_id
+	JOIN situation_versions v ON v.situation_id = e.situation_id AND v.version = e.situation_version
+	WHERE v.event_horizon >= ?1 AND v.event_horizon <= ?2 ORDER BY v.event_horizon, c.command_id`
 
 type verdict struct {
 	SchemaVersion string      `json:"schema_version"`
@@ -51,20 +57,22 @@ type action struct {
 	OutcomeBelieved string `json:"outcome_believed"`
 }
 
-// WriteVerdict writes the run's consumer verdict beside its run file: the
-// situations opened and the commands sent since the run started, in the
-// simulator's neutral vocabulary.
-func WriteVerdict(ctx context.Context, db *sql.DB, runDir, arm string, since time.Time) error {
+// WriteVerdict writes the run's consumer verdict beside its run file, in the
+// simulator's neutral vocabulary. Everything is placed in simulated time: a
+// detection is the first decision on a pump whose Situation version's event
+// horizon falls inside the run's window, labeled with its diagnosis, and an
+// action is a command whose deciding episode does, issued at that horizon.
+func WriteVerdict(ctx context.Context, db *sql.DB, runDir, arm string, window Window) error {
 	runID, err := readRunID(runDir)
 	if err != nil {
 		return err
 	}
 	v := verdict{SchemaVersion: schemaVersion, RunID: runID, Consumer: consumer{Name: "agentic-stream", Version: "rule-promotion", Arm: arm}}
-	from := kernel.FormatTime(since)
-	if v.Detections, err = readVerdictRows(ctx, db, "detection", scanDetection, detectionsQuery, from); err != nil {
+	from, until := kernel.FormatTime(window.From), kernel.FormatTime(window.Until)
+	if v.Detections, err = readVerdictRows(ctx, db, "detection", scanDetection, detectionsQuery, from, until); err != nil {
 		return err
 	}
-	if v.Actions, err = readVerdictRows(ctx, db, "action", scanAction, actionsQuery, from); err != nil {
+	if v.Actions, err = readVerdictRows(ctx, db, "action", scanAction, actionsQuery, from, until); err != nil {
 		return err
 	}
 	_, err = writeIn(runDir, verdictFile, v)
@@ -85,8 +93,8 @@ func readRunID(runDir string) (string, error) {
 	return run.RunID, nil
 }
 
-func readVerdictRows[T any](ctx context.Context, db *sql.DB, what string, scan func(*sql.Rows) (T, error), query, from string) ([]T, error) {
-	rows, err := storage.QueryAll(ctx, db, what, scan, query, from)
+func readVerdictRows[T any](ctx context.Context, db *sql.DB, what string, scan func(*sql.Rows) (T, error), query string, window ...any) ([]T, error) {
+	rows, err := storage.QueryAll(ctx, db, what, scan, query, window...)
 	if err != nil {
 		return nil, fmt.Errorf("read the verdict's %ss: %w", what, err)
 	}

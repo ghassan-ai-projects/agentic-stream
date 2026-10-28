@@ -143,7 +143,11 @@ func parseWorldSpan(first, last string) (time.Time, time.Time, error) {
 }
 
 func (d Driver) grade(ctx context.Context, run Run, consumer Consumer, runDir string, since time.Time) (RunResult, error) {
-	if err := WriteVerdict(ctx, consumer.DB, runDir, d.Arm.Name, since); err != nil {
+	window, err := d.Campaign.Window(run)
+	if err != nil {
+		return RunResult{}, err
+	}
+	if err := WriteVerdict(ctx, consumer.DB, runDir, d.Arm.Name, window); err != nil {
 		return RunResult{}, err
 	}
 	grade, err := d.Simulator.Score(runDir)

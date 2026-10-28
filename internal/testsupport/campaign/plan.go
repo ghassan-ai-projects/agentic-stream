@@ -4,7 +4,30 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"time"
 )
+
+var worldEpoch = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+// Window is the span of simulated time one run's world covers.
+type Window struct{ From, Until time.Time }
+
+// Window is the run's simulated span: its world starts the plan's start_s
+// seconds after 2026-01-01 and lasts the run's duration.
+func (c Campaign) Window(run Run) (Window, error) {
+	data, err := readIn(c.Dir, run.SessionPlan)
+	if err != nil {
+		return Window{}, fmt.Errorf("run %d: %w", run.Index, err)
+	}
+	var plan struct {
+		StartS float64 `json:"start_s"`
+	}
+	if err := json.Unmarshal(data, &plan); err != nil {
+		return Window{}, fmt.Errorf("run %d: decode the session plan's start: %w", run.Index, err)
+	}
+	from := worldEpoch.Add(time.Duration(plan.StartS * float64(time.Second)))
+	return Window{From: from, Until: from.Add(run.Duration())}, nil
+}
 
 // PreparePlan copies a run's session plan into dir with the host socket and
 // the accepted policy digests set, and returns the copy's path. Every other
