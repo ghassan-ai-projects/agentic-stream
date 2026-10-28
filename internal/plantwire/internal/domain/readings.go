@@ -2,6 +2,7 @@ package domain
 
 import (
 	"fmt"
+	"slices"
 	"time"
 )
 
@@ -19,6 +20,13 @@ type DeviceView struct {
 	Outputs   []string
 	Readings  []HeldReading
 	NodeNowNS int64
+}
+
+func (v DeviceView) ReadsBack(args map[string]any) bool {
+	return slices.ContainsFunc(v.Outputs, func(output string) bool {
+		_, commanded := args[output]
+		return commanded
+	})
 }
 
 func (c *Conversation) Device(name string) (DeviceView, error) {

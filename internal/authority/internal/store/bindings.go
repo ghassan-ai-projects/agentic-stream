@@ -14,16 +14,14 @@ import (
 )
 
 const loadBindingSQL = `
-		SELECT target, COALESCE(normalized_target, ''), device_id, boot_id, owner_epoch, owner_instance, command_sha256
+		SELECT target, COALESCE(normalized_target, ''), device_id, boot_id, owner_epoch, owner_instance, command_sha256, no_readback
 		FROM device_command_bindings WHERE command_id = ?`
 
-// LoadBinding returns the binding of a command, or nil when the command was
-// never bound to a device.
 func (t *Tx) LoadBinding(ctx context.Context, commandID string) (*domain.CommandBinding, error) {
 	binding := domain.CommandBinding{CommandID: commandID}
 	var digest []byte
 	err := t.tx.QueryRowContext(ctx, loadBindingSQL, commandID).Scan(&binding.Target, &binding.NormalizedTarget, &binding.Device.DeviceID,
-		&binding.Device.BootID, &binding.Owner.Epoch, &binding.Owner.Instance, &digest)
+		&binding.Device.BootID, &binding.Owner.Epoch, &binding.Owner.Instance, &digest, &binding.NoReadback)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -38,10 +36,9 @@ func (t *Tx) LoadBinding(ctx context.Context, commandID string) (*domain.Command
 
 const insertBindingSQL = `
 		INSERT INTO device_command_bindings
-			(command_id, target, normalized_target, device_id, boot_id, owner_epoch, owner_instance, command_sha256, bound_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+			(command_id, target, normalized_target, device_id, boot_id, owner_epoch, owner_instance, command_sha256, bound_at, no_readback)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
-// InsertBinding records a new command binding.
 func (t *Tx) InsertBinding(ctx context.Context, binding domain.CommandBinding, now time.Time) error {
 	digest, err := digestBytes(binding.CommandDigest)
 	if err != nil {
@@ -49,14 +46,12 @@ func (t *Tx) InsertBinding(ctx context.Context, binding domain.CommandBinding, n
 	}
 	if _, err := t.tx.ExecContext(ctx, insertBindingSQL, binding.CommandID, binding.Target, storage.NullIfEmpty(binding.NormalizedTarget),
 		binding.Device.DeviceID, binding.Device.BootID, binding.Owner.Epoch, binding.Owner.Instance,
-		digest, kernel.FormatTime(now)); err != nil {
+		digest, kernel.FormatTime(now), storage.BoolInt(binding.NoReadback)); err != nil {
 		return fmt.Errorf("record command binding: %w", err)
 	}
 	return nil
 }
 
-// digestBytes stores an absent digest as NULL and a present one as its raw
-// 32 bytes.
 func digestBytes(reference string) (any, error) {
 	if reference == "" {
 		return nil, nil

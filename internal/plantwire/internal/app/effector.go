@@ -36,6 +36,7 @@ type target struct {
 	verified chan domain.Verification
 	window   timer
 	answerBy time.Time
+	unknown  bool
 }
 
 func (h *Host) DispatchAuthorized(ctx context.Context, command actionport.Command, authorization actionport.Authorization) (actionport.Effect, error) {

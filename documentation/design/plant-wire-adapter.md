@@ -166,6 +166,12 @@ sent. The answers map to the outcome ledger as follows.
 | still `queued` when the session ends | failed, `session_ending` |
 | sent and unanswered when the session ends, or no terminal answer by the deadline plus 2 s, or the dispatch call ends | unknown outcome |
 
+An unknown outcome of a command with nothing to read back (no argument is named
+like a writable metric of the device's kind, such as a maintenance booking)
+concludes as manual review at once, with the empty read-back sealed as its
+evidence: no reading of the device could ever settle it, so it does not wait as
+reconciling. It stays in the unresolved list for an operator.
+
 A command to a device on a hardware board without consent, or whose board is
 not in `--hardware-boards`, is a known failure before anything is sent: the
 error is `ErrOriginNotAuthorized` and the provider result says `refused:
@@ -211,7 +217,9 @@ command's normalized target beside the output it was bound to, so the
 dispatcher reconciles an unknown outcome from this evidence (the device
 authority checks the command against the normalized target and the evidence
 against the output). Without a match in the window, or with no argument to read
-back, it gives no final status and the outcome stays in manual review. No
+back, it gives no final status and the outcome stays in manual review (an
+unknown outcome with no argument to read back concludes as manual review, see
+Commands). No
 `DQUERY` is sent: a relay answers none for a real device. The next `HSYNC`
 carries each numeric decision as `command_evidence` (`observed` with the value,
 or `not_observed` when the window lapsed); a word has no number for the
@@ -231,9 +239,13 @@ output has a good, live reading on the boot that is newer than the latest
 opening; every reading of a boot is newer than the reboot that opened its
 reconciliation, so a reboot clears on the new boot's first good reading, and
 an unknown outcome on a reading received after it. As for any resolution, it
-refuses while a command bound to the boot is still unresolved in the action
-ledger, so an unknown command must be reconciled first (by its verification or
-an operator).
+refuses while a command bound to the boot that reads back is still unresolved
+in the action ledger, so an unknown command with outputs to read must be
+reconciled first (by its verification or an operator). A command with nothing
+to read back does not count: it leaves the device's outputs as they were, so
+the device's readings say everything there is to know about the device, and its
+unresolved `manual_review` (the operator list and the soak report still show
+it) does not hold the barrier.
 
 ## What the adapter never does
 

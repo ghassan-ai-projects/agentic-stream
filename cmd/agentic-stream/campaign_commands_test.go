@@ -40,6 +40,24 @@ func TestTheCampaignsServeFlagsLetAScheduledMaintenanceReachThePlant(t *testing.
 	waitForRow(t, run.db, "SELECT COUNT(*) FROM outcomes WHERE json_extract(provider_result_json, '$.plant_wire.command') = 'schedule_maintenance'", loopTimeout)
 }
 
+func TestAnUnknownScheduledMaintenanceConcludesAsManualReview(t *testing.T) {
+	t.Parallel()
+	dir := privateSocketDir(t)
+	database := filepath.Join(dir, "stream.db")
+	seedMigratedDatabase(t, database)
+	serveWorker(t, filepath.Join(dir, "worker.sock"), bookBearingWearMaintenance)
+	run := plantWireServe{dir: dir, socket: filepath.Join(dir, "host.sock"), db: database}
+	servePlantWire(t, run, freeLoopbackAddress(t), editedSpec(t, pumpStationSpec, dir, pumpFastEdits), filepath.Join(pumpStationPlantWire, "kinds"),
+		filepath.Join(pumpStationPlantWire, "pump-station.site.json"), campaignSetup{sockets: dir}.serveFlags()...)
+	node := bornPumpNode(t, run.socket)
+	sendWearingPump(node)
+	command := awaitCommand(t, node)
+	answer(node, command, "DRECEIPT", "status", "accepted")
+	answer(node, command, "DRESULT", "reported_outcome", "unknown")
+	waitForRow(t, run.db, "SELECT COUNT(*) FROM commands WHERE effector_route = 'schedule_maintenance' AND status = 'manual_review'", loopTimeout)
+	waitForRow(t, run.db, "SELECT COUNT(*) FROM device_command_bindings WHERE no_readback = 1", loopTimeout)
+}
+
 func bookBearingWearMaintenance(_ context.Context, req *runtimev1.EpisodeRequest, emit func(*runtimev1.EpisodeEvent) error) error {
 	return workerfake.Propose(req, emit, workerfake.Answer{Hypothesis: "bearing_wear", DiagnosisCode: "bearing_wear", Summary: "radial vibration rising",
 		Intents: []workerfake.ProposedIntent{{Type: "schedule_maintenance", Risk: "R1", Parameters: map[string]any{"work_order": "bearing_wear"}}}})

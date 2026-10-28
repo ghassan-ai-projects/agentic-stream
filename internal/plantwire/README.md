@@ -153,8 +153,9 @@ writable metric of the device's kind (the `DBIRTH` values count), with the host
 time it arrived. The authority clears the reconciliation, recording the
 readings as evidence, when every output has a good, live reading on the boot
 newer than the latest opening (any reading of a rebooted boot qualifies), and
-nothing bound to the boot is unresolved in the action ledger; otherwise the
-command is refused. A reboot, or the switch from a simulated to a real session
+no command bound to the boot that reads back is unresolved in the action
+ledger (a no-readback command does not count, whatever its status); otherwise
+the command is refused. A reboot, or the switch from a simulated to a real session
 of the same device, therefore clears on the new boot's first good reading, and
 an unknown outcome on a reading that arrived after it, once the dispatcher has
 reconciled the unknown command. Device-wire does not use it (decision D4).
@@ -174,4 +175,5 @@ reading after the fan's 5 s lease lapsed cannot) after the dispatch returned, th
 the session's end; then it withdraws the watch (`not_observed` evidence) and
 gives no final status. A verified command reports succeeded with the readings
 sealed as device-state evidence. A command with nothing to read back is
-unverified at once. No `DQUERY` is sent.
+unverified at once, and when its outcome is unknown it concludes as manual
+review with the empty read-back as evidence. No `DQUERY` is sent.
