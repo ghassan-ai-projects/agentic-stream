@@ -10,6 +10,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions"
 	deviceauthority "github.com/ghassan-ai-projects/agentic-stream/internal/authority"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
@@ -84,7 +85,7 @@ func (core *runtimeCore) openPlantWireHost(flags serveFlags, cleanup *cleanups) 
 	if err != nil {
 		return nil, err
 	}
-	host, err := newPlantWireHost(flags.plantWire, options, commanding)
+	host, err := newPlantWireHost(flags.plantWire, options, commanding, core.reasoningInFlight)
 	if err != nil {
 		return nil, err
 	}
@@ -123,14 +124,22 @@ func plantWireCallTimeout(options effectProfileOptions) time.Duration {
 	return call - plantwire.AnswerGrace - plantwire.VerificationWindow
 }
 
-func newPlantWireHost(flags plantWireFlags, options effectProfileOptions, commanding plantWireCommanding) (*plantwire.Host, error) {
+func (core *runtimeCore) reasoningInFlight(ctx context.Context) (bool, error) {
+	inFlight, err := episodeledger.ReasoningInFlight(ctx, core.db.DB)
+	if err != nil {
+		return false, fmt.Errorf("read the reasoning in flight: %w", err)
+	}
+	return inFlight, nil
+}
+
+func newPlantWireHost(flags plantWireFlags, options effectProfileOptions, commanding plantWireCommanding, reasoning func(context.Context) (bool, error)) (*plantwire.Host, error) {
 	listener, err := worker.ListenEvidenceSocket(options.PlantWireSocket)
 	if err != nil {
 		return nil, fmt.Errorf("listen on the plant wire socket: %w", err)
 	}
 	host, err := plantwire.New(plantwire.Config{Listener: listener, Settings: flags.settings(options),
 		KindsDir: flags.kindsDir, SitePath: flags.sitePath, Catalog: commanding.catalog, Authority: commanding.authority,
-		OwnerEpoch: commanding.epoch})
+		OwnerEpoch: commanding.epoch, ReasoningInFlight: reasoning})
 	if err != nil {
 		_ = listener.Close()
 		return nil, fmt.Errorf("open the plant wire host: %w", err)

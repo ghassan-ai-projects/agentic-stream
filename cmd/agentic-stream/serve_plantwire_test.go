@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func TestServeValidatesThePlantWireFlags(t *testing.T) {
@@ -60,4 +61,21 @@ func plantWireServeFlags() serveFlags {
 	}
 	flags.effect.PlantWireSocket, flags.effect.DeviceCatalog = "/tmp/plantwire/host.sock", "catalog.json"
 	return flags
+}
+
+func TestThePlantWireHostReadsReasoningInFlightFromTheRuntimeDatabase(t *testing.T) {
+	t.Parallel()
+	core := &runtimeCore{db: storagetest.OpenTempWithoutForeignKeys(t)}
+	if inFlight, err := core.reasoningInFlight(t.Context()); err != nil || inFlight {
+		t.Fatalf("empty ledger: in flight = %v err=%v", inFlight, err)
+	}
+	digest := make([]byte, 32)
+	if _, err := core.db.ExecContext(t.Context(), `INSERT INTO scheduler_items (
+		scheduler_item_id, trigger_id, tenant_id, situation_id, situation_version, lane, priority, status, dedupe_key, expires_at, created_at, updated_at
+		) VALUES ('i1', 't1', 'tenant', 's', 1, 'fast', 1, 'pending', ?, 'later', 'now', 'now')`, digest); err != nil {
+		t.Fatal(err)
+	}
+	if inFlight, err := core.reasoningInFlight(t.Context()); err != nil || !inFlight {
+		t.Fatalf("a pending item: in flight = %v err=%v", inFlight, err)
+	}
 }

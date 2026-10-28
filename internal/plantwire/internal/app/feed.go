@@ -13,6 +13,8 @@ const (
 
 type Emit = func(context.Context, contractsv1.Envelope) error
 
+type ReasoningInFlight = func(context.Context) (bool, error)
+
 type ingestQueue struct {
 	events  chan contractsv1.Envelope
 	drained chan struct{}

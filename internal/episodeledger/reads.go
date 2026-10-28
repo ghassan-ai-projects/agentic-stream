@@ -49,3 +49,11 @@ func NextDispatchableEpisode(ctx context.Context, tx *sql.Tx, tenantID string, k
 func ReadAdmission(ctx context.Context, db *sql.DB, episodeID string) (Admission, error) {
 	return app.ReadAdmission(ctx, store.Reader(db), episodeID)
 }
+
+// ReasoningInFlight reports from a database handle whether reasoning is in
+// flight: an episode is admitted or running, or a scheduler item that may start
+// at once is still pending. An item held back by a debounce or cooldown window
+// is not reasoning in flight.
+func ReasoningInFlight(ctx context.Context, db *sql.DB) (bool, error) {
+	return app.ReasoningInFlight(ctx, store.Reader(db))
+}

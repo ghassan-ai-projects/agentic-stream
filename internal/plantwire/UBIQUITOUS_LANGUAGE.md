@@ -20,7 +20,7 @@ the [device-authority language](../authority/UBIQUITOUS_LANGUAGE.md).
 | **Gap** | A sequence number ahead of the next expected one; final on a Unix socket. The host asks one rebirth until the next birth. | `Gap` | `NCMD rebirth` |
 | **Conversation** | The pure state of one session: what each node record makes the host answer, and when the session ends. | `Conversation` | — |
 | **Heartbeat** | The host's `STATE` every second with an increasing counter, after the handshake. | `Conversation.Beat` | `STATE.heartbeat` |
-| **Barrier** | The node's end of a slice; the host answers through the `NSYNC`'s own sequence number once the events read before it have left the ingest queue, so a node paced by barriers cannot outrun the pipeline. | `Conversation.Receive` | `NSYNC`, `HSYNC` |
+| **Barrier** | The node's end of a slice; the host answers through the `NSYNC`'s own sequence number once the events read before it have left the ingest queue and no reasoning is in flight, so a node paced by barriers cannot outrun the pipeline or its reasoning. | `Conversation.Receive` | `NSYNC`, `HSYNC` |
 | **Goodbye** | The host's offline `STATE` when it stops. | `Conversation.Goodbye` | `STATE.online: false` |
 | **Authority epoch** | The integer the host announces in every `STATE`; from `--plant-wire-epoch`, or Unix seconds at start. | `Settings.Epoch` | `authority_epoch` |
 

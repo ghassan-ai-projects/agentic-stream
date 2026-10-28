@@ -66,7 +66,11 @@ type Settings = domain.Settings
 // routes the host owns as an effector; without it the host commands nothing.
 // A host with a catalog needs Authority, the device authority of the runtime
 // owner, and OwnerEpoch, the owner epoch it commands under. Clock defaults to
-// the physical clock.
+// the physical clock. ReasoningInFlight is the optional check the host polls
+// while it holds a barrier answer after its ingest queue has drained: the
+// answer is released when it reports false (an error is logged and counts as
+// false), so a node that paces itself by barriers cannot outrun the consumer's
+// reasoning. Without it a barrier waits for the ingest queue only.
 type Config struct {
 	Listener   net.Listener
 	Settings   Settings
@@ -76,6 +80,8 @@ type Config struct {
 	Authority  *authority.Service
 	OwnerEpoch string
 	Clock      sources.Clock
+
+	ReasoningInFlight func(context.Context) (bool, error)
 }
 
 // Host serves one plant wire session at a time on its listener.
@@ -85,7 +91,7 @@ type Host struct{ app *app.Host }
 func New(cfg Config) (*Host, error) {
 	host, err := app.New(app.Config{Listener: transport.NewListener(cfg.Listener), Settings: cfg.Settings,
 		KindsDir: cfg.KindsDir, SitePath: cfg.SitePath, Catalog: cfg.Catalog, Authority: cfg.Authority, OwnerEpoch: cfg.OwnerEpoch,
-		Clock: cfg.Clock})
+		Clock: cfg.Clock, ReasoningInFlight: cfg.ReasoningInFlight})
 	if err != nil {
 		return nil, err
 	}

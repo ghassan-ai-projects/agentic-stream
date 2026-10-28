@@ -1,6 +1,7 @@
 package app
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"io"
@@ -48,6 +49,8 @@ type session struct {
 	mailboxes    map[string]chan<- domain.Settlement
 	watchers     map[string]chan<- domain.Verification
 	held         []map[string]any
+	reasoning    ReasoningInFlight
+	recheck      timer
 	born         *bornKinds
 	done         chan struct{}
 }
@@ -56,7 +59,7 @@ func (h *Host) serve(ctx context.Context, conn *transport.Conn, queue *ingestQue
 	s := &session{conn: conn, conversation: domain.NewConversation(h.admission, h.epoch, h.mapping), clock: h.clock,
 		queue: queue, lines: make(chan readResult), calls: make(chan call), mailboxes: map[string]chan<- domain.Settlement{},
 		watchers: map[string]chan<- domain.Verification{}, authority: h.authority, claims: map[string]authority.TargetClaim{},
-		settings: h.settings, born: h.born, done: make(chan struct{})}
+		settings: h.settings, born: h.born, reasoning: h.reasoning, done: make(chan struct{})}
 	h.goLive(s)
 	defer h.goLive(nil)
 	defer s.close()
@@ -87,7 +90,9 @@ func (s *session) step(ctx context.Context) string {
 	case do := <-s.pendingCalls():
 		return do()
 	case <-s.draining():
-		return s.releaseHeld()
+		return s.releaseHeld(ctx)
+	case <-s.rechecks():
+		return s.releaseHeld(ctx)
 	}
 }
 
@@ -108,7 +113,7 @@ func (s *session) receive(ctx context.Context, read readResult) string {
 
 func (s *session) answer(ctx context.Context, reaction domain.Reaction) string {
 	if s.holdUntilDrained(reaction.Replies) {
-		return reaction.End
+		return cmp.Or(reaction.End, s.releaseHeld(ctx))
 	}
 	if err := s.send(reaction.Replies); err != nil {
 		slog.WarnContext(ctx, "plant wire host record not written", "error", err)
@@ -178,6 +183,7 @@ func (s *session) close() {
 	if s.beat != nil {
 		s.beat.Stop()
 	}
+	s.stopRecheck()
 	_ = s.conn.Close()
 }
 

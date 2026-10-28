@@ -28,7 +28,8 @@ The coalescing statement reads `trigger_evaluations` (cognition's table); this i
 also checks `epoch_control` (control's table) for killed policy epochs.
 
 Other modules read `episodes` and `episode_attempts` only through the ledger: `ReadEpisodeFence`,
-`ReadAttemptStatus`, `ReadEpisodeLifecycle`, `NextDispatchableEpisode` and `ReadAdmission`. The
+`ReadAttemptStatus`, `ReadEpisodeLifecycle`, `NextDispatchableEpisode`, `ReadAdmission` and `ReasoningInFlight` (an episode admitted or running, or a pending
+scheduler item without a debounce or cooldown window). The
 admission columns have one list, `admissionColumns`, shared by the INSERT and both reads.
 
 Migration record.

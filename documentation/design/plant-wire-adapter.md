@@ -69,12 +69,21 @@ the code implements.
    no kind file commissions, is quarantined: its devices give no events and take
    no commands, and the session stays up.
 4. Every `NSYNC` is answered with `HSYNC` as soon as the events read before it
-   have left the ingest queue; reading never waits on the pipeline, but the
-   barrier answer does, so a node that paces itself by barriers (an unpaced
-   simulated world) cannot outrun the pipeline. While an answer is held, the
-   host sends nothing else (its records are sequenced) and keeps reading. A
-   node that floods the queue without waiting for barriers still ends the
-   session: the pipeline fell behind.
+   have left the ingest queue and the consumer has no reasoning in flight:
+   an episode admitted and not yet terminal, or scheduler work that may start
+   at once and has not yet been admitted (work held back by a debounce or
+   cooldown window is not in flight). Reading never waits on the pipeline, but
+   the barrier answer does, so a node that paces itself by barriers (an
+   unpaced simulated world) cannot outrun the pipeline or the reasoning on its
+   evidence; a real plant does not pace by barriers and is unaffected. The
+   host polls the check, which `serve` wires to the episode ledger, only after
+   the queue has drained, and the node's own barrier cap still bounds the
+   wait. Commands are not part of the wait: an episode's command is dispatched
+   only after the episode ends, and while an answer is held the host sends
+   nothing else, so waiting on a command would stall until the cap. While an
+   answer is held, the host sends nothing else (its records are sequenced) and
+   keeps reading. A node that floods the queue without waiting for barriers
+   still ends the session: the pipeline fell behind.
 5. A sequence gap asks for one rebirth. A socket loss or `NDEATH` ends the
    session: claims are released, commands in flight are settled as the contract
    says, devices go offline. The host then accepts the next session without a
