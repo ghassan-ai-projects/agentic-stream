@@ -18,6 +18,8 @@ var (
 	pumpStationCatalog   = filepath.Join(pumpStationPlantWire, "pump-station.catalog.json")
 )
 
+const pumpStationDispatchLease = "5m"
+
 func compilePumpStation(t *testing.T) *spec.CompiledSpec {
 	t.Helper()
 	compiled, err := spec.CompileFile(t.Context(), pumpStationSpec)
@@ -40,7 +42,7 @@ func TestThePumpStationOpensAConditionOnTheWornPump(t *testing.T) {
 	t.Parallel()
 	binary, repository := streamsimNode(t)
 	run := startPlantWireServe(t, pumpStationSpec, filepath.Join(pumpStationPlantWire, "kinds"),
-		filepath.Join(pumpStationPlantWire, "pump-station.site.json"), "--device-catalog", pumpStationCatalog)
+		filepath.Join(pumpStationPlantWire, "pump-station.site.json"), "--device-catalog", pumpStationCatalog, "--dispatch-lease", pumpStationDispatchLease)
 	plan := writePumpStationPlan(t, run.socket, "pump-station", map[string]any{"at_s": 3600, "instance": "site-a/pump-3", "fault": "bearing_wear"})
 	startPumpStationNode(t, binary, repository, plan, filepath.Join(run.dir, "run"))
 	opened := func() bool { return openedConditions(t, run.db)["site-a:pump-3"] > 0 }
@@ -90,7 +92,7 @@ func TestRulesPinnedToTheOldPumpKindStopAtTheFirstProbeBBirth(t *testing.T) {
 	binary, repository := streamsimNode(t)
 	run := startPlantWireServe(t, pumpStationSpec, filepath.Join(pumpStationPlantWire, "kinds-probe-b"),
 		filepath.Join(pumpStationPlantWire, "pump-station.site.json"), "--playbook", filepath.Join(pumpStationPlantWire, "..", "site-a.playbook.yaml"),
-		"--device-catalog", pumpStationCatalog)
+		"--device-catalog", pumpStationCatalog, "--dispatch-lease", pumpStationDispatchLease)
 	plan := writePumpStationPlan(t, run.socket, "pump-station-probe-b", map[string]any{"at_s": 3600, "instance": "site-a/pump-3", "fault": "bearing_wear"})
 	startPumpStationNode(t, binary, repository, plan, filepath.Join(run.dir, "run"))
 	switchedOff := func() bool {

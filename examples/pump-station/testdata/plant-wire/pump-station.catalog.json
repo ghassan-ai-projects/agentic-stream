@@ -15,7 +15,7 @@
       },
       "target_arg": "pump_id",
       "selector_field": "work_order",
-      "expires_after_ms": 20000,
+      "expires_after_ms": 180000,
       "presets": {
         "bearing_wear": {
           "work_order": "bearing_wear"

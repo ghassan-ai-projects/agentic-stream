@@ -235,7 +235,8 @@ func (s campaignSetup) serve(t *testing.T) func(context.Context, campaign.Run) (
 }
 
 func (s campaignSetup) serveFlags() []string {
-	flags := []string{"--worker-socket", filepath.Join(s.sockets, "worker.sock"), "--worker-name", "tamoz", "--device-catalog", pumpStationCatalog}
+	flags := []string{"--worker-socket", filepath.Join(s.sockets, "worker.sock"), "--worker-name", "tamoz", "--device-catalog", pumpStationCatalog,
+		"--dispatch-lease", pumpStationDispatchLease}
 	if s.playbook != "" {
 		flags = append(flags, "--playbook", s.playbook)
 	}
