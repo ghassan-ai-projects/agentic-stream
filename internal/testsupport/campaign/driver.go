@@ -25,7 +25,16 @@ const lastEventQuery = `SELECT COALESCE(MAX(event_time), '') FROM event_log`
 // state.
 const LearnedDatabase = "learned.db"
 
-const worldSpanQuery = `SELECT COALESCE(MIN(event_time), ''), COALESCE(MAX(event_time), '') FROM event_log WHERE ingested_at >= ?1`
+const runStartQuery = `SELECT COALESCE(MAX(position), 0) FROM event_log`
+
+const worldSpanQuery = `SELECT
+	COALESCE((SELECT event_time FROM event_log WHERE position > ?1 ORDER BY position LIMIT 1), ''),
+	COALESCE((SELECT event_time FROM event_log WHERE position > ?1 ORDER BY position DESC LIMIT 1), '')`
+
+type runStart struct {
+	at       time.Time
+	position int64
+}
 
 // Consumer is one started agentic-stream serve: its database, the plant wire
 // host socket a session connects to and the approval desk.
@@ -90,19 +99,35 @@ func (d Driver) drive(ctx context.Context, run Run) (RunResult, error) {
 }
 
 func (d Driver) play(ctx context.Context, run Run, consumer Consumer, since time.Time) (RunResult, error) {
+	start, err := runStartOf(ctx, consumer.DB, since)
+	if err != nil {
+		return RunResult{}, err
+	}
+	return d.playFrom(ctx, run, consumer, start)
+}
+
+func runStartOf(ctx context.Context, db *sql.DB, at time.Time) (runStart, error) {
+	start := runStart{at: at}
+	if err := db.QueryRowContext(ctx, runStartQuery).Scan(&start.position); err != nil {
+		return start, fmt.Errorf("read the event log position the run starts after: %w", err)
+	}
+	return start, nil
+}
+
+func (d Driver) playFrom(ctx context.Context, run Run, consumer Consumer, start runStart) (RunResult, error) {
 	runDir := filepath.Join(d.Dir, fmt.Sprintf("run-%04d", run.Index))
 	session, window, err := d.connect(ctx, run, consumer, runDir)
 	if err != nil {
 		return RunResult{}, err
 	}
-	if err := d.await(ctx, run, consumer, session, since); err != nil {
+	if err := d.await(ctx, run, consumer, session, start); err != nil {
 		_ = session.Stop()
 		return RunResult{}, err
 	}
 	if err := session.Stop(); err != nil {
 		return RunResult{}, err
 	}
-	return d.grade(ctx, run, consumer, runDir, since, window)
+	return d.grade(ctx, run, consumer, runDir, start.at, window)
 }
 
 func (d Driver) connect(ctx context.Context, run Run, consumer Consumer, runDir string) (*Session, Window, error) {
@@ -168,16 +193,16 @@ func (d Driver) closeLearning(ctx context.Context, run Run, db *sql.DB) (bool, e
 
 func (d Driver) plansDir() string { return filepath.Join(d.Dir, "plans") }
 
-func (d Driver) await(ctx context.Context, run Run, consumer Consumer, session *Session, since time.Time) error {
+func (d Driver) await(ctx context.Context, run Run, consumer Consumer, session *Session, start runStart) error {
 	ticker := time.NewTicker(pollEvery)
 	defer ticker.Stop()
 	for {
-		done, err := d.tick(ctx, run, consumer, since)
+		done, err := d.tick(ctx, run, consumer, start)
 		if err != nil || done {
 			return err
 		}
 		if err := nextPoll(ctx, ticker, session); err != nil {
-			return d.lastTick(ctx, run, consumer, since, err)
+			return d.lastTick(ctx, run, consumer, start, err)
 		}
 	}
 }
@@ -193,31 +218,31 @@ func nextPoll(ctx context.Context, ticker *time.Ticker, session *Session) error 
 	}
 }
 
-func (d Driver) lastTick(ctx context.Context, run Run, consumer Consumer, since time.Time, cause error) error {
+func (d Driver) lastTick(ctx context.Context, run Run, consumer Consumer, start runStart, cause error) error {
 	if ctx.Err() != nil {
 		return cause
 	}
-	done, err := d.tick(ctx, run, consumer, since)
+	done, err := d.tick(ctx, run, consumer, start)
 	if err != nil || !done {
 		return errors.Join(cause, err)
 	}
 	return nil
 }
 
-func (d Driver) tick(ctx context.Context, run Run, consumer Consumer, since time.Time) (bool, error) {
-	start, now, err := worldSpan(ctx, consumer.DB, since)
+func (d Driver) tick(ctx context.Context, run Run, consumer Consumer, start runStart) (bool, error) {
+	first, now, err := worldSpan(ctx, consumer.DB, start.position)
 	if err != nil || now.IsZero() {
 		return false, err
 	}
 	if _, err := consumer.Desk.Act(ctx, consumer.DB, now); err != nil {
 		return false, err
 	}
-	return now.Sub(start) >= run.Duration(), nil
+	return now.Sub(first) >= run.Duration(), nil
 }
 
-func worldSpan(ctx context.Context, db *sql.DB, since time.Time) (time.Time, time.Time, error) {
+func worldSpan(ctx context.Context, db *sql.DB, after int64) (time.Time, time.Time, error) {
 	var first, last string
-	if err := db.QueryRowContext(ctx, worldSpanQuery, kernel.FormatTime(since)).Scan(&first, &last); err != nil {
+	if err := db.QueryRowContext(ctx, worldSpanQuery, after).Scan(&first, &last); err != nil {
 		return time.Time{}, time.Time{}, fmt.Errorf("read the run's world time: %w", err)
 	}
 	if last == "" {
