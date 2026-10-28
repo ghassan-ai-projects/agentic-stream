@@ -132,7 +132,15 @@ copies; `cmd` derives no rule of its own.
 
 The idempotency key of an approved command is forwarded unchanged (one key per
 intent, so a repeated identical command really runs again). The deadline is
-UTC, `authority_epoch` comes from `--plant-wire-epoch` (default: Unix seconds at
+expressed in the node's time, because the node judges it against its own clock
+(a simulated world need not run on the wall clock): the node's latest time the
+session saw (the newest of its births, readings and `NSYNC` world times) plus
+the wall time the host has waited since that record arrived, plus the route's
+expiry. For a node whose time is the wall clock (a real plant) that is the host
+clock plus the expiry; for a barrier-paced world, whose time stands still
+between barriers, it is the world's time plus the expiry. `not_before_ns` is
+unset. The host's own wait for the terminal answer is a wall-clock wait of the
+expiry plus 2 s, independent of the node's time. `authority_epoch` comes from `--plant-wire-epoch` (default: Unix seconds at
 start), and every command falls back `safe_off` on lease or host loss (the
 semantic kinds name no lease, so the host cannot tell a lease command; the
 contract's fixtures and the reference host do the same). Receipts and

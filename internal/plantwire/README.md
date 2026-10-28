@@ -113,8 +113,10 @@ not sent and leaves no gap in the stream. The conversation tracks the command
 (sent, queued, accepted)
 and settles it from each receipt and result; when the session ends, a queued
 command is refused `session_ending` and any other is unknown. The effector
-waits until the terminal settlement, the deadline plus 2 s on the host clock,
-or the dispatcher's call timeout. The outcome table is in
+waits until the terminal settlement, the route's expiry plus 2 s on the host
+clock, or the dispatcher's call timeout. The `DCMD` deadline is in the node's
+time (its latest seen time plus the wall time since, plus the expiry), so a
+simulated world off the wall clock accepts it. The outcome table is in
 [the design](../../documentation/design/plant-wire-adapter.md#commands).
 
 ### Device authority

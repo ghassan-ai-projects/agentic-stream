@@ -35,6 +35,7 @@ type ingest struct {
 	boards  map[string]string
 	devices map[string]*liveDevice
 	nowNS   int64
+	nowAt   time.Time
 	tally   Tally
 }
 
@@ -122,7 +123,7 @@ func (g *ingest) data(a Arrival, r *Reaction) {
 }
 
 func (g *ingest) sample(device *liveDevice, s Sample, a Arrival, r *Reaction) {
-	g.nowNS = max(g.nowNS, s.EventTimeNS)
+	g.noteNodeTime(s.EventTimeNS, a.ReceivedAt)
 	metric, known := device.aliases[s.Alias]
 	if !known {
 		return
@@ -146,8 +147,21 @@ func (g *ingest) deviceDeath(d DeviceDeath, r *Reaction) {
 }
 
 func (g *ingest) advance(ns int64, a Arrival, r *Reaction) {
-	g.nowNS = max(g.nowNS, ns)
+	g.noteNodeTime(ns, a.ReceivedAt)
 	g.beat(a, r)
+}
+
+func (g *ingest) noteNodeTime(ns int64, receivedAt time.Time) {
+	if ns > g.nowNS {
+		g.nowNS, g.nowAt = ns, receivedAt
+	}
+}
+
+func (g *ingest) nodeNowNS(hostNow time.Time) int64 {
+	if g.nowNS == 0 {
+		return hostNow.UnixNano()
+	}
+	return g.nowNS + hostNow.Sub(g.nowAt).Nanoseconds()
 }
 
 func (g *ingest) beat(a Arrival, r *Reaction) {

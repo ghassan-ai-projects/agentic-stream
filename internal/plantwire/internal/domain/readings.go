@@ -14,10 +14,11 @@ type HeldReading struct {
 }
 
 type DeviceView struct {
-	BootID   string
-	Origin   Origin
-	Outputs  []string
-	Readings []HeldReading
+	BootID    string
+	Origin    Origin
+	Outputs   []string
+	Readings  []HeldReading
+	NodeNowNS int64
 }
 
 func (c *Conversation) Device(name string) (DeviceView, error) {
@@ -31,6 +32,8 @@ func (c *Conversation) Device(name string) (DeviceView, error) {
 	outputs := c.admission.Inventory.Outputs(device.kind)
 	return DeviceView{BootID: device.boot, Origin: c.ingest.originOf(device), Outputs: outputs, Readings: device.readingsOf(outputs)}, nil
 }
+
+func (c *Conversation) NodeNowNS(hostNow time.Time) int64 { return c.ingest.nodeNowNS(hostNow) }
 
 func (c *Conversation) OriginOf(name string) (Origin, error) {
 	if !c.accepted {
