@@ -57,7 +57,10 @@ catalog or equal to `unknown`; an intent at R3 or above, marked `emergency` or
 marked `safetyFunction` (decision 17); an envelope outside its cap.
 
 The spec gains `settleWindows` (diagnosis code to duration), `contextFeatures`,
-an optional `remedyMap` and the two intent flags. A Decision gains an optional
+an optional `remedyMap`, an optional `recovery` (diagnosis code to a recovery
+check: a `reading` feature, a `baseline` feature and a relative `tolerance`;
+both features must be operator outputs, the code must be in the catalog and have
+a settle window) and the two intent flags. A Decision gains an optional
 `diagnosis_code`, checked against the catalog when the spec declares one
 (decision 10, F2).
 
@@ -134,7 +137,13 @@ After each batch the runtime calls `playbook.Settle`, which, in order:
    in event time: a case is verified only when its action was acknowledged,
    its Situation resolved and no version that is not resolved appeared on the
    entity before `acted_at + settleWindow(diagnosis code)`; the log's latest
-   event time says when the window has passed. A rule-handled case that is not
+   event time says when the window has passed. When the code declares a
+   recovery check the case must also have recovered: the `reading` feature at
+   the closing Situation version, read from the stored versions, is within
+   `tolerance` of the `baseline` feature frozen in the case's features at
+   decision time (a situation that compares a reading with its own moving
+   baseline can close because the baseline absorbed the change, with nothing
+   repaired). A code without a check keeps the rule above. A rule-handled case that is not
    verified opens the rule's circuit (`no_effect`) (AS-5);
 5. checks shadow exits and eligibility for a draft (AS-7).
 
