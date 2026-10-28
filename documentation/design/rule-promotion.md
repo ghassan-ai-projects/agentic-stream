@@ -70,7 +70,7 @@ scripted approvers and the campaign score**; the simulator owns the world and th
   `dispatch_policy` `active` or `shadow` (`migrations/024_episode_modes.sql`); one live episode per situation
   (`migrations/003_lifecycle_fencing.sql:101`). The diagnosis catalog is passed to the worker and only digested
   in Go (`internal/episodes/internal/domain/assembly_executor.go:37-54`).
-- **Rate limits**: hourly per intent (`migrations/022_intent_rate_limits.sql`); nothing per rule.
+- **Rate limits**: hourly per intent, counted in the event time of the situation version the intent answers (`intent_dispatch_counts`), so a paced simulated world or a replay meets the same limits as the live plant; nothing per rule.
 - **Verification**: read-back of commanded metrics from the device's own readings
   (`internal/plantwire/host.go:160-170`); verdicts verified, refuted, inconclusive
   (`internal/actions/internal/domain/reconciliation.go:112-132`).

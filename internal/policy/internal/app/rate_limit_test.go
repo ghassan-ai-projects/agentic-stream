@@ -2,11 +2,15 @@ package app_test
 
 import (
 	"testing"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
-// The catalog's per-intent hourly rate limit is enforced before dispatch:
-// dispatches up to the limit pass, one more is denied with rate_limited, never
-// clamped or delayed, and a denial does not consume budget.
+// The catalog's per-intent hourly rate limit is enforced before dispatch, per
+// hour of the event time the intent answers: dispatches up to the limit pass,
+// one more is denied with rate_limited, never clamped or delayed, and a denial
+// does not consume budget.
 func TestEvaluationEnforcesTheCatalogRateLimit(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -26,7 +30,7 @@ func TestEvaluationEnforcesTheCatalogRateLimit(t *testing.T) {
 			t.Parallel()
 			db, intentID := openPolicyFixture(t, "R1", 1, 1, farFuture)
 			exec(t, db, "UPDATE intents SET rate_limit_per_hour = 2 WHERE intent_id = ?", intentID)
-			bucket := fixtureNow.Format("2006-01-02T15:00")
+			bucket := eventHourOf(t, db, intentID)
 			if test.dispatched > 0 {
 				exec(t, db, "INSERT INTO intent_dispatch_counts (tenant_id, intent_type, bucket, count) VALUES ('tenant', 'create_ticket', ?, ?)", bucket, test.dispatched)
 			}
@@ -42,4 +46,15 @@ func TestEvaluationEnforcesTheCatalogRateLimit(t *testing.T) {
 			}
 		})
 	}
+}
+
+func eventHourOf(t *testing.T, db *storage.DB, intentID string) string {
+	t.Helper()
+	horizon := scalar[string](t, db, `SELECT sv.event_horizon FROM intents i JOIN situation_versions sv
+		ON sv.situation_id = i.situation_id AND sv.version = i.situation_version WHERE i.intent_id = ?`, intentID)
+	at, err := kernel.ParseTime(horizon)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return at.UTC().Format("2006-01-02T15:00")
 }

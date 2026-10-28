@@ -46,7 +46,7 @@ func (g *Service) rateLimited(ctx context.Context, tx *store.Tx, e evaluation, c
 	if e.row.RateLimitPerHour <= 0 {
 		return false, nil
 	}
-	overLimit, err := tx.DispatchWithinLimit(ctx, e.row, e.now)
+	overLimit, err := tx.DispatchWithinLimit(ctx, e.row)
 	if err != nil || !overLimit {
 		return false, err
 	}

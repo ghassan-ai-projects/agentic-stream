@@ -54,7 +54,7 @@ approval. The runtime has no writer for the table; an operator provisions artifa
 Evaluation: owner → durable intent projection → epoch → existing result or
 validated decision/intent → compensation → intent identity → episode lifecycle
 → situation version → completeness → expiry → risk → interlock → command
-identity → hourly rate admission → outbox/status/audit.
+identity → hourly rate admission (per hour of the event time the intent answers) → outbox/status/audit.
 
 Human resolution: owner → durable approval/intent → already resolved → stale
 approved intent → expiry → distinct registered principals → durable assertion
