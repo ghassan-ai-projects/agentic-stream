@@ -11,11 +11,14 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
+	"strings"
 	"testing"
 
 	"google.golang.org/grpc"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/playbook"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/testsupport/campaign"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/testsupport/workerfake"
@@ -31,6 +34,8 @@ const (
 	campaignReplayVariable    = "CAMPAIGN_REPLAY"
 	campaignTamozVariable     = "CAMPAIGN_TAMOZ_SOCKET"
 	campaignExchangesVariable = "CAMPAIGN_LOG_EXCHANGES"
+	campaignPhasesVariable    = "CAMPAIGN_PHASES"
+	campaignFromDBVariable    = "CAMPAIGN_FROM_DB"
 	campaignApprovalToken     = "campaign-approval-token"
 	campaignRelay             = "campaign-relay"
 	campaignApprover          = "campaign-approver"
@@ -56,12 +61,15 @@ func TestCampaignDrivesTheConsumerThroughItsRuns(t *testing.T) {
 	serveCampaignWorker(t, setup)
 	driver := campaign.Driver{Campaign: setup.campaign, Arm: setup.arm, Simulator: campaign.Simulator{Binary: binary, Repository: repository},
 		Dir: setup.out, Policies: []string{pumpStationPolicyDigest(t)}, Serve: setup.serve(t)}
+	if setup.arm.Learning {
+		driver.Learned = campaign.LearningSettled(setup.playbook, playbook.DefaultDraftAfter)
+	}
 	report, err := driver.Drive(t.Context(), setup.runs)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(report.Runs) != setup.runs {
-		t.Fatalf("%d runs graded, want %d", len(report.Runs), setup.runs)
+	if len(report.Runs) == 0 {
+		t.Fatal("no run graded")
 	}
 	t.Logf("arm %s: %d runs graded; the campaign score is in %s", setup.arm.Name, len(report.Runs), setup.out)
 }
@@ -76,16 +84,50 @@ func campaignUnderTest(t *testing.T) campaignSetup {
 	if err != nil {
 		t.Fatal(err)
 	}
+	loaded.Runs = runsInPhases(loaded.Runs, os.Getenv(campaignPhasesVariable))
 	arm, err := campaign.ArmNamed(cmp.Or(os.Getenv(campaignArmVariable), "B"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	setup := campaignSetup{campaign: loaded, arm: arm, runs: campaignRuns(t), out: campaignOutput(t), sockets: privateSocketDir(t)}
 	setup.db = filepath.Join(setup.out, "runtime.db")
-	seedMigratedDatabase(t, setup.db)
-	applyCampaignPrincipals(t, setup.db)
+	startDatabase(t, setup.db, os.Getenv(campaignFromDBVariable))
 	setup.playbook = campaignPlaybook(t, arm, setup.out)
 	return setup
+}
+
+func runsInPhases(runs []campaign.Run, phases string) []campaign.Run {
+	if phases == "" {
+		return runs
+	}
+	wanted := strings.Split(phases, ",")
+	return slices.DeleteFunc(runs, func(run campaign.Run) bool { return !slices.Contains(wanted, run.Phase) })
+}
+
+func startDatabase(t *testing.T, path, from string) {
+	t.Helper()
+	if from == "" {
+		seedMigratedDatabase(t, path)
+		applyCampaignPrincipals(t, path)
+		return
+	}
+	folder, err := os.OpenRoot(filepath.Dir(from))
+	if err != nil {
+		t.Fatalf("%s=%s: %v", campaignFromDBVariable, from, err)
+	}
+	defer func() { _ = folder.Close() }()
+	source, err := folder.Open(filepath.Base(from))
+	if err != nil {
+		t.Fatalf("%s=%s: %v", campaignFromDBVariable, from, err)
+	}
+	defer func() { _ = source.Close() }()
+	target, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if err != nil {
+		t.Fatalf("start from %s: %v", from, err)
+	}
+	if _, err := io.Copy(target, source); err != nil || target.Close() != nil {
+		t.Fatalf("copy %s: %v", from, err)
+	}
 }
 
 func campaignRuns(t *testing.T) int {

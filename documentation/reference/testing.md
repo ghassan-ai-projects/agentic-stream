@@ -62,7 +62,14 @@ folder made by `streamsim suite campaign`. `CAMPAIGN_ARM` picks the arm (`0`,
 worker. `CAMPAIGN_TAMOZ_SOCKET` forwards every episode and draft to a running
 Tamoz worker on that socket instead, and `CAMPAIGN_LOG_EXCHANGES=1` then logs
 each forwarded request and every event of its response to
-`worker-exchanges.jsonl` beside `responses.jsonl`:
+`worker-exchanges.jsonl` beside `responses.jsonl`. `CAMPAIGN_PHASES` drives only
+the runs of the listed phases (comma-separated), and `CAMPAIGN_FROM_DB` starts
+from a copy of an earlier arm's database instead of an empty one. A learning arm
+skips its remaining learn runs once learning has settled (no draft or proposal
+in flight and every playbook rule active) and keeps the database its learning
+ended with as `learned.db`, so arm A can play the holdout from the same state; a
+run whose planned world start lies past a gap starts where the database's world
+ended:
 
 ```bash
 STREAMSIM_BIN=/tmp/streamsim STREAMSIM_REPO=<streams-simulator checkout> CAMPAIGN_DIR=<campaign> \

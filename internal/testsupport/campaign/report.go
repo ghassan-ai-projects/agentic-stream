@@ -13,6 +13,8 @@ type RunResult struct {
 	Phase  string          `json:"phase"`
 	Ledger Ledger          `json:"ledger"`
 	Grade  json.RawMessage `json:"grade"`
+
+	LearningSettled bool `json:"learning_settled,omitempty"`
 }
 
 // Report is the campaign score of one arm: every run and the ledgers summed

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -122,5 +123,54 @@ func TestLedgerSharesAndPercentiles(t *testing.T) {
 	}
 	if believedOutcome("reconciling") != "unknown" || instanceOf("site-a:pump-3") != "site-a/pump-3" {
 		t.Fatal("verdict vocabulary changed")
+	}
+}
+
+func writeLearningCampaign(t *testing.T) Campaign {
+	t.Helper()
+	dir := t.TempDir()
+	write(t, dir, "campaign.json", `{"schema_version":"0.1","domain":"pump-station","seed":1,"runs":[
+		{"index":1,"phase":"learn","domain":"pump-station","seed":11,"duration_s":7200,"session_plan":"run-0001.session-plan.json"},
+		{"index":2,"phase":"learn","domain":"pump-station","seed":12,"duration_s":7200,"session_plan":"run-0002.session-plan.json"},
+		{"index":3,"phase":"holdout","domain":"pump-station","seed":13,"duration_s":7200,"session_plan":"run-0003.session-plan.json"}]}`)
+	for i, start := range []string{"0", "7200", "14400"} {
+		write(t, dir, fmt.Sprintf("run-%04d.session-plan.json", i+1), `{"schema_version":"0.1","domain":"pump-station","start_s":`+start+`}`)
+	}
+	loaded, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return loaded
+}
+
+func TestTheDriverSkipsTheLearnRunsLeftOnceLearningSettlesAndKeepsTheWorldsTimeWhole(t *testing.T) {
+	t.Parallel()
+	db := storagetest.OpenTempWithoutForeignKeys(t).DB
+	simulator := fakeSimulator(t)
+	worlds := map[int][]string{1: {"2026-01-01T00:00:00.000000000Z", "2026-01-01T02:00:00.000000000Z"},
+		3: {"2026-01-01T02:00:01.000000000Z", "2026-01-01T04:00:01.000000000Z"}}
+	driver := Driver{Campaign: writeLearningCampaign(t), Arm: Arm{Name: "B", Approver: ApproveAll{}}, Simulator: simulator, Dir: t.TempDir(),
+		Learned: func(context.Context, *sql.DB) (bool, error) { return true, nil },
+		Serve: func(ctx context.Context, run Run) (Consumer, error) {
+			go func() {
+				if awaitSessionReady(simulator) == nil {
+					_ = ingest(context.WithoutCancel(ctx), db, worlds[run.Index]...)
+				}
+			}()
+			return Consumer{DB: db, HostSocket: "/tmp/as/host.sock", Desk: &Desk{Approver: ApproveAll{}}, Stop: func() error { return nil }}, nil
+		}}
+	report, err := driver.Drive(t.Context(), 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Runs) != 2 || report.Runs[1].Index != 3 || !report.Runs[0].LearningSettled {
+		t.Fatalf("report = %+v, want run 1 settling learning and run 3 next", report)
+	}
+	if _, err := os.Stat(filepath.Join(driver.Dir, LearnedDatabase)); err != nil {
+		t.Fatalf("the learned database: %v", err)
+	}
+	plan, err := readIn(driver.plansDir(), "run-0003.session-plan.json")
+	if err != nil || !strings.Contains(string(plan), `"start_s":7201`) {
+		t.Fatalf("run 3's plan = %s (%v), want its world to start where run 1's ended", plan, err)
 	}
 }

@@ -80,7 +80,7 @@ func TestArmsMatchThePlan(t *testing.T) {
 func TestAPreparedPlanKeepsTheDisturbancesUnreadAndSetsTheHost(t *testing.T) {
 	t.Parallel()
 	loaded := writeCampaign(t)
-	path, err := loaded.PreparePlan(loaded.Runs[0], t.TempDir(), "/tmp/as/host.sock", []string{"sha256:ab"})
+	path, err := loaded.PreparePlan(loaded.Runs[0], t.TempDir(), "/tmp/as/host.sock", []string{"sha256:ab"}, worldEpoch.Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,10 +92,10 @@ func TestAPreparedPlanKeepsTheDisturbancesUnreadAndSetsTheHost(t *testing.T) {
 	if err := json.Unmarshal(data, &plan); err != nil {
 		t.Fatal(err)
 	}
-	if string(plan["host_socket"]) != `"/tmp/as/host.sock"` || string(plan["disturbances"]) != disturbances || plan["policies"] == nil {
+	if string(plan["host_socket"]) != `"/tmp/as/host.sock"` || string(plan["disturbances"]) != disturbances || plan["policies"] == nil || string(plan["start_s"]) != "3600" {
 		t.Fatalf("plan = %s", data)
 	}
-	if _, err := loaded.PreparePlan(loaded.Runs[1], t.TempDir(), "/tmp/as/host.sock", nil); !errors.Is(err, fs.ErrNotExist) {
+	if _, err := loaded.PreparePlan(loaded.Runs[1], t.TempDir(), "/tmp/as/host.sock", nil, worldEpoch); !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("PreparePlan of a missing plan = %v, want not exist", err)
 	}
 }
