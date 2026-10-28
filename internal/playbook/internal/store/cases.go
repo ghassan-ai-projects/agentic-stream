@@ -126,11 +126,35 @@ func (t *Tx) CaseEvidence(ctx context.Context, c domain.Case, watermark time.Tim
 		return evidence, wrapEvidence(c, err)
 	}
 	evidence.ClosedAt = &closedAt
+	return evidence, wrapEvidence(c, t.readAfterClosing(ctx, c, closedAt, &evidence))
+}
+
+func (t *Tx) readAfterClosing(ctx context.Context, c domain.Case, closedAt time.Time, evidence *domain.CaseEvidence) error {
 	reopenedAt, reopened, err := engine.ReopenedAfter(ctx, t.tx, c.TenantID, c.EntityID, c.SituationType, closedAt)
+	if err != nil {
+		return fmt.Errorf("find a reopening: %w", err)
+	}
 	if reopened {
 		evidence.ReopenedAt = &reopenedAt
 	}
-	return evidence, wrapEvidence(c, err)
+	evidence.Closing, err = t.closingSnapshot(ctx, c)
+	return err
+}
+
+func (t *Tx) closingSnapshot(ctx context.Context, c domain.Case) (domain.Snapshot, error) {
+	raw, found, err := storage.QueryOptional[[]byte](ctx, t.tx, `SELECT snapshot_json FROM situation_versions
+		WHERE situation_id = ? AND phase = ? AND version > ? ORDER BY version LIMIT 1`, c.SituationID, situations.PhaseResolved, c.SituationVersion)
+	if err != nil {
+		return domain.Snapshot{}, fmt.Errorf("read the closing version: %w", err)
+	}
+	if !found {
+		return domain.Snapshot{}, nil
+	}
+	facts, err := decodeSnapshot(raw)
+	if err != nil {
+		return domain.Snapshot{}, fmt.Errorf("the closing version: %w", err)
+	}
+	return domain.Snapshot{Facts: facts.Facts, Evidence: facts.Evidence}, nil
 }
 
 func wrapEvidence(c domain.Case, err error) error {
@@ -142,16 +166,24 @@ func wrapEvidence(c domain.Case, err error) error {
 
 func (t *Tx) PendingCases(ctx context.Context, tenantID string) ([]domain.Case, error) {
 	return readAll(ctx, t.tx, "pending cases", scanCase, `SELECT situation_id, situation_version, tenant_id, entity_id,
-		situation_type, episode_id, rule_id, rule_version, acted_at, window_ends_at FROM case_verifications
+		situation_type, episode_id, diagnosis_code, rule_id, rule_version, acted_at, window_ends_at, features_json FROM case_verifications
 		WHERE tenant_id = ? AND verdict = 'pending' ORDER BY acted_at, situation_id`, tenantID)
 }
 
 func scanCase(rows *sql.Rows) (domain.Case, error) {
 	var c domain.Case
 	var actedAt, windowEndsAt string
-	if err := rows.Scan(&c.SituationID, &c.SituationVersion, &c.TenantID, &c.EntityID, &c.SituationType, &c.EpisodeID, &c.RuleID,
-		&c.RuleVersion, &actedAt, &windowEndsAt); err != nil {
+	var features []byte
+	if err := rows.Scan(&c.SituationID, &c.SituationVersion, &c.TenantID, &c.EntityID, &c.SituationType, &c.EpisodeID, &c.DiagnosisCode,
+		&c.RuleID, &c.RuleVersion, &actedAt, &windowEndsAt, &features); err != nil {
 		return domain.Case{}, fmt.Errorf("scan case: %w", err)
+	}
+	return decodeCase(c, features, actedAt, windowEndsAt)
+}
+
+func decodeCase(c domain.Case, features []byte, actedAt, windowEndsAt string) (domain.Case, error) {
+	if err := json.Unmarshal(features, &c.Features); err != nil {
+		return domain.Case{}, fmt.Errorf("decode the features of case %s: %w", c.SituationID, err)
 	}
 	if err := parseInto(&c.ActedAt, actedAt); err != nil {
 		return domain.Case{}, err

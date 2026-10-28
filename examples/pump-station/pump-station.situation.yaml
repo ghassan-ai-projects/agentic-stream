@@ -382,6 +382,13 @@ promotion:
     sensor_drift: 24h
     sensor_failure: 24h
     overload: 2h
+  recovery:
+    bearing_wear: {reading: vibration_mean_15m, baseline: vibration_mean_24h, tolerance: 0.2}
+    misalignment: {reading: axial_mean_15m, baseline: axial_mean_24h, tolerance: 0.3}
+    lubrication_due: {reading: vibration_mean_15m, baseline: vibration_mean_24h, tolerance: 0.2}
+    sensor_drift: {reading: vibration_mean_15m, baseline: vibration_mean_24h, tolerance: 0.2}
+    sensor_failure: {reading: vibration_mean_15m, baseline: vibration_mean_24h, tolerance: 0.2}
+    overload: {reading: current_mean_15m, baseline: current_mean_24h, tolerance: 0.15}
   contextFeatures: [current_mean_15m]
   envelopeMargin: 0.1
   shadowExitAgreeing: 3

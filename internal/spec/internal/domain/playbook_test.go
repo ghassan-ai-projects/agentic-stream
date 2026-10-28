@@ -64,6 +64,8 @@ promotion:
   contextFeatures: [count_value]
   remedyMap:
     drift: [halt]
+  recovery:
+    wear: {reading: mean_value, baseline: count_value, tolerance: 0.1}
   envelopeMargin: 0.1
 `
 
@@ -204,12 +206,33 @@ func TestCompileChecksThePromotionBlock(t *testing.T) {
 		{"context feature", "contextFeatures: [count_value]", "contextFeatures: [load]", "promotion.contextFeatures[0]"},
 		{"remedy code", "    drift: [halt]", "    rust: [halt]", "promotion.remedyMap.rust"},
 		{"remedy intent", "    drift: [halt]", "    drift: [refuel]", "promotion.remedyMap.drift"},
+		{"recovery code", "    wear: {reading", "    rust: {reading", "promotion.recovery.rust"},
+		{"recovery without a settle window", "    wear: {reading", "    drift: {reading", "promotion.recovery.drift"},
+		{"recovery reading", "reading: mean_value", "reading: load", "promotion.recovery.wear.reading"},
+		{"recovery baseline", "baseline: count_value", "baseline: load", "promotion.recovery.wear.baseline"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			_, err := compileSource(t, promotionSpecYAML(tc.from, tc.to))
 			assertCompileErrorAt(t, err, tc.path)
+		})
+	}
+}
+
+func TestCompileRefusesARecoveryCheckThatIsNotWellFormed(t *testing.T) {
+	t.Parallel()
+	cases := []struct{ name, from, to, want string }{
+		{"zero tolerance", "tolerance: 0.1", "tolerance: 0", "recovery"},
+		{"no tolerance", ", tolerance: 0.1}", "}", "recovery"},
+		{"unknown field", "tolerance: 0.1}", "tolerance: 0.1, window: 5m}", "window"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if _, err := compileSource(t, promotionSpecYAML(tc.from, tc.to)); err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("compile = %v, want the recovery check refused", err)
+			}
 		})
 	}
 }

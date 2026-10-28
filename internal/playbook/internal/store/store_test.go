@@ -181,7 +181,7 @@ func TestAnActedCaseIsRecordedJudgedAndSettled(t *testing.T) {
 			t.Fatalf("candidates = %+v, %v; want the acknowledged rule case", candidates, err)
 		}
 		c := domain.Case{CaseCandidate: candidates[0], Observed: domain.Observed{DiagnosisCode: "bearing_wear"},
-			WindowEndsAt: candidates[0].ActedAt.Add(24 * time.Hour), Verdict: domain.CasePending, Reason: domain.ReasonAwaitingWindow}
+			WindowEndsAt: candidates[0].ActedAt.Add(24 * time.Hour), Features: map[string]any{"vibration_mean_24h": 3.0}, Verdict: domain.CasePending, Reason: domain.ReasonAwaitingWindow}
 		return tx.RecordCase(t.Context(), c, storeNow)
 	})
 	inTx(t, s, func(tx *Tx) error {
@@ -200,7 +200,10 @@ func TestAnActedCaseIsRecordedJudgedAndSettled(t *testing.T) {
 		if err != nil || evidence.ClosedAt == nil || evidence.ClosedAt.Hour() != 8 || evidence.ReopenedAt != nil || evidence.Watermark.Day() != 2 {
 			t.Fatalf("evidence = %+v, %v; want closed at 08:00, no reopen, the log on the next day", evidence, err)
 		}
-		pending[0].Verdict, pending[0].Reason = pending[0].Verify(evidence)
+		if evidence.Closing.Facts["facts.vibration_mean_15m"] != 3.1 || pending[0].Features["vibration_mean_24h"] != 3.0 || pending[0].DiagnosisCode != "bearing_wear" {
+			t.Fatalf("closing = %+v, pending = %+v; want the closing version's facts, the frozen features and the diagnosis", evidence.Closing, pending[0])
+		}
+		pending[0].Verdict, pending[0].Reason = pending[0].Verify(evidence, true)
 		return tx.SettleCase(t.Context(), pending[0], storeNow)
 	})
 	inTx(t, s, func(tx *Tx) error {

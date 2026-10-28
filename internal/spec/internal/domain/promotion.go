@@ -12,11 +12,26 @@ type Promotion struct {
 	SettleWindows   map[string]string   `json:"settleWindows,omitempty" yaml:"settleWindows,omitempty"`
 	ContextFeatures []string            `json:"contextFeatures,omitempty" yaml:"contextFeatures,omitempty"`
 	RemedyMap       map[string][]string `json:"remedyMap,omitempty" yaml:"remedyMap,omitempty"`
+	Recovery        map[string]Recovery `json:"recovery,omitempty" yaml:"recovery,omitempty"`
 	EnvelopeMargin  float64             `json:"envelopeMargin,omitempty" yaml:"envelopeMargin,omitempty"`
 	ShadowExit      int                 `json:"shadowExitAgreeing,omitempty" yaml:"shadowExitAgreeing,omitempty"`
 }
 
+type Recovery struct {
+	Reading   string  `json:"reading" yaml:"reading"`
+	Baseline  string  `json:"baseline" yaml:"baseline"`
+	Tolerance float64 `json:"tolerance" yaml:"tolerance"`
+}
+
 const UnknownDiagnosis = "unknown"
+
+func (p *Promotion) RecoveryCheck(diagnosisCode string) (Recovery, bool) {
+	if p == nil {
+		return Recovery{}, false
+	}
+	check, declared := p.Recovery[diagnosisCode]
+	return check, declared
+}
 
 func (p *Promotion) SettleWindow(diagnosisCode string) (time.Duration, bool) {
 	if p == nil {
@@ -97,13 +112,20 @@ func checkPromotion(spec *CompiledSpec) error {
 	if err != nil {
 		return &CompileError{Path: "cognition.executor.diagnosisCatalog", Message: err.Error()}
 	}
+	if err := checkCodeKeyedBlocks(spec, codes); err != nil {
+		return err
+	}
+	return checkContextFeatures(spec.Promotion.ContextFeatures, spec.FeatureNames())
+}
+
+func checkCodeKeyedBlocks(spec *CompiledSpec, codes []string) error {
 	if err := checkSettleWindows(spec.Promotion.SettleWindows, codes); err != nil {
 		return err
 	}
 	if err := checkRemedyMap(spec, codes); err != nil {
 		return err
 	}
-	return checkContextFeatures(spec.Promotion.ContextFeatures, spec.FeatureNames())
+	return checkRecovery(spec, codes)
 }
 
 func checkSettleWindows(windows map[string]string, codes []string) error {
@@ -131,6 +153,36 @@ func checkRemedyMap(spec *CompiledSpec, codes []string) error {
 			if _, ok := spec.Intent(intentType); !ok {
 				return &CompileError{Path: path, Message: fmt.Sprintf("intent %q is not declared", intentType)}
 			}
+		}
+	}
+	return nil
+}
+
+func checkRecovery(spec *CompiledSpec, codes []string) error {
+	for _, code := range slices.Sorted(maps.Keys(spec.Promotion.Recovery)) {
+		if err := checkRecoveryOf(spec, codes, code); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func checkRecoveryOf(spec *CompiledSpec, codes []string, code string) error {
+	path := "promotion.recovery." + code
+	if !slices.Contains(codes, code) {
+		return &CompileError{Path: path, Message: "diagnosis code is not in the diagnosis catalog"}
+	}
+	if _, declared := spec.Promotion.SettleWindow(code); !declared {
+		return &CompileError{Path: path, Message: "diagnosis code has no settle window, so its recovery is never checked"}
+	}
+	return checkRecoveryFeatures(path, spec.Promotion.Recovery[code], spec.FeatureNames())
+}
+
+func checkRecoveryFeatures(path string, check Recovery, features []string) error {
+	named := []struct{ field, feature string }{{"reading", check.Reading}, {"baseline", check.Baseline}}
+	for _, n := range named {
+		if !slices.Contains(features, n.feature) {
+			return &CompileError{Path: path + "." + n.field, Message: fmt.Sprintf("feature %q is not produced by an operator", n.feature)}
 		}
 	}
 	return nil

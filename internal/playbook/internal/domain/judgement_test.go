@@ -108,7 +108,7 @@ func TestACaseIsVerifiedOnlyWhenItClosedAndStayedClosedThroughItsWindow(t *testi
 		{"reopened after the window", CaseEvidence{ClosedAt: at(4), ReopenedAt: at(30), Watermark: *at(30)}, CaseVerified},
 	}
 	for _, tc := range cases {
-		if verdict, _ := c.Verify(tc.evidence); verdict != tc.verdict {
+		if verdict, _ := rules.Verify(c, tc.evidence); verdict != tc.verdict {
 			t.Errorf("%s: verdict = %s, want %s", tc.name, verdict, tc.verdict)
 		}
 	}

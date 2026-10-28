@@ -1,6 +1,6 @@
 -- One rule-handled case: pump p1 opened (v1, 06:00), the bearing-wear rule
 -- booked maintenance (acknowledged, manual review), the situation resolved
--- (v2, 08:00), and the event log reached the next day.
+-- (v2, 08:00, its vibration back near the 3.0 baseline of the decision), and the event log reached the next day.
 INSERT INTO situations (situation_id, tenant_id, deployment_id, situation_type, entity_type, entity_id, partition_id, occurrence_id,
     current_version, phase, status, first_event_time, latest_event_time, updated_at, created_at)
 VALUES ('s1', 't', 'dep', 'pump_condition', 'pump', 'p1', 0, 'occ-1', 2, 'resolved', 'active', 'x', 'x', 'x', 'x');
@@ -9,7 +9,7 @@ INSERT INTO situation_versions (situation_id, version, phase, severity, confiden
 VALUES ('s1', 1, 'watch', 40, 1, 'on_time', '2026-01-01T06:00:00.000000000Z', 'x',
     CAST('{"facts":{"facts.vibration_mean_15m":4.2,"facts.vibration_mean_24h":3.0,"facts.current_mean_15m":30.0},"evidence":[]}' AS BLOB),
     zeroblob(32), 'l', 'x'),
-    ('s1', 2, 'resolved', 0, 1, 'on_time', '2026-01-01T08:00:00.000000000Z', 'x', CAST('{"facts":{}}' AS BLOB), zeroblob(32), 'l', 'x');
+    ('s1', 2, 'resolved', 0, 1, 'on_time', '2026-01-01T08:00:00.000000000Z', 'x', CAST('{"facts":{"facts.vibration_mean_15m":3.1,"facts.vibration_mean_24h":3.0,"facts.current_mean_15m":30.0},"evidence":[]}' AS BLOB), zeroblob(32), 'l', 'x');
 INSERT INTO episodes (episode_id, scheduler_item_id, tenant_id, situation_id, situation_version, executor_name, executor_version,
     model_policy, prompt_version, snapshot_sha256, admission_key, request_json, lifecycle_status, accepted_at, dispatch_policy)
 VALUES ('e1', 'item-1', 't', 's1', 1, 'rule', 'sha256:pb', 'p', 'v', zeroblob(32), randomblob(32), CAST('{}' AS BLOB), 'concluded', 'x', 'active');

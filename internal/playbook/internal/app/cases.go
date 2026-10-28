@@ -62,7 +62,7 @@ func (s *Service) verifyCase(ctx context.Context, tx *store.Tx, c domain.Case, w
 	if err != nil {
 		return err
 	}
-	c.Verdict, c.Reason = c.Verify(evidence)
+	c.Verdict, c.Reason = s.rules.Verify(c, evidence)
 	if c.Verdict == domain.CasePending {
 		return nil
 	}

@@ -209,6 +209,21 @@ func TestSettleVerifiesARuleCaseThatClosedAndStayedClosed(t *testing.T) {
 	}
 }
 
+func TestSettleDoesNotVerifyACaseWhoseReadingStayedOffAfterTheSituationClosed(t *testing.T) {
+	t.Parallel()
+	absorbed := `UPDATE situation_versions SET snapshot_json = CAST('{"facts":{"facts.vibration_mean_15m":4.2,"facts.vibration_mean_24h":4.1},"evidence":[]}' AS BLOB)
+		WHERE situation_id = 's1' AND version = 2;`
+	service, db := seededService(t, absorbed)
+	if err := service.Settle(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	var verdict, reason string
+	if err := db.QueryRowContext(t.Context(), "SELECT verdict, reason FROM case_verifications").Scan(&verdict, &reason); err != nil ||
+		verdict != domain.CaseNotVerified || reason != domain.ReasonNotRecovered {
+		t.Fatalf("case = %s %q (%v), want not verified because the reading did not return", verdict, reason, err)
+	}
+}
+
 func TestSettleSwitchesOffARuleWhoseCaseReopened(t *testing.T) {
 	t.Parallel()
 	reopen := `INSERT INTO situation_versions (situation_id, version, phase, severity, confidence, completeness, event_horizon, valid_from,

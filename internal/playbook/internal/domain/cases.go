@@ -1,7 +1,10 @@
 package domain
 
 import (
+	"math"
 	"time"
+
+	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
 const (
@@ -14,6 +17,7 @@ const (
 	ReasonNoSettleWindow   = "the diagnosis code has no settle window"
 	ReasonReopened         = "a new situation opened on the entity inside the settle window"
 	ReasonNeverClosed      = "the situation did not close inside the settle window"
+	ReasonNotRecovered     = "the reading did not return to its level before the action"
 	ReasonClosedAndSettled = "closed and stayed closed through the settle window"
 
 	CauseNoEffect = "no_effect"
@@ -47,10 +51,16 @@ type Case struct {
 	Reason       string
 }
 
+type Snapshot struct {
+	Facts    map[string]any
+	Evidence []string
+}
+
 type CaseEvidence struct {
 	ClosedAt   *time.Time
 	ReopenedAt *time.Time
 	Watermark  time.Time
+	Closing    Snapshot
 }
 
 func (r *Rules) NewCase(candidate CaseCandidate) Case {
@@ -73,7 +83,25 @@ func summaryOf(decision map[string]any) string {
 	return summary
 }
 
-func (c Case) Verify(evidence CaseEvidence) (string, string) {
+func (r *Rules) Verify(c Case, evidence CaseEvidence) (string, string) {
+	return c.Verify(evidence, r.Recovered(c, evidence))
+}
+
+func (r *Rules) Recovered(c Case, evidence CaseEvidence) bool {
+	check, declared := r.spec.Promotion.RecoveryCheck(c.DiagnosisCode)
+	if !declared {
+		return true
+	}
+	return withinTolerance(check, c.Features, r.Features(evidence.Closing.Facts, evidence.Closing.Evidence))
+}
+
+func withinTolerance(check spec.Recovery, frozen, closing map[string]any) bool {
+	baseline, baselined := number(frozen[check.Baseline])
+	reading, read := number(closing[check.Reading])
+	return baselined && read && math.Abs(reading-baseline) <= check.Tolerance*math.Abs(baseline)
+}
+
+func (c Case) Verify(evidence CaseEvidence, recovered bool) (string, string) {
 	switch {
 	case evidence.ReopenedAt != nil && !evidence.ReopenedAt.After(c.WindowEndsAt):
 		return CaseNotVerified, ReasonReopened
@@ -81,6 +109,8 @@ func (c Case) Verify(evidence CaseEvidence) (string, string) {
 		return CasePending, ReasonAwaitingWindow
 	case evidence.ClosedAt == nil || evidence.ClosedAt.After(c.WindowEndsAt):
 		return CaseNotVerified, ReasonNeverClosed
+	case !recovered:
+		return CaseNotVerified, ReasonNotRecovered
 	default:
 		return CaseVerified, ReasonClosedAndSettled
 	}

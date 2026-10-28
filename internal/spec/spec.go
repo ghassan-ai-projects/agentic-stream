@@ -188,8 +188,14 @@ func LoadDeployment(ctx context.Context, db *storage.DB, deploymentID string) (*
 
 // Promotion is what rule promotion reads from a spec: the settle window of
 // each diagnosis code, the context features a rule's envelope may cover, the
-// optional remedy map and the margin a proposed cap adds to an envelope.
+// optional remedy map, the optional recovery check of each diagnosis code and
+// the margin a proposed cap adds to an envelope.
 type Promotion = domain.Promotion
+
+// Recovery is the check that an action changed the world and not only the
+// situation: the reading feature at the situation's closing version must be
+// within a relative tolerance of the baseline feature frozen at decision time.
+type Recovery = domain.Recovery
 
 // UnknownDiagnosis is the diagnosis code that never becomes a rule.
 const UnknownDiagnosis = domain.UnknownDiagnosis
