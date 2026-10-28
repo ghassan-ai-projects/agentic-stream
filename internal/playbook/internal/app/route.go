@@ -45,7 +45,7 @@ func (s *Service) recordMisses(ctx context.Context, tx *store.Tx, admission doma
 	if err := s.recordShadows(ctx, tx, admission, routing.Shadows, now); err != nil {
 		return err
 	}
-	if err := s.recordOutsideEnvelope(ctx, tx, admission, routing.OutsideEnvelope, now); err != nil {
+	if err := s.recordOutsideCap(ctx, tx, admission, routing.OutsideCap, now); err != nil {
 		return err
 	}
 	return s.tripRateCap(ctx, tx, routing.RateCapped, state, now)
@@ -110,7 +110,7 @@ func (s *Service) tripKindChanges(ctx context.Context, tx *store.Tx, now time.Ti
 	return nil
 }
 
-func (s *Service) recordOutsideEnvelope(ctx context.Context, tx *store.Tx, admission domain.Admission, match *domain.Match, now time.Time) error {
+func (s *Service) recordOutsideCap(ctx context.Context, tx *store.Tx, admission domain.Admission, match *domain.Match, now time.Time) error {
 	if match == nil {
 		return nil
 	}

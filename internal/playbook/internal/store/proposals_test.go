@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/draftport"
@@ -81,6 +82,25 @@ func TestAProposalIsRecordedReadAndResolvedOnce(t *testing.T) {
 		history, err := tx.KeyHistory(t.Context(), "t", wearKey)
 		if err != nil || !history.Rejected || history.RejectedEvidence != 3 {
 			t.Fatalf("history = %+v, %v; want the rejection with its evidence", history, err)
+		}
+		return nil
+	})
+}
+
+func TestOnlyShadowMatchesInsideTheCapCountTowardTheShadowExit(t *testing.T) {
+	t.Parallel()
+	s := New(storagetest.OpenTemp(t))
+	inTx(t, s, func(tx *Tx) error {
+		for i, inCap := range []bool{true, false} {
+			shadow := domain.Evaluation{EvaluationID: fmt.Sprintf("reval_%d", i), TenantID: "t", Kind: domain.KindShadow, SituationID: "s1",
+				SituationVersion: i + 1, InCap: inCap, EventTime: storeNow, Recommendation: recommendation("r"), Verdict: domain.VerdictAgree}
+			if err := tx.RecordEvaluation(t.Context(), shadow, storeNow); err != nil {
+				return err
+			}
+		}
+		agree, disagree, err := tx.ShadowTallies(t.Context(), domain.RuleKey{ID: "r", Version: 1})
+		if err != nil || agree != 1 || disagree != 0 {
+			t.Fatalf("tallies = %d/%d, %v; want the one agreement inside the cap", agree, disagree, err)
 		}
 		return nil
 	})

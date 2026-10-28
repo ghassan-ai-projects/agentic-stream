@@ -45,7 +45,7 @@ scripted approvers and the campaign score**; the simulator owns the world and th
 | 11 | One approval covers the rule and its exit from shadow (for example 10 agreeing shadow matches and none disagreeing); the move to active is a deterministic check. A disagreement in shadow keeps the rule in shadow and asks again. |
 | 12, 13 | The human may edit a rule before approving it; hand edits to the playbook file are allowed and recorded; Agentic Stream writes the file only if its digest is still the one it loaded. *(After the first slice.)* |
 | 15 | A case is **verified** only when its action took effect and no new situation opens on that entity within the **settle window of its diagnosis code** (for example 24 h for bearing faults, 2 h for overload). An optional remedy map limits which intents may answer which diagnosis. |
-| 16 | The envelope covers only the `when` features and declared context features; the approver approves a cap; growth within the cap with walls and weekly coverage come after the first slice. |
+| 16 | The envelope covers only the `when` features and declared context features; the approver approves a cap, which widens the envelope by a share of its values; an active rule acts inside its approved cap, and the envelope records what the source cases covered; growth with walls and weekly coverage come after the first slice. |
 | 17 | The playbook compiler refuses any rule that recommends an intent at **R3 or above**, an intent marked **emergency**, or one marked part of a **safety function**. Each rule has a rate cap; reaching it trips the circuit. |
 | 18 | A fleet cap per rule (at most N entities in a window; above it the rule fires on none and one fleet-level case is raised). *(After the first slice.)* |
 | F3 | An active rule runs as an in-process **`rule` executor** episode, so its decision takes the existing decision, intent, policy and verification path. A rule in shadow writes a `rule_evaluations` record compared with Tamoz's decision. The audit is a `dispatch_policy: shadow` Tamoz episode admitted after the rule's episode ends (one live episode per situation). |
@@ -164,7 +164,7 @@ In `examples/pump-station/`:
    recommended, per situation version), `rule_circuits` (state, cause, evidence), `rule_fires` (for the rate
    cap).
 2. **Matching** (pure domain): evaluate each rule's `when` over the situation version's features; exactly one
-   active match inside its envelope and under its caps gives a rule; anything else gives none.
+   active match inside its approved cap and under its rate cap gives a rule; anything else gives none.
 3. **Admission hook**: when cognition admits work for a situation version, ask `playbook` first. A rule match
    admits an episode run by a new **`internal/executor/rule`** executor (no model call): its decision carries the
    rule's `diagnosis_code`, intent and preset, `facts_used` from the rule's features and a summary naming the rule
@@ -207,9 +207,15 @@ In `examples/pump-station/`:
 
 1. From the verified source cases, read the features the rule's `when` uses plus the context features, at
    decision time, from the stored situation versions (`situation_versions.snapshot_json`); the envelope is their
-   range per feature; the proposed cap widens it by a spec-declared margin, which the approver may tighten.
-2. Matching (AS-3) requires the features inside the envelope; a case inside the cap but outside the envelope goes
-   to Tamoz; most matching cases outside the cap trips the circuit (cause `out_of_cap`).
+   range per feature; the proposed cap widens each bound by a spec-declared margin of the feature's largest
+   observed magnitude (`envelopeMargin` 0.1 widens 2.75 to 3.05), which the approver may tighten. A margin of the
+   range's width would give nothing when the source cases agree closely, which is when a rule is most wanted.
+2. Matching (AS-3) requires the features inside the approved cap: the cap is the bound a human signed, so the rule
+   acts anywhere inside it; a case outside the cap goes to Tamoz, is recorded beside the model episode, and most
+   matching cases outside the cap trips the circuit (cause `out_of_cap`). The shadow exit counts only shadow
+   matches inside the cap, so a rule is never promoted on cases it could not act on. An envelope over the
+   condition's own terms (a ratio to the entity's baseline) would generalise across entities whose levels differ;
+   it waits until a site shows that need.
 3. Growth within the cap, walls and the weekly coverage report are after the first slice.
 
 ### AS-7 Proposal flow and rule approval (size L; several commits)

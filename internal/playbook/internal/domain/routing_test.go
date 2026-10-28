@@ -16,12 +16,12 @@ func TestRouteFiresTheOneActiveRuleInsideItsEnvelope(t *testing.T) {
 	}
 }
 
-func TestRouteGivesTheModelWhatNoSingleActiveRuleAnswersInsideItsEnvelope(t *testing.T) {
+func TestRouteGivesTheModelWhatNoSingleActiveRuleAnswersInsideItsCap(t *testing.T) {
 	t.Parallel()
 	rules := pumpRules(t)
 	cases := map[string]map[string]any{
 		"no rule matches":      pumpFeatures(rules, 3.0, 2.0, 30),
-		"outside the envelope": pumpFeatures(rules, 5.5, 2.0, 30),
+		"outside the cap":      pumpFeatures(rules, 7.0, 2.0, 30),
 		"context out of range": pumpFeatures(rules, 4.2, 2.0, 40),
 		"missing features":     rules.Features(map[string]any{}, nil),
 	}

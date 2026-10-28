@@ -65,7 +65,7 @@ an optional `remedyMap` and the two intent flags. A Decision gains an optional
 
 | Package | Holds |
 | --- | --- |
-| `internal/playbook/internal/domain` | Pure rules: matching (exactly one active rule inside its envelope and under its caps, otherwise none), the preset an intent's parameters name, shadow agreement, deterministic audit sampling, circuit causes, the shadow exit, the case key, verification of a case against its settle window, eligibility and the envelope. |
+| `internal/playbook/internal/domain` | Pure rules: matching (exactly one active rule inside its approved cap and under its rate cap, otherwise none), the preset an intent's parameters name, shadow agreement, deterministic audit sampling, circuit causes, the shadow exit, the case key, verification of a case against its settle window, eligibility and the envelope. |
 | `internal/playbook/internal/store` | Transactions joined from the caller and every playbook SQL statement; owner of the playbook tables. |
 | `internal/playbook/internal/app` | Use cases: route an admission, settle (compare, audit, verify, check exits), record approvals and write the playbook file. |
 | `internal/playbook` | Facade: `New(Config)`, `Route`, `Settle` and the approval operations. |
@@ -93,7 +93,7 @@ snapshot. The feature map is the one cognition evaluates
 (`situations.CELFeatures` over the snapshot's facts), so a replay of the same
 snapshot routes the same way. Route answers one of:
 
-- **rule**: exactly one active rule matches, inside its envelope, under its rate
+- **rule**: exactly one active rule matches, inside its approved cap, under its rate
   cap, with a closed circuit. The episode is rebound to the `rule` executor:
   executor name `rule`, executor version the playbook digest, dispatch policy
   active, and a `rule` section in the request (rule id, version, playbook digest,
@@ -171,7 +171,7 @@ call (the contract is `internal/draftport`; the worker has no access to the
 workspace). The reply is checked: it answers the key, cites only cases it was
 sent, and its condition compiles over the spec's features and holds for every
 cited case. The runtime then builds the rule (identity, envelope from the cited
-cases' range, cap widened by the spec's `envelopeMargin`, pinned kind, shadow
+cases' range, cap widened by the spec's `envelopeMargin` of each feature's magnitude, pinned kind, shadow
 mode, a shadow exit of the spec's `shadowExitAgreeing` agreeing matches (10
 when absent), default caps), compiles it into a candidate playbook (so every compiler
 refusal applies), replays it over the stored Situation history (would it fire,

@@ -64,7 +64,7 @@ func (t *Tx) ShadowTallies(ctx context.Context, rule domain.RuleKey) (int, int, 
 	if err := t.tx.QueryRowContext(ctx, `SELECT
 			COALESCE(SUM(CASE WHEN verdict = 'agree' THEN 1 ELSE 0 END), 0),
 			COALESCE(SUM(CASE WHEN verdict = 'disagree' THEN 1 ELSE 0 END), 0)
-		FROM rule_evaluations WHERE rule_id = ? AND rule_version = ? AND kind = 'shadow'`, rule.ID, rule.Version).Scan(&agree, &disagree); err != nil {
+		FROM rule_evaluations WHERE rule_id = ? AND rule_version = ? AND kind = 'shadow' AND in_cap = 1`, rule.ID, rule.Version).Scan(&agree, &disagree); err != nil {
 		return 0, 0, fmt.Errorf("tally the shadow evaluations of rule %s: %w", rule.ID, err)
 	}
 	return agree, disagree, nil

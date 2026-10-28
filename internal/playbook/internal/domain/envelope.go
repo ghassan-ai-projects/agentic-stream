@@ -41,10 +41,7 @@ func observedRange(caseFeatures []map[string]any, name string) (spec.Range, bool
 }
 
 func widened(bounds spec.Range, margin float64) spec.Range {
-	pad := margin * (bounds.Max - bounds.Min)
-	if pad == 0 {
-		pad = margin * math.Max(math.Abs(bounds.Min), math.Abs(bounds.Max))
-	}
+	pad := margin * math.Max(math.Abs(bounds.Min), math.Abs(bounds.Max))
 	return spec.Range{Min: bounds.Min - pad, Max: bounds.Max + pad}
 }
 

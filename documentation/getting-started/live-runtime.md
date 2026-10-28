@@ -107,7 +107,7 @@ short-lived capability tokens and read-only evidence access.
 `--playbook <site>.playbook.yaml` loads a playbook of approved rules, compiled
 against `--spec` at start (`agentic-stream validate <spec> --playbook <file>`
 prints its digest; the spec and policy digests do not change). An active rule
-that matches a case inside its envelope answers it without a model call; shadow
+that matches a case inside its approved cap answers it without a model call; shadow
 rules are judged against the model's decisions. With a worker that announces
 `draft_playbook_rule`, `--draft-after` verified, uncontradicted cases of one
 key (three by default) ask it to draft a rule; the proposal is approved like an

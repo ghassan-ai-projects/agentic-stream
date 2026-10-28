@@ -15,10 +15,10 @@ type Match struct {
 }
 
 type Routing struct {
-	Fire            *Match
-	RateCapped      *Match
-	OutsideEnvelope *Match
-	Shadows         []Match
+	Fire       *Match
+	RateCapped *Match
+	OutsideCap *Match
+	Shadows    []Match
 }
 
 func (r *Rules) Route(features map[string]any, state State) Routing {
@@ -42,8 +42,8 @@ func (r *Rules) answer(routing Routing, active []Match, state State) Routing {
 	if len(active) != 1 {
 		return routing
 	}
-	if !active[0].InEnvelope {
-		routing.OutsideEnvelope = &active[0]
+	if !active[0].InCap {
+		routing.OutsideCap = &active[0]
 		return routing
 	}
 	match := active[0]

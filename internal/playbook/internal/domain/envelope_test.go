@@ -1,13 +1,14 @@
 package domain
 
 import (
+	"math"
 	"testing"
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
-func TestTheProposedEnvelopeIsTheSourceCasesRangeAndTheCapWidensIt(t *testing.T) {
+func TestTheProposedEnvelopeIsTheSourceCasesRangeAndTheCapWidensItByAShareOfItsValues(t *testing.T) {
 	t.Parallel()
 	cases := []map[string]any{
 		{"vibration_mean_15m": 4.0, "current_mean_15m": 30.0, "load": 0.8},
@@ -15,8 +16,9 @@ func TestTheProposedEnvelopeIsTheSourceCasesRangeAndTheCapWidensIt(t *testing.T)
 		{"vibration_mean_15m": 4.2, "current_mean_15m": 30.0},
 	}
 	envelope, limits := ProposedEnvelope(cases, []string{"vibration_mean_15m", "current_mean_15m", "load"}, 0.5)
-	if envelope["vibration_mean_15m"] != (spec.Range{Min: 4.0, Max: 4.6}) || limits["vibration_mean_15m"].Min > 3.71 || limits["vibration_mean_15m"].Max < 4.89 {
-		t.Fatalf("vibration envelope %+v cap %+v, want 4.0-4.6 widened by half its width", envelope["vibration_mean_15m"], limits["vibration_mean_15m"])
+	vibration := limits["vibration_mean_15m"]
+	if envelope["vibration_mean_15m"] != (spec.Range{Min: 4.0, Max: 4.6}) || math.Abs(vibration.Min-1.7) > 1e-9 || math.Abs(vibration.Max-6.9) > 1e-9 {
+		t.Fatalf("vibration envelope %+v cap %+v, want 4.0-4.6 widened by half of its largest value", envelope["vibration_mean_15m"], vibration)
 	}
 	if limits["current_mean_15m"] != (spec.Range{Min: 15, Max: 45}) {
 		t.Fatalf("a constant feature's cap = %+v, want the margin of its magnitude", limits["current_mean_15m"])
@@ -39,12 +41,15 @@ func TestMostMatchesOutsideTheCapSwitchTheRuleOff(t *testing.T) {
 	}
 }
 
-func TestAnActiveMatchOutsideItsEnvelopeIsReportedWithItsCap(t *testing.T) {
+func TestAnActiveRuleActsInsideItsApprovedCapAndAMatchOutsideItIsReported(t *testing.T) {
 	t.Parallel()
 	rules := pumpRules(t)
 	inCap := rules.Route(pumpFeatures(rules, 5.5, 2.0, 30), State{})
 	outsideCap := rules.Route(pumpFeatures(rules, 7.0, 2.0, 30), State{})
-	if inCap.OutsideEnvelope == nil || !inCap.OutsideEnvelope.InCap || outsideCap.OutsideEnvelope == nil || outsideCap.OutsideEnvelope.InCap {
-		t.Fatalf("in cap %+v, outside cap %+v; want both outside the envelope, one inside the cap", inCap, outsideCap)
+	if inCap.Fire == nil || inCap.Fire.InEnvelope || inCap.OutsideCap != nil {
+		t.Fatalf("in the cap, outside the envelope: %+v; want the rule to fire", inCap)
+	}
+	if outsideCap.Fire != nil || outsideCap.OutsideCap == nil || outsideCap.OutsideCap.InCap {
+		t.Fatalf("outside the cap: %+v; want no fire and the match reported outside its cap", outsideCap)
 	}
 }
