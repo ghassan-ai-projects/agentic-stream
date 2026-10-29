@@ -88,7 +88,7 @@ func result(id, outcome string) map[string]any {
 func TestHostSendsTheGovernedCommandAsOneDCMD(t *testing.T) {
 	t.Parallel()
 	host, node := commandingHost(t)
-	sentAt := host.clock.Now()
+	nodeDeadline := time.Unix(0, birthNS).Add(20 * time.Second)
 	done := dispatch(host, pumpCommand("c-1"))
 	command := node.Expect("DCMD")
 	want := map[string]any{"command_id": "c-1", "idempotency_key": idempotencyKey, "device": "P1", "command": "set_speed",
@@ -99,9 +99,9 @@ func TestHostSendsTheGovernedCommandAsOneDCMD(t *testing.T) {
 		}
 	}
 	args := command["args"].(map[string]any)
-	if number(t, command["deadline_ns"]) != sentAt.Add(20*time.Second).UnixNano() || number(t, command["authority_epoch"]) != epoch ||
+	if number(t, command["deadline_ns"]) != nodeDeadline.UnixNano() || number(t, command["authority_epoch"]) != epoch ||
 		number(t, args["pct"]) != 50 || number(t, args["lease_ms"]) != 5000 || number(t, command["not_before_ns"]) != 0 {
-		t.Errorf("DCMD = %v, want the deadline 20 s after %s, epoch %d and the preset's args", command, sentAt, epoch)
+		t.Errorf("DCMD = %v, want the deadline 20 s after the node's time %s, epoch %d and the preset's args", command, nodeDeadline, epoch)
 	}
 	node.Send(receipt("c-1", "accepted", ""))
 	node.Send(result("c-1", "succeeded"))
@@ -115,7 +115,7 @@ func TestHostSendsTheGovernedCommandAsOneDCMD(t *testing.T) {
 	if _, err := canonicaljson.Marshal(got.effect.ProviderResult); err != nil {
 		t.Fatalf("the provider result has no canonical form, so the outcome ledger cannot digest it: %v", err)
 	}
-	if deadline := got.effect.ProviderResult["plant_wire"].(map[string]any)["deadline"]; deadline != kernel.FormatTime(sentAt.Add(20*time.Second)) {
+	if deadline := got.effect.ProviderResult["plant_wire"].(map[string]any)["deadline"]; deadline != kernel.FormatTime(nodeDeadline) {
 		t.Fatalf("provider result deadline = %v, want the deadline as durable time text", deadline)
 	}
 }

@@ -40,7 +40,7 @@ func TestFacadeDelegatesToTheStore(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = rows.Close() }()
-	versions, err := storage.CollectRows(rows, "migrations", scanInt)
+	versions, err := storage.CollectRows(rows, "migrations", storage.ScanValue[int])
 	if err != nil || len(versions) != 2 || versions[0] != 1 || versions[1] != 2 {
 		t.Fatalf("CollectRows = %v, %v; want [1 2]", versions, err)
 	}
@@ -60,15 +60,15 @@ func TestQueryAllScansEveryRowAndNamesWhatFailed(t *testing.T) {
 	t.Parallel()
 	db := storagetest.OpenTemp(t)
 
-	values, err := storage.QueryAll(t.Context(), db, "numbers", scanInt, "SELECT 1 UNION SELECT 2")
+	values, err := storage.QueryAll(t.Context(), db, "numbers", storage.ScanValue[int], "SELECT 1 UNION SELECT 2")
 	if err != nil || len(values) != 2 || values[0] != 1 || values[1] != 2 {
 		t.Fatalf("values = %v, %v; want [1 2]", values, err)
 	}
-	empty, err := storage.QueryAll(t.Context(), db, "numbers", scanInt, "SELECT 1 WHERE 0")
+	empty, err := storage.QueryAll(t.Context(), db, "numbers", storage.ScanValue[int], "SELECT 1 WHERE 0")
 	if err != nil || empty == nil || len(empty) != 0 {
 		t.Fatalf("no rows = %v, %v; want an empty slice", empty, err)
 	}
-	if _, err := storage.QueryAll(t.Context(), db, "numbers", scanInt, "SELECT * FROM missing_table"); err == nil || !strings.Contains(err.Error(), "run query") {
+	if _, err := storage.QueryAll(t.Context(), db, "numbers", storage.ScanValue[int], "SELECT * FROM missing_table"); err == nil || !strings.Contains(err.Error(), "run query") {
 		t.Fatalf("a failing query = %v, want a run query error", err)
 	}
 	scanFailure := errors.New("scan failed")
@@ -133,9 +133,3 @@ type unreportedResult struct{}
 
 func (unreportedResult) LastInsertId() (int64, error) { return 0, errors.New("unsupported") }
 func (unreportedResult) RowsAffected() (int64, error) { return 0, errors.New("unsupported") }
-
-func scanInt(rows *sql.Rows) (int, error) {
-	var value int
-	err := rows.Scan(&value)
-	return value, err
-}

@@ -27,12 +27,13 @@ type Arrival struct {
 }
 
 type Reaction struct {
-	Replies       []map[string]any
+	Replies       []Record
 	Events        []contractsv1.Envelope
 	Settlements   []Settlement
 	Verifications []Verification
 	Verdict       *Verdict
 	Quarantined   []string
+	BornKinds     map[string]string
 	Rebirth       bool
 	Dropped       string
 	End           string
@@ -71,6 +72,14 @@ func (c *Conversation) Receive(a Arrival) Reaction {
 	return reaction
 }
 
+func (c *Conversation) Transmit(records []Record) []map[string]any {
+	stamped := make([]map[string]any, len(records))
+	for i, record := range records {
+		stamped[i] = c.out.stamp(record)
+	}
+	return stamped
+}
+
 func (c *Conversation) Beat() []map[string]any {
 	if !c.accepted {
 		return nil
@@ -106,7 +115,7 @@ func (c *Conversation) askRebirth(r *Reaction) {
 		return
 	}
 	c.asked, r.Rebirth = true, true
-	r.Replies = append(r.Replies, c.out.stamp(rebirthRecord()))
+	r.Replies = append(r.Replies, rebirthRecord())
 }
 
 func (c *Conversation) unusable(a Arrival) string {
@@ -158,7 +167,7 @@ func (c *Conversation) rebirth(b Birth, r *Reaction) {
 	verdict := c.admission.Admit(b)
 	r.Verdict = &verdict
 	if !verdict.Accepted() {
-		r.Replies = append(r.Replies, c.out.stamp(stateRecord(c.epoch, c.heartbeat, verdict.Refusal)))
+		r.Replies = append(r.Replies, stateRecord(c.epoch, c.heartbeat, verdict.Refusal))
 		r.End = EndRefused
 		return
 	}
@@ -168,6 +177,7 @@ func (c *Conversation) rebirth(b Birth, r *Reaction) {
 
 func (c *Conversation) commission(b Birth, r *Reaction) {
 	r.Quarantined = c.admission.Inventory.Quarantined(b)
+	r.BornKinds = b.KindDigests()
 	c.ingest.rebirth(b, r.Quarantined)
 }
 
@@ -177,7 +187,7 @@ func (c *Conversation) handshake(b Birth, r *Reaction) {
 	c.accepted = verdict.Accepted()
 	c.out = transmitter{session: b.SessionID, version: ProtocolVersion}
 	c.bdSeq = b.BDSeq
-	r.Replies = append(r.Replies, c.out.stamp(stateRecord(c.epoch, 0, verdict.Refusal)))
+	r.Replies = append(r.Replies, stateRecord(c.epoch, 0, verdict.Refusal))
 	if !c.accepted {
 		r.End = EndRefused
 	}

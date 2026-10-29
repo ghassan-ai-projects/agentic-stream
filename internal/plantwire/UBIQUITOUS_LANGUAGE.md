@@ -20,7 +20,7 @@ the [device-authority language](../authority/UBIQUITOUS_LANGUAGE.md).
 | **Gap** | A sequence number ahead of the next expected one; final on a Unix socket. The host asks one rebirth until the next birth. | `Gap` | `NCMD rebirth` |
 | **Conversation** | The pure state of one session: what each node record makes the host answer, and when the session ends. | `Conversation` | — |
 | **Heartbeat** | The host's `STATE` every second with an increasing counter, after the handshake. | `Conversation.Beat` | `STATE.heartbeat` |
-| **Barrier** | The node's end of a slice; the host answers at once through the `NSYNC`'s own sequence number. | `Conversation.Receive` | `NSYNC`, `HSYNC` |
+| **Barrier** | The node's end of a slice; the host answers through the `NSYNC`'s own sequence number once the events read before it have left the ingest queue and no reasoning is in flight, so a node paced by barriers cannot outrun the pipeline or its reasoning. | `Conversation.Receive` | `NSYNC`, `HSYNC` |
 | **Goodbye** | The host's offline `STATE` when it stops. | `Conversation.Goodbye` | `STATE.online: false` |
 | **Authority epoch** | The integer the host announces in every `STATE`; from `--plant-wire-epoch`, or Unix seconds at start. | `Settings.Epoch` | `authority_epoch` |
 
@@ -81,3 +81,8 @@ the [device-authority language](../authority/UBIQUITOUS_LANGUAGE.md).
 | **Verification window** | How long a command waits for its verification after the dispatch returns: 6 s, the slowest output's 5 s report period and a second of slack. | `VerificationWindow` | — |
 | **Command evidence** | A numeric verification decision sent with the next barrier: observed with the value, or not observed when the window lapsed. | `Conversation.barrier` | `HSYNC.command_evidence` |
 | **Clearing by readings** | Presenting a device's held readings to the device authority, which clears its reconciliation when each output has a good, live reading newer than the opening. | `clearByReadings`, `authority.ResolveWithReadings` | — |
+
+| Term | Meaning | Code name | Stored as |
+| --- | --- | --- | --- |
+| **Born kind digest** | The kind digest a kind was last born with, per kind name, whether or not a kind file commissions it. Rule promotion reads it to switch off rules pinned to another digest. | `Host.BornKindDigests`, `Birth.KindDigests` | in memory |
+

@@ -115,3 +115,18 @@ func writeInto(t *testing.T, dir, name, content string) error {
 	defer func() { _ = root.Close() }()
 	return root.WriteFile(name, []byte(content), 0o600)
 }
+
+func TestValidateWithAPlaybookPrintsItsDigestAndKeepsThePolicyDigest(t *testing.T) {
+	t.Parallel()
+	const path = "../../examples/pump-station/testdata/site-a.playbook.yaml"
+	playbook, err := spec.CompilePlaybookFile(compilePumpStation(t), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain := runCLI(t, newValidateCommand(), pumpStationSpec)
+	out := runCLI(t, newValidateCommand(), pumpStationSpec, "--playbook", path)
+	want := plain + "playbook: site-a\nplaybook_rules: 2\nplaybook_digest: " + playbook.Digest + "\n"
+	if out != want {
+		t.Fatalf("validate --playbook =\n%s\nwant\n%s", out, want)
+	}
+}

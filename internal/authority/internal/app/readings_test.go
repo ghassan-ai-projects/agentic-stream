@@ -83,6 +83,28 @@ func TestReadingsNeverClearAReconciliationWhileACommandOfTheBootIsUnresolved(t *
 	f.assertRequired(t, bootA, true)
 }
 
+func TestAnUnresolvedNoReadbackCommandDoesNotHoldTheBarrierButAReadableOneStillDoes(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	state, _ := f.recordState(t, bootA)
+	f.insertUnresolvedCommand(t, domain.CommandBinding{CommandID: "cmd-booking", Target: "led-b", Device: bootA, Owner: ownerOne, NoReadback: true})
+	if err := f.service.OpenReconciliation(t.Context(), domain.ReconciliationOpening{Device: bootA, Owner: ownerOne, Reason: "outcome unknown"}); err != nil {
+		t.Fatal(err)
+	}
+	f.insertUnknownOutcome(t, "cmd-readable", bootA)
+	evidence := f.readingsOf(state, bootA, f.clock.Now().Add(time.Second))
+	if _, err := f.service.ResolveWithReadings(t.Context(), evidence); err == nil || !strings.Contains(err.Error(), "still require dispatcher reconciliation") {
+		t.Fatalf("ResolveWithReadings with an unresolved readable command = %v, want the refusal", err)
+	}
+	if _, err := f.db.ExecContext(t.Context(), `UPDATE commands SET status = 'succeeded' WHERE command_id = 'cmd-readable'`); err != nil {
+		t.Fatal(err)
+	}
+	if cleared, err := f.service.ResolveWithReadings(t.Context(), evidence); err != nil || !cleared {
+		t.Fatalf("ResolveWithReadings with only an unresolved no-readback command = %v, %v; want it cleared", cleared, err)
+	}
+	f.assertRequired(t, bootA, false)
+}
+
 func TestResolveWithReadingsRefusesIncompleteEvidenceAndAStateThatIsNotTheLatest(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)

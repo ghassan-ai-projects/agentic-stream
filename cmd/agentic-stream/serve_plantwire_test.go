@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
 func TestServeValidatesThePlantWireFlags(t *testing.T) {
@@ -21,8 +22,9 @@ func TestServeValidatesThePlantWireFlags(t *testing.T) {
 			f.plantWire.environment, f.plantWire.hardwareBoards = plantwire.EnvironmentMixed, []string{"mega-01"}
 		}, ""},
 		{"plant wire flags without the socket", func(f *serveFlags) {
-			f.effect.PlantWireSocket, f.liveSocket, f.effectProfile = "", "/tmp/live.sock", "simulated"
+			f.effect.PlantWireSocket, f.effect.DeviceCatalog, f.liveSocket, f.effectProfile = "", "", "/tmp/live.sock", "simulated"
 		}, "require --plant-wire-socket"},
+		{"a socket without a device catalog", func(f *serveFlags) { f.effect.DeviceCatalog = "" }, "requires --device-catalog"},
 		{"a socket without kind files", func(f *serveFlags) { f.plantWire.kindsDir = "" }, "--plant-wire-socket requires --plant-wire-kinds"},
 		{"a socket without a spec", func(f *serveFlags) { f.specPath = "" }, "--spec and one of --trace, --live-socket or --plant-wire-socket"},
 		{"a socket with a trace", func(f *serveFlags) { f.tracePath = "trace.jsonl" }, "--trace is mutually exclusive"},
@@ -57,6 +59,23 @@ func plantWireServeFlags() serveFlags {
 		plantWire:     plantWireFlags{environment: plantwire.EnvironmentSimulated, kindsDir: "kinds"},
 		listenAddress: "127.0.0.1:8080", pollInterval: time.Second,
 	}
-	flags.effect.PlantWireSocket = "/tmp/plantwire/host.sock"
+	flags.effect.PlantWireSocket, flags.effect.DeviceCatalog = "/tmp/plantwire/host.sock", "catalog.json"
 	return flags
+}
+
+func TestThePlantWireHostReadsReasoningInFlightFromTheRuntimeDatabase(t *testing.T) {
+	t.Parallel()
+	core := &runtimeCore{db: storagetest.OpenTempWithoutForeignKeys(t)}
+	if inFlight, err := core.reasoningInFlight(t.Context()); err != nil || inFlight {
+		t.Fatalf("empty ledger: in flight = %v err=%v", inFlight, err)
+	}
+	digest := make([]byte, 32)
+	if _, err := core.db.ExecContext(t.Context(), `INSERT INTO scheduler_items (
+		scheduler_item_id, trigger_id, tenant_id, situation_id, situation_version, lane, priority, status, dedupe_key, expires_at, created_at, updated_at
+		) VALUES ('i1', 't1', 'tenant', 's', 1, 'fast', 1, 'pending', ?, 'later', 'now', 'now')`, digest); err != nil {
+		t.Fatal(err)
+	}
+	if inFlight, err := core.reasoningInFlight(t.Context()); err != nil || !inFlight {
+		t.Fatalf("a pending item: in flight = %v err=%v", inFlight, err)
+	}
 }

@@ -4,20 +4,27 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/playbook"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy"
 )
 
-// ApprovalForSigning presents immutable evidence in the pipeline tenant.
 func (p *Pipeline) ApprovalForSigning(ctx context.Context, r policy.ApprovalLookup) (policy.ApprovalPresentation, error) {
 	r.TenantID = p.tenantID
 	return p.transactions.ApprovalForSigning(ctx, r)
 }
 
-// ResolveApproval uses the trusted clock before committing governance.
 func (p *Pipeline) ResolveApproval(ctx context.Context, r policy.ApprovalResolution) (policy.Result, error) {
 	r.TenantID, r.Now = p.tenantID, p.clk.Now().UTC()
 	return p.transactions.ResolveApproval(ctx, r)
 }
+func (p *Pipeline) PresentRuleProposal(ctx context.Context, r playbook.ProposalLookup) (playbook.ProposalPresentation, error) {
+	return p.transactions.PresentRuleProposal(ctx, r)
+}
+
+func (p *Pipeline) ResolveRuleProposal(ctx context.Context, r playbook.ProposalResolution) (playbook.ProposalResult, error) {
+	return p.transactions.ResolveRuleProposal(ctx, r)
+}
+
 func (p *Pipeline) maintainApprovedWork(ctx context.Context) error {
 	if err := p.watch.Expire(ctx); err != nil {
 		return fmt.Errorf("expire watches: %w", err)

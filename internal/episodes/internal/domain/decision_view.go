@@ -14,3 +14,7 @@ type DecisionView struct {
 	Decision         json.RawMessage `json:"decision"`
 	CreatedAt        string          `json:"created_at"`
 }
+
+func (v DecisionView) Accepted() bool {
+	return v.ValidationStatus == "accepted"
+}

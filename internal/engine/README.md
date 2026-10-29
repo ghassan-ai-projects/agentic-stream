@@ -10,7 +10,7 @@ Read [the vocabulary](UBIQUITOUS_LANGUAGE.md) before changing rules.
 
 | Layer | Responsibility |
 | --- | --- |
-| Facade | `New(ctx, Config)`, `RunGlobal`, and the named `ReplayOwnership` check |
+| Facade | `New(ctx, Config)`, `RunGlobal`, `SituationFeatures` (the CEL features of a Situation's current runtime state) and the named `ReplayOwnership` check |
 | App | Serialised runs, per-record transactions, timers, heartbeat arming, and rebuild of in-memory Situations after a rollback |
 | Domain | Watermarks, persisted Situation state integrity, version-write derivation, collision-free lineage identity, timer matching with boot fencing, heartbeat timer identity |
 | Store | Opaque transactions, engine SQL, the owner fence on the original transaction, busy retry, WAL checkpoint, operator-state and timer-payload codecs |
@@ -24,7 +24,11 @@ clock defaults to the physical clock and the tenant to the default tenant;
 A record applies in one transaction: owner fence, inbox check, operators,
 Situation folding with cognition, operator-state save and heartbeat re-arming,
 then checkpoint and inbox insert. A failure rolls back, resets the in-memory
-Situations and restores them from storage. Operators, Situations and cognition
+Situations and restores them from storage. A window's samples are rows of their
+own: a save inserts the samples the window admitted and deletes those it
+expired, and the engine keeps each entity's last committed operator state in
+memory, so an event does not read or rewrite the window. A rollback drops that
+copy. Operators, Situations and cognition
 share one deterministic ID sequence in a fixed construction order, so replay is
 byte-stable. Timers fire per partition under the same fence; a timer whose
 operator state belongs to a fenced boot is acknowledged without firing.

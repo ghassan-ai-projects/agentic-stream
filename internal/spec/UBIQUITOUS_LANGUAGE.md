@@ -21,6 +21,11 @@
 | Schema reference | The name a spec input uses to select an event schema; resolved in the registry the spec was compiled against. | `CompiledSpec.EventSchema`, `EventSchemas.Lookup` | `schema` of a spec input |
 | Dispatched intent | An intent type an active-dispatch spec may turn into a command; a shadow spec dispatches none. Every one needs an effector that owns its route before the runtime starts. | `CompiledSpec.DispatchedIntentTypes` | `actions.intents[].type` |
 | Baseline choice | The value the deterministic replay baseline writes for a model-writable enum parameter in one Situation phase. It must be an enum value the parameter's schema accepts. | `IntentBaseline` | `actions.intents[].baseline.byPhase` |
+| Promotion block | What rule promotion reads from a spec: the settle window of each diagnosis code, the context features an envelope may cover, the optional remedy map (diagnosis code to allowed intents), the optional recovery checks (diagnosis code to a reading feature, a baseline feature and a relative tolerance) and the envelope margin. Absent, it changes no digest. | `Promotion` | `promotion` |
+| Diagnosis catalog | The codes an executor may diagnose; `unknown` never becomes a rule. A decision's `diagnosis_code` must be one of them. | `ParseDiagnosisCodes`, `UnknownDiagnosis` | `cognition.executor.diagnosisCatalog` |
+| Intent flags | `emergency` and `safetyFunction` mark an intent no rule may recommend, whatever its risk. | `Intent.Emergency`, `Intent.SafetyFunction` | `actions.intents[].emergency`, `.safetyFunction` |
+| Playbook | A file of human-approved rules, compiled against a spec but sealed with its own digest, so the spec and policy digests never change with it. | `CompiledPlaybook`, `CompilePlaybookFile` | `<site>.playbook.yaml` |
+| Rule (playbook) | A deterministic answer to one recurring, verified kind of case: a diagnosis code, a `when` over spec features, a recommended intent and preset, an envelope inside a cap, a pinned kind, a mode, a shadow exit, an audit rate and a rate cap. The compiler refuses a rule that recommends an R3+, emergency or safety-function intent. | `Rule`, `Recommendation`, `Range`, `PinnedKind` | `rules[]` |
 | Registered schema | One immutable, digested event schema version stored for the event log to validate against. Re-registering identical bytes is allowed; different bytes are refused. `spec` is the only writer of the table. | `RegisterEventSchema` | `event_schemas` |
 
 ## Retired words
@@ -28,4 +33,4 @@
 | Avoid | Use | Why |
 | --- | --- | --- |
 | Config, manifest | Spec | A SituationSpec is compiled and digested; configuration is not. |
-| Rule | Trigger, transition, or reducer | Each has its own semantics. |
+| Rule (for a spec expression) | Trigger, transition, or reducer | Each has its own semantics; a rule is a playbook rule. |

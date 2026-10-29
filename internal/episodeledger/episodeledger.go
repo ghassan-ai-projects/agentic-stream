@@ -53,6 +53,10 @@ var ErrOwnerLost = domain.ErrOwnerLost
 // ErrLiveEpisodeConflict means a reconsideration collides with a live episode.
 var ErrLiveEpisodeConflict = domain.ErrLiveEpisodeConflict
 
+// ErrLiveEpisodeBusy means an ordinary item collides with the live episode of
+// its Situation; it can be admitted once that episode ends.
+var ErrLiveEpisodeBusy = domain.ErrLiveEpisodeBusy
+
 // Episode lifecycle states.
 const (
 	LifecycleAdmitted   = domain.LifecycleAdmitted

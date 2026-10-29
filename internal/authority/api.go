@@ -15,6 +15,8 @@ type (
 	// delivered it. NormalizedTarget is the target the command named when the
 	// effector bound it to a different device output; reconciliation evidence
 	// for the command is then checked against it, otherwise against Target.
+	// NoReadback marks a command with nothing to read back: it never holds its
+	// device boot's reconciliation barrier.
 	CommandBinding = domain.CommandBinding
 	// ResolutionOutcome is the result recorded when a reconciliation is resolved.
 	ResolutionOutcome = domain.ResolutionOutcome

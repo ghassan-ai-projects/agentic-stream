@@ -43,9 +43,21 @@ func (tx *Tx) ApprovalAuthority(ctx context.Context, row domain.IntentRecord, en
 	return active, nil
 }
 
-const approvalAuthoritySQL = `
+const activeAuthoritySQL = `
  SELECT COUNT(*) FROM principals p
  JOIN principal_roles pr ON pr.principal_id = p.principal_id
  JOIN approval_authorities aa ON aa.role_id = pr.role_id
  WHERE p.principal_id = ? AND p.tenant_id = ? AND p.status = 'active'
-   AND aa.tenant_id = ? AND aa.entity_id = ? AND aa.risk_class = ?`
+   AND aa.tenant_id = ?`
+
+const approvalAuthoritySQL = activeAuthoritySQL + ` AND aa.entity_id = ? AND aa.risk_class = ?`
+
+func (tx *Tx) RiskAuthority(ctx context.Context, tenant, approver, risk string) (int, error) {
+	var active int
+	if err := tx.tx.QueryRowContext(ctx, riskAuthoritySQL, approver, tenant, tenant, risk).Scan(&active); err != nil {
+		return 0, fmt.Errorf("load risk authority: %w", err)
+	}
+	return active, nil
+}
+
+const riskAuthoritySQL = activeAuthoritySQL + ` AND aa.risk_class = ?`

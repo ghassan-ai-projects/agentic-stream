@@ -13,8 +13,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/store"
 )
 
-// skipUnadmittable records a scheduler item that can never be admitted as it
-// stands, so it cannot block the queue. It reports false for any other error.
 func (a *Admitter) skipUnadmittable(ctx context.Context, itemID string, now time.Time, refused domain.AdmissionAttempt, err error) (bool, error) {
 	switch {
 	case errors.Is(err, runtimecontrol.ErrCostReservationRejected):
@@ -39,8 +37,6 @@ func (a *Admitter) skipCostRejected(ctx context.Context, itemID string, now time
 	return nil
 }
 
-// skipLiveReconsideration enforces one live episode per Situation for
-// reconsiderations.
 func (a *Admitter) skipLiveReconsideration(ctx context.Context, itemID string, now time.Time, refused domain.AdmissionAttempt, conflict error) error {
 	if err := a.coalesceSkipped(ctx, itemID, now); err != nil {
 		return fmt.Errorf("record skipped reconsideration %s: %w", itemID, err)
@@ -54,8 +50,6 @@ func (a *Admitter) skipLiveReconsideration(ctx context.Context, itemID string, n
 	return nil
 }
 
-// skipFixture quarantines the misconfigured item loudly instead of leaving it
-// pending forever, which would block the whole queue.
 func (a *Admitter) skipFixture(ctx context.Context, itemID string, now time.Time, refused domain.AdmissionAttempt, refusal error) error {
 	if err := a.coalesceSkipped(ctx, itemID, now); err != nil {
 		return fmt.Errorf("record fixture-rejected scheduler item %s: %w", itemID, err)
@@ -68,8 +62,6 @@ func (a *Admitter) skipFixture(ctx context.Context, itemID string, now time.Time
 	return nil
 }
 
-// recordCostRejection explains the refusal and coalesces the item in one
-// owner-fenced transaction.
 func (a *Admitter) recordCostRejection(ctx context.Context, itemID string, now time.Time, rejection error) error {
 	if err := a.cfg.Store.InAdmission(ctx, func(tx *store.AdmissionTx) error {
 		if err := tx.AssertOwner(ctx); err != nil {

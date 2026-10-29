@@ -22,7 +22,13 @@ Read [the vocabulary](UBIQUITOUS_LANGUAGE.md) before changing rules.
 the owner-only Unix socket helper of `internal/worker` (absolute path, 0700
 directory, 0600 socket) and hands it to `New`. A session's reader never waits on
 the host: records are read on their own goroutine and answered from one loop,
-so a barrier is answered at once. The session's state is the pure
+so a barrier is answered at once unless the ingest queue is backed up (a
+quarter of it in use); then the answer is held until the queue drains (the
+feeder signals each time it does; while an answer is held the session keeps its
+heartbeat, numbers the held answers when they are sent, and runs no command). With `Config.ReasoningInFlight` (`serve`
+wires `episodeledger.ReasoningInFlight`) every barrier answer is held until the
+queue is empty and the check reports no reasoning in flight, polled every 50 ms
+on the injected clock; a failing check is logged and counts as none. The session's state is the pure
 `domain.Conversation`; the app layer only moves lines and timers. Heartbeats
 use the injected clock, so tests drive them with a virtual clock. The app layer
 reads the kind files and the site file from disk (the module's edge is the
@@ -107,8 +113,10 @@ not sent and leaves no gap in the stream. The conversation tracks the command
 (sent, queued, accepted)
 and settles it from each receipt and result; when the session ends, a queued
 command is refused `session_ending` and any other is unknown. The effector
-waits until the terminal settlement, the deadline plus 2 s on the host clock,
-or the dispatcher's call timeout. The outcome table is in
+waits until the terminal settlement, the route's expiry plus 2 s on the host
+clock, or the dispatcher's call timeout. The `DCMD` deadline is in the node's
+time (its latest seen time plus the wall time since, plus the expiry), so a
+simulated world off the wall clock accepts it. The outcome table is in
 [the design](../../documentation/design/plant-wire-adapter.md#commands).
 
 ### Device authority
@@ -145,8 +153,9 @@ writable metric of the device's kind (the `DBIRTH` values count), with the host
 time it arrived. The authority clears the reconciliation, recording the
 readings as evidence, when every output has a good, live reading on the boot
 newer than the latest opening (any reading of a rebooted boot qualifies), and
-nothing bound to the boot is unresolved in the action ledger; otherwise the
-command is refused. A reboot, or the switch from a simulated to a real session
+no command bound to the boot that reads back is unresolved in the action
+ledger (a no-readback command does not count, whatever its status); otherwise
+the command is refused. A reboot, or the switch from a simulated to a real session
 of the same device, therefore clears on the new boot's first good reading, and
 an unknown outcome on a reading that arrived after it, once the dispatcher has
 reconciled the unknown command. Device-wire does not use it (decision D4).
@@ -166,4 +175,5 @@ reading after the fan's 5 s lease lapsed cannot) after the dispatch returned, th
 the session's end; then it withdraws the watch (`not_observed` evidence) and
 gives no final status. A verified command reports succeeded with the readings
 sealed as device-state evidence. A command with nothing to read back is
-unverified at once. No `DQUERY` is sent.
+unverified at once, and when its outcome is unknown it concludes as manual
+review with the empty read-back as evidence. No `DQUERY` is sent.

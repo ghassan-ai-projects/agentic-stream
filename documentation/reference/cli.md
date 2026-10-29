@@ -147,7 +147,7 @@ Starts the live runtime with HTTP health checks and notifications.
 | `--worker-server-name` | empty | expected worker certificate name |
 | `--evidence-socket` | empty | EvidenceTools Unix socket |
 | `--evidence-key` | empty | hex HMAC key for EvidenceTools |
-| `--plant-wire-socket` | empty | owner-only Unix socket a plant wire node dials (absolute path in a 0700 directory); a continuous source, exclusive with `--trace` and `--device-socket` |
+| `--plant-wire-socket` | empty | owner-only Unix socket a plant wire node dials (absolute path in a 0700 directory); a continuous source, exclusive with `--trace` and `--device-socket`; the `emulator` and `physical` profiles also need `--device-catalog`, without which no command would reach the plant |
 | `--plant-wire-environment` | `simulated` | plant wire nodes accepted: `simulated`, `hardware` or `mixed`; `hardware` and `mixed` need the physical profile with both consent flags |
 | `--plant-wire-kinds` | empty | directory of the commissioned kind files (`*.kind.json`); required with the socket |
 | `--plant-wire-site` | empty | site file kept outside the repository: checked against its schema and the commissioned kinds, its digest logged at start; without it no reading becomes an event, and with `--device-catalog` it is required (the site's devices are the ones the node must announce, and every route target must be one of them) |
@@ -208,6 +208,15 @@ it before creating a command and again immediately before delivering an
 effect. `trip` blocks every effect and needs no lease; `clear` reopens the
 action plane and needs the lease. Each change is versioned and records its
 reason and time. It does not replace a physical e-stop.
+
+### `circuits list | close --rule <id> --version <n> --reason <text>`
+
+A playbook rule's circuit opens when an audit disagrees, the rate cap is hit,
+the device kind changes, a case is not verified or most matches fall outside
+the cap; the rule then answers no case. `list` shows every circuit with its
+cause. `close` switches the rule back on and records the reason; it needs the
+lease, so stop the runtime first. A new approved version of a rule starts
+with no circuit.
 
 ### `quarantine list | release <event-id> | redrive <event-id>`
 

@@ -1,0 +1,394 @@
+apiVersion: agentic-stream/v1
+kind: SituationSpec
+
+# Rule promotion, first slice: eight pumps of the streams-simulator pump
+# station on plant wire. A pump_condition situation opens on per-pump relative
+# features (a 15-minute mean against that pump's own 24-hour mean), so the same
+# fault opens on every pump whatever its absolute level. Tamoz diagnoses each
+# case into the catalog below; verified cases become playbook rules.
+
+metadata:
+  name: pump_station
+  version: 0.1.0
+  description: Detect a pump drifting away from its own baseline and book the maintenance that repairs the fault.
+  labels:
+    domain: pump-station
+    safety: advisory
+
+inputs:
+  - name: vibration
+    eventType: pump.vibration.observed
+    schemaVersion: "1.1"
+    schema: pump.vibration.observed/1.1
+    partitionKey: entity.id
+    entityType: pump
+    classification: internal
+  - name: axial_vibration
+    eventType: pump.axial_vibration.observed
+    schemaVersion: "1.1"
+    schema: pump.axial_vibration.observed/1.1
+    partitionKey: entity.id
+    entityType: pump
+    classification: internal
+  - name: temperature
+    eventType: pump.temperature.observed
+    schemaVersion: "1.1"
+    schema: pump.temperature.observed/1.1
+    partitionKey: entity.id
+    entityType: pump
+    classification: internal
+  - name: motor_current
+    eventType: pump.motor_current.observed
+    schemaVersion: "1.1"
+    schema: pump.motor_current.observed/1.1
+    partitionKey: entity.id
+    entityType: pump
+    classification: internal
+  - name: heartbeat
+    eventType: pump.heartbeat.observed
+    schemaVersion: "1.1"
+    schema: pump.heartbeat.observed/1.1
+    partitionKey: entity.id
+    entityType: pump
+    classification: internal
+
+time:
+  watermarkStrategy: bounded_out_of_orderness
+  maxOutOfOrderness: 2m
+  idleTimeout: 10m
+  allowedLateness: 30m
+  latePolicy: correct_and_reconsider
+  clockSkewTolerance: 5m
+
+windows:
+  - name: short_15m
+    kind: sliding
+    size: 15m
+    slide: 1m
+    emit: early_and_close
+  - name: long_24h
+    kind: sliding
+    size: 24h
+    slide: 30m
+    emit: early_and_close
+
+operators:
+  - name: vibration_short
+    kind: aggregate
+    inputs: [vibration]
+    field: data.rms_mm_s
+    window: short_15m
+    aggregate: mean
+    output: vibration_mean_15m
+    unit: mm_s
+  - name: vibration_long
+    kind: aggregate
+    inputs: [vibration]
+    field: data.rms_mm_s
+    window: long_24h
+    aggregate: mean
+    output: vibration_mean_24h
+    unit: mm_s
+  - name: axial_short
+    kind: aggregate
+    inputs: [axial_vibration]
+    field: data.value
+    window: short_15m
+    aggregate: mean
+    output: axial_mean_15m
+    unit: mm_s
+  - name: axial_long
+    kind: aggregate
+    inputs: [axial_vibration]
+    field: data.value
+    window: long_24h
+    aggregate: mean
+    output: axial_mean_24h
+    unit: mm_s
+  - name: current_short
+    kind: aggregate
+    inputs: [motor_current]
+    field: data.value
+    window: short_15m
+    aggregate: mean
+    output: current_mean_15m
+    unit: ampere
+  - name: current_long
+    kind: aggregate
+    inputs: [motor_current]
+    field: data.value
+    window: long_24h
+    aggregate: mean
+    output: current_mean_24h
+    unit: ampere
+  - name: temperature_short
+    kind: aggregate
+    inputs: [temperature]
+    field: data.celsius
+    window: short_15m
+    aggregate: mean
+    output: temperature_mean_15m
+    unit: celsius
+  - name: heartbeat_missing
+    kind: missing_heartbeat
+    inputs: [heartbeat]
+    expectedEvery: 1m
+    duration: 5m
+    output: heartbeat_missing_5m
+
+situation:
+  type: pump_condition
+  entityKey: entity.id
+  occurrence:
+    openWhen: >
+      features.vibration_mean_24h > 0.0 && features.axial_mean_24h > 0.0 &&
+      features.current_mean_24h > 0.0 &&
+      (features.vibration_mean_15m / features.vibration_mean_24h > 1.15 ||
+       features.axial_mean_15m / features.axial_mean_24h > 1.15 ||
+       features.current_mean_15m / features.current_mean_24h > 1.2)
+    closeWhen: >
+      features.vibration_mean_24h > 0.0 && features.axial_mean_24h > 0.0 &&
+      features.current_mean_24h > 0.0 &&
+      features.vibration_mean_15m / features.vibration_mean_24h < 1.05 &&
+      features.axial_mean_15m / features.axial_mean_24h < 1.05 &&
+      features.current_mean_15m / features.current_mean_24h < 1.08
+    reopenCooldown: 30m
+  initialPhase: candidate
+  phases:
+    - name: candidate
+      severity: 10
+    - name: watch
+      severity: 40
+    - name: warning
+      severity: 60
+    - name: resolved
+      severity: 0
+      terminal: true
+  transitions:
+    - from: candidate
+      to: watch
+      when: >
+        features.vibration_mean_24h > 0.0 && features.axial_mean_24h > 0.0 &&
+        features.current_mean_24h > 0.0 &&
+        (features.vibration_mean_15m / features.vibration_mean_24h > 1.15 ||
+         features.axial_mean_15m / features.axial_mean_24h > 1.15 ||
+         features.current_mean_15m / features.current_mean_24h > 1.2)
+      minDuration: 20m
+    - from: watch
+      to: warning
+      when: >
+        features.vibration_mean_24h > 0.0 && features.axial_mean_24h > 0.0 &&
+        features.current_mean_24h > 0.0 &&
+        (features.vibration_mean_15m / features.vibration_mean_24h > 1.3 ||
+         features.axial_mean_15m / features.axial_mean_24h > 1.3 ||
+         features.current_mean_15m / features.current_mean_24h > 1.35)
+      minDuration: 20m
+  reducers:
+    - field: facts.vibration_mean_15m
+      strategy: latest_event_time
+      input: vibration_mean_15m
+    - field: facts.vibration_mean_24h
+      strategy: latest_event_time
+      input: vibration_mean_24h
+    - field: facts.axial_mean_15m
+      strategy: latest_event_time
+      input: axial_mean_15m
+    - field: facts.axial_mean_24h
+      strategy: latest_event_time
+      input: axial_mean_24h
+    - field: facts.current_mean_15m
+      strategy: latest_event_time
+      input: current_mean_15m
+    - field: facts.current_mean_24h
+      strategy: latest_event_time
+      input: current_mean_24h
+    - field: facts.temperature_mean_15m
+      strategy: latest_event_time
+      input: temperature_mean_15m
+    - field: evidence
+      strategy: set_union
+      input: vibration_mean_15m
+      limit: 256
+
+cognition:
+  triggers:
+    - name: pump_needs_diagnosis
+      when: >
+        situation.phase in ["watch", "warning"] &&
+        (!has(features.heartbeat_missing_5m) || features.heartbeat_missing_5m == false)
+      score: >
+        double(situation.severity) * 0.5 +
+        double(delta.novelty) * 25.0 +
+        double(situation.uncertainty) * 25.0
+      threshold: 20
+      lane: deep
+      completeness: any
+      debounce: 1m
+      cooldown: 5m
+      expiresAfter: 30m
+      materialDelta: delta.phase_changed
+  executor:
+    name: tamoz
+    dispatchPolicy: active
+    riskCeiling: R2
+    objective: >
+      Diagnose why this pump drifted from its own baseline, choosing one code of
+      the diagnosis catalog. Compare the radial and axial vibration and the
+      current against the pump's 24-hour means: a radial rise alone points at the
+      bearing or the probe, an axial rise at the shaft, a current rise at the load.
+      A short rise that settles on its own is transient and needs no action. Book
+      maintenance with the work order that names the fault; never stop the pump.
+    prompt: >
+      Analyze the immutable snapshot and recalled prior cases, then return a typed
+      decision with a diagnosis code and at most one maintenance or load request.
+    modelPolicy: maintenance_reasoner
+    promptVersion: pump-station-v1
+    decisionSchema: schemas/maintenance-decision-v1.json
+    tools:
+      - features_query
+      - evidence_get
+      - history_prior_incidents
+      - knowledge_search
+    budget:
+      wallTime: 240s
+      modelCalls: 6
+      inputTokens: 30000
+      outputTokens: 5000
+      toolCalls: 8
+      toolResultBytes: 32768
+      totalToolResultBytes: 131072
+      providerRetries: 2
+      costMicrounits: 1000000
+    diagnosisCatalog: '[{"code":"unknown","description":"no confident diagnosis"},{"code":"bearing_wear","description":"radial vibration rising against the pump''s own baseline"},{"code":"misalignment","description":"axial vibration rising against the pump''s own baseline"},{"code":"overload","description":"current and temperature above the duty point"},{"code":"lubrication_due","description":"slow exponential vibration creep from a missed lubrication"},{"code":"sensor_drift","description":"the vibration probe reads high while the pump is healthy"},{"code":"sensor_failure","description":"the vibration probe pins high and stops moving"},{"code":"transient_none","description":"a transient that settles on its own, such as cavitation"}]'
+
+actions:
+  intents:
+    - type: install_watch_condition
+      risk: R0
+      parameterSchema:
+        type: object
+        properties:
+          entity_id:
+            type: string
+          expires_at:
+            type: string
+          expression:
+            type: [string, number]
+          max_fires:
+            type: integer
+          metric:
+            type: [string, number]
+          situation_id:
+            type: string
+          situation_version:
+            type: integer
+          target:
+            type: string
+          threshold:
+            type: number
+        additionalProperties: false
+      presets:
+        default:
+          expression: features.vibration_mean_15m >= 4.0
+          max_fires: 3
+          metric: vibration_mean_15m
+          threshold: 4.0
+      policy: automatic
+      rateLimitPerHour: 4
+    - type: schedule_maintenance
+      risk: R1
+      description: Book the maintenance job that repairs the fault the work order names.
+      parameterSchema:
+        type: object
+        properties:
+          entity_id:
+            type: string
+          situation_id:
+            type: string
+          situation_version:
+            type: integer
+          work_order:
+            type: string
+            enum: [bearing_wear, misalignment, sensor_drift, sensor_failure, lubrication_due]
+        required: [work_order]
+        additionalProperties: false
+      modelWritableFields: [work_order]
+      presets:
+        bearing_wear:
+          work_order: bearing_wear
+        misalignment:
+          work_order: misalignment
+        sensor_drift:
+          work_order: sensor_drift
+        sensor_failure:
+          work_order: sensor_failure
+        lubrication_due:
+          work_order: lubrication_due
+      policy: automatic
+      rateLimitPerHour: 8
+    - type: reduce_load
+      risk: R2
+      description: Lower the pump's duty point; relieves an overload, masks wear.
+      parameterSchema:
+        type: object
+        properties:
+          entity_id:
+            type: string
+          situation_id:
+            type: string
+          situation_version:
+            type: integer
+          level:
+            type: string
+            enum: [relieve]
+        required: [level]
+        additionalProperties: false
+      modelWritableFields: [level]
+      presets:
+        relieve:
+          level: relieve
+      policy: approval
+      rateLimitPerHour: 4
+    - type: stop_motor
+      risk: R3
+      emergency: true
+      description: Stop the pump; an emergency action no rule may recommend.
+      parameterSchema:
+        type: object
+        properties:
+          entity_id:
+            type: string
+          situation_id:
+            type: string
+          situation_version:
+            type: integer
+          reason:
+            type: string
+            enum: [operator_stop]
+        required: [reason]
+        additionalProperties: false
+      modelWritableFields: [reason]
+      presets:
+        operator_stop:
+          reason: operator_stop
+      policy: approval
+      rateLimitPerHour: 2
+
+promotion:
+  settleWindows:
+    bearing_wear: 24h
+    misalignment: 24h
+    lubrication_due: 24h
+    sensor_drift: 24h
+    sensor_failure: 24h
+    overload: 2h
+  recovery:
+    bearing_wear: {reading: vibration_mean_15m, baseline: vibration_mean_24h, tolerance: 0.2}
+    misalignment: {reading: axial_mean_15m, baseline: axial_mean_24h, tolerance: 0.3}
+    lubrication_due: {reading: vibration_mean_15m, baseline: vibration_mean_24h, tolerance: 0.2}
+    sensor_drift: {reading: vibration_mean_15m, baseline: vibration_mean_24h, tolerance: 0.2}
+    sensor_failure: {reading: vibration_mean_15m, baseline: vibration_mean_24h, tolerance: 0.2}
+    overload: {reading: current_mean_15m, baseline: current_mean_24h, tolerance: 0.15}
+  contextFeatures: [current_mean_15m]
+  envelopeMargin: 0.1
+  shadowExitAgreeing: 3

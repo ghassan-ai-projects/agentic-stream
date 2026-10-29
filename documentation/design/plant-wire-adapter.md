@@ -61,15 +61,32 @@ the code implements.
    `environment_mismatch`, `contract_unsupported` (exact contract version and
    digest), `version_unsupported`, `inventory_mismatch` (a kind digest that does
    not recompute, a kind announced twice, a required device missing). The host
-   answers `STATE` and then sends a heartbeat every second. Every later
+   answers `STATE` and then sends a heartbeat every second, also while a
+   barrier answer is held (rule 4). Every later
    `NBIRTH` of the session (the rebirth) is admitted by the same rules: a
    rebirth that contradicts them is refused with `STATE{online:false}` and ends
    the session, and a rebirth whose `bd_seq` does not advance is dropped.
 3. A kind whose `kind_digest` differs from the commissioned kind file, or that
    no kind file commissions, is quarantined: its devices give no events and take
    no commands, and the session stays up.
-4. Every `NSYNC` is answered at once with `HSYNC`; reading never waits on the
-   pipeline, so a slow batch cannot miss a barrier.
+4. Every `NSYNC` is answered with `HSYNC` as soon as the events read before it
+   have left the ingest queue and the consumer has no reasoning in flight:
+   an episode admitted and not yet terminal, or scheduler work that may start
+   at once and has not yet been admitted (work held back by a debounce or
+   cooldown window is not in flight). Reading never waits on the pipeline, but
+   the barrier answer does, so a node that paces itself by barriers (an
+   unpaced simulated world) cannot outrun the pipeline or the reasoning on its
+   evidence; a real plant does not pace by barriers and is unaffected. The
+   host polls the check, which `serve` wires to the episode ledger, only after
+   the queue has drained, and the node's own barrier cap still bounds the
+   wait. Commands are not part of the wait: an episode's command is dispatched
+   only after the episode ends, so waiting on a command would stall until the
+   cap. While an answer is held the host keeps reading and keeps its heartbeat,
+   so the node can tell a busy host from a lost one; the node's barrier cap
+   only paces the world. The held answers are numbered when they are sent, not
+   when the `NSYNC` is read, so the records stay in `seq` order around the
+   heartbeats sent meanwhile. A node that floods the queue without waiting
+   for barriers still ends the session: the pipeline fell behind.
 5. A sequence gap asks for one rebirth. A socket loss or `NDEATH` ends the
    session: claims are released, commands in flight are settled as the contract
    says, devices go offline. The host then accepts the next session without a
@@ -118,7 +135,15 @@ copies; `cmd` derives no rule of its own.
 
 The idempotency key of an approved command is forwarded unchanged (one key per
 intent, so a repeated identical command really runs again). The deadline is
-UTC, `authority_epoch` comes from `--plant-wire-epoch` (default: Unix seconds at
+expressed in the node's time, because the node judges it against its own clock
+(a simulated world need not run on the wall clock): the node's latest time the
+session saw (the newest of its births, readings and `NSYNC` world times) plus
+the wall time the host has waited since that record arrived, plus the route's
+expiry. For a node whose time is the wall clock (a real plant) that is the host
+clock plus the expiry; for a barrier-paced world, whose time stands still
+between barriers, it is the world's time plus the expiry. `not_before_ns` is
+unset. The host's own wait for the terminal answer is a wall-clock wait of the
+expiry plus 2 s, independent of the node's time. `authority_epoch` comes from `--plant-wire-epoch` (default: Unix seconds at
 start), and every command falls back `safe_off` on lease or host loss (the
 semantic kinds name no lease, so the host cannot tell a lease command; the
 contract's fixtures and the reference host do the same). Receipts and
@@ -140,6 +165,12 @@ sent. The answers map to the outcome ledger as follows.
 | `accepted`, then `DRESULT unknown`; `accepted` or a result on another boot | unknown outcome |
 | still `queued` when the session ends | failed, `session_ending` |
 | sent and unanswered when the session ends, or no terminal answer by the deadline plus 2 s, or the dispatch call ends | unknown outcome |
+
+An unknown outcome of a command with nothing to read back (no argument is named
+like a writable metric of the device's kind, such as a maintenance booking)
+concludes as manual review at once, with the empty read-back sealed as its
+evidence: no reading of the device could ever settle it, so it does not wait as
+reconciling. It stays in the unresolved list for an operator.
 
 A command to a device on a hardware board without consent, or whose board is
 not in `--hardware-boards`, is a known failure before anything is sent: the
@@ -186,7 +217,9 @@ command's normalized target beside the output it was bound to, so the
 dispatcher reconciles an unknown outcome from this evidence (the device
 authority checks the command against the normalized target and the evidence
 against the output). Without a match in the window, or with no argument to read
-back, it gives no final status and the outcome stays in manual review. No
+back, it gives no final status and the outcome stays in manual review (an
+unknown outcome with no argument to read back concludes as manual review, see
+Commands). No
 `DQUERY` is sent: a relay answers none for a real device. The next `HSYNC`
 carries each numeric decision as `command_evidence` (`observed` with the value,
 or `not_observed` when the window lapsed); a word has no number for the
@@ -206,9 +239,13 @@ output has a good, live reading on the boot that is newer than the latest
 opening; every reading of a boot is newer than the reboot that opened its
 reconciliation, so a reboot clears on the new boot's first good reading, and
 an unknown outcome on a reading received after it. As for any resolution, it
-refuses while a command bound to the boot is still unresolved in the action
-ledger, so an unknown command must be reconciled first (by its verification or
-an operator).
+refuses while a command bound to the boot that reads back is still unresolved
+in the action ledger, so an unknown command with outputs to read must be
+reconciled first (by its verification or an operator). A command with nothing
+to read back does not count: it leaves the device's outputs as they were, so
+the device's readings say everything there is to know about the device, and its
+unresolved `manual_review` (the operator list and the soak report still show
+it) does not hold the barrier.
 
 ## What the adapter never does
 

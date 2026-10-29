@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/draftport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	app "github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/app"
 	composition "github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/composition"
@@ -38,3 +39,7 @@ func (r *WorkerRuntime) Errors() <-chan error { return r.useCases().Errors() }
 
 // Close releases worker/evidence resources, including partial initialization.
 func (r *WorkerRuntime) Close() error { return r.useCases().Close() }
+
+// Drafter is the connected worker's playbook rule drafter; nil without a
+// remote worker.
+func (r *WorkerRuntime) Drafter() draftport.Drafter { return r.useCases().Drafter() }

@@ -84,13 +84,13 @@ func (c *Conversation) observe(device *liveDevice, metric string, value any, r *
 	}
 }
 
-func (c *Conversation) barrier(through uint64) map[string]any {
+func (c *Conversation) barrier(through uint64) Record {
 	record := syncRecord(through)
 	if count := min(len(c.evidence), maxEvidence); count > 0 {
 		record.Fields["command_evidence"] = slices.Clone(c.evidence[:count])
 		c.evidence = c.evidence[count:]
 	}
-	return c.out.stamp(record)
+	return record
 }
 
 func (w *watch) observe(metric string, value any) bool {

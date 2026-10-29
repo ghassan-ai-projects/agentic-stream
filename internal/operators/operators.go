@@ -17,6 +17,13 @@ func NewOperatorRuntime(deploymentID string, compiled *spec.CompiledSpec, idGen 
 // OperatorStateBlob is the JSON-serializable state for one operator key.
 type OperatorStateBlob = domain.OperatorStateBlob
 
+// WindowState is the durable state of one windowed operator key: its position
+// and the samples it holds.
+type WindowState = domain.WindowState
+
+// Sample is one timestamped scalar input to a windowed operator.
+type Sample = domain.Sample
+
 // Feature is an emitted operator result.
 type Feature = domain.Feature
 

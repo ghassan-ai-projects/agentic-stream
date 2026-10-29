@@ -3,6 +3,7 @@ package cognition_test
 import (
 	"database/sql"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -100,5 +101,30 @@ func TestFacadeRecordsWhyAnAdmittedItemWasRefusedOrExpired(t *testing.T) {
 	listed, err := cognition.TriggerEvaluations(t.Context(), db.DB, "tenant", "sit-1", 1)
 	if err != nil || len(listed) != 1 || len(listed[0].Reasons) != 3 {
 		t.Fatalf("evaluations = %+v, %v; want admission, cost refusal and expiry reasons", listed, err)
+	}
+}
+
+func TestQueueAuditRecordsAnAdmittedAuditAndItsItem(t *testing.T) {
+	t.Parallel()
+	db, service := processed(t)
+	var itemID string
+	err := db.WithTx(t.Context(), func(tx *sql.Tx) error {
+		var err error
+		itemID, err = service.QueueAudit(t.Context(), tx, cognition.AuditRequest{TenantID: "tenant", SituationID: "sit-1",
+			SituationVersion: 1, Key: "raudit_rfire_e1", Reason: "playbook audit"})
+		return err
+	})
+	if err != nil || itemID == "" {
+		t.Fatalf("QueueAudit = %q, %v", itemID, err)
+	}
+	listed, err := cognition.TriggerEvaluations(t.Context(), db.DB, "tenant", "sit-1", 1)
+	if err != nil || len(listed) != 2 || listed[1].TriggerName != "playbook_audit" || listed[1].Outcome != "admitted" {
+		t.Fatalf("TriggerEvaluations = %+v, %v; want the trigger and the admitted audit", listed, err)
+	}
+	if err := db.WithTx(t.Context(), func(tx *sql.Tx) error {
+		_, err := service.QueueAudit(t.Context(), nil, cognition.AuditRequest{})
+		return err
+	}); err == nil || !strings.Contains(err.Error(), "caller transaction is required") {
+		t.Fatalf("QueueAudit without a transaction = %v, want it refused", err)
 	}
 }

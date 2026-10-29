@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -42,6 +43,13 @@ func (f *operatorFlags) openOperatorDatabase(ctx context.Context) (*storage.DB, 
 type operatorOwnership struct {
 	owner *runtimecontrol.RuntimeOwner
 	epoch string
+}
+
+func (o operatorOwnership) fence(ctx context.Context, tx *sql.Tx) error {
+	if err := o.owner.Assert(ctx, tx, o.epoch); err != nil {
+		return fmt.Errorf("operator runtime ownership: %w", err)
+	}
+	return nil
 }
 
 func withRuntimeOwnership(ctx context.Context, db *storage.DB, change func(operatorOwnership) error) error {

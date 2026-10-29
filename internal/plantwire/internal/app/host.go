@@ -10,7 +10,6 @@ import (
 	"sync/atomic"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/authority"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/device"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire/internal/transport"
@@ -32,6 +31,8 @@ type Config struct {
 	OwnerEpoch string
 	Clock      sources.Clock
 	QueueSize  int
+
+	ReasoningInFlight ReasoningInFlight
 }
 
 type Host struct {
@@ -50,6 +51,8 @@ type Host struct {
 	live       *session
 	sentMu     sync.Mutex
 	sent       map[string]target
+	born       *bornKinds
+	reasoning  ReasoningInFlight
 }
 
 func New(cfg Config) (*Host, error) {
@@ -93,7 +96,7 @@ func newHost(cfg Config, inventory domain.Inventory, mapping domain.Mapping) *Ho
 	admission := domain.Admission{Environment: cfg.Settings.Environment, ContractDigest: wire.ContractDigest(), Inventory: inventory}
 	return &Host{listener: cfg.Listener, settings: cfg.Settings, admission: admission, mapping: mapping, epoch: epoch, clock: clock,
 		queueSize: cmp.Or(max(cfg.QueueSize, 0), defaultQueueSize), catalog: cfg.Catalog,
-		authority: cfg.Authority, ownerEpoch: cfg.OwnerEpoch, sent: map[string]target{}}
+		authority: cfg.Authority, ownerEpoch: cfg.OwnerEpoch, sent: map[string]target{}, born: &bornKinds{}, reasoning: cfg.ReasoningInFlight}
 }
 
 func (h *Host) logReady(cfg Config, siteDigest string) {
@@ -110,15 +113,15 @@ func (h *Host) Close() error {
 func (h *Host) Run(ctx context.Context, emit Emit) error {
 	ctx, stop := context.WithCancelCause(ctx)
 	defer stop(nil)
-	queue := make(chan contractsv1.Envelope, h.queueSize)
+	queue := newIngestQueue(h.queueSize)
 	fed := make(chan error, 1)
-	go func() { fed <- feedPipeline(ctx, queue, emit, stop) }()
+	go func() { fed <- queue.feed(ctx, emit, stop) }()
 	served := h.acceptSessions(ctx, queue)
 	stop(nil)
 	return errors.Join(<-fed, served)
 }
 
-func (h *Host) acceptSessions(ctx context.Context, queue chan<- contractsv1.Envelope) error {
+func (h *Host) acceptSessions(ctx context.Context, queue *ingestQueue) error {
 	stop := context.AfterFunc(ctx, func() { _ = h.listener.Close() })
 	defer stop()
 	for {

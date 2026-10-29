@@ -9,18 +9,17 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger/internal/store"
 )
 
-// Admit admits the episode. A reconsideration that collides with a live
-// episode for its Situation reports ErrLiveEpisodeConflict.
 func Admit(ctx context.Context, tx *store.Tx, req domain.Admission, now time.Time) error {
 	err := tx.InsertEpisode(ctx, req, now)
-	if err != nil && req.ReportsLiveConflict() && store.IsLiveEpisodeViolation(err) {
+	if err == nil || !store.IsLiveEpisodeViolation(err) {
+		return err
+	}
+	if req.ReportsLiveConflict() {
 		return fmt.Errorf("%w: %w", domain.ErrLiveEpisodeConflict, err)
 	}
-	return err
+	return fmt.Errorf("%w: %w", domain.ErrLiveEpisodeBusy, err)
 }
 
-// RecordRejection durably records a rejected worker input or Decision. It is
-// idempotent for the same identity, reason, details, and timestamp.
 func RecordRejection(ctx context.Context, tx *store.Tx, identity domain.Identity, reason domain.RejectionReason, details []byte, now time.Time) error {
 	if err := domain.CheckRejectionReason(reason); err != nil {
 		return err
@@ -36,8 +35,6 @@ func RecordRejection(ctx context.Context, tx *store.Tx, identity domain.Identity
 	}, known)
 }
 
-// episodeKnown reports whether a rejection can reference the episode; an
-// unknown episode still produces a rejection audit with a null reference.
 func episodeKnown(ctx context.Context, tx *store.Tx, episodeID string) (bool, error) {
 	if episodeID == "" {
 		return false, nil

@@ -10,11 +10,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 )
 
-// Input is the immutable stream context against which a worker Decision is
-// validated. The worker-provided document never supplies these values.
-// P4: IntentCatalog is the compiled, digest-verified catalog — the domain's
-// authority (declared risks, parameter schemas, presets, model-writable
-// fields). AllowedIntentTypes remains the per-episode subset.
 type Input struct {
 	EpisodeID          string
 	AttemptID          string
@@ -28,17 +23,16 @@ type Input struct {
 	RiskCeiling        string
 	IntentCatalog      *IntentCatalog
 	Reconsider         bool
+	DiagnosisCodes     map[string]struct{}
 	Now                time.Time
 }
 
-// Result is a validated Decision and its independently digested Intents.
 type Result struct {
 	DecisionID     string
 	DecisionDigest string
 	Intents        []Intent
 }
 
-// Intent is one validated child of a Decision.
 type Intent struct {
 	ID               string
 	Type             string
@@ -50,8 +44,6 @@ type Intent struct {
 	RequiresApproval bool
 }
 
-// ValidationError is a fail-closed Decision rejection. Reason values map to
-// the durable lifecycle rejection registry.
 type ValidationError struct {
 	Reason  string
 	Details map[string]any
@@ -66,8 +58,6 @@ func (e *ValidationError) Error() string {
 	return fmt.Sprintf("decision rejected: %s", e.Reason)
 }
 
-// Validate parses, schema-validates, binds, and digests one worker Decision.
-// It does not write to storage and never changes the attempt terminal state.
 func Validate(raw []byte, transmittedDigest string, input Input) (*Result, error) {
 	if err := checkTrustedInput(input); err != nil {
 		return nil, err
@@ -78,6 +68,9 @@ func Validate(raw []byte, transmittedDigest string, input Input) (*Result, error
 	}
 	decisionID, err := checkDecisionBinding(document, input)
 	if err != nil {
+		return nil, err
+	}
+	if err := checkDiagnosisCode(document, input); err != nil {
 		return nil, err
 	}
 	return acceptDecision(document, transmittedDigest, decisionID, input)
@@ -133,12 +126,20 @@ func reject(reason, field, message string) *ValidationError {
 	}}
 }
 
-// isExpired reports whether a decision's valid_until has passed. It fails
-// closed: an unparseable trusted-side timestamp is treated as expired so the
-// decision is rejected rather than admitted on a malformed validity window.
 func isExpired(now time.Time, value string) bool {
 	validUntil, err := kernel.ParseTime(value)
 	return err != nil || !validUntil.After(now)
+}
+
+func checkDiagnosisCode(document map[string]any, input Input) error {
+	code, present := document["diagnosis_code"].(string)
+	if !present || input.DiagnosisCodes == nil {
+		return nil
+	}
+	if _, cataloged := input.DiagnosisCodes[code]; !cataloged {
+		return reject("schema_invalid", "diagnosis_code", "diagnosis code is not in the spec's diagnosis catalog")
+	}
+	return nil
 }
 
 func checkTrustedInput(input Input) error {

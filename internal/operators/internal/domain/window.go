@@ -21,7 +21,7 @@ func (r *OperatorRuntime) applyWindowOperator(inst *operatorInstance, blob *Oper
 	if err != nil {
 		return nil, err
 	}
-	ws.addSample(Sample{EventID: env.ID, EventTime: env.EventTime, Value: value, BootID: deviceBootID(env)}, watermark.Add(-inst.window.size))
+	ws.AddSample(Sample{EventID: env.ID, EventTime: env.EventTime, Value: value, BootID: deviceBootID(env)}, watermark.Add(-inst.window.size))
 	agg, err := computeAggregate(inst.def.Aggregate, ws.Samples)
 	if err != nil {
 		return nil, err
@@ -58,9 +58,21 @@ func (r *OperatorRuntime) emitWindow(inst *operatorInstance, env contractsv1.Env
 	return features
 }
 
-func (ws *WindowState) addSample(sample Sample, cutoff time.Time) {
-	ws.Samples = slices.DeleteFunc(append(ws.Samples, sample), func(s Sample) bool { return s.EventTime.Before(cutoff) })
+func (ws *WindowState) AddSample(sample Sample, cutoff time.Time) {
+	ws.changes.admit(sample)
+	ws.Samples = append(ws.Samples, sample)
+	ws.dropSamplesBefore(cutoff)
 	slices.SortStableFunc(ws.Samples, compareSamples)
+}
+
+func (ws *WindowState) dropSamplesBefore(cutoff time.Time) {
+	ws.Samples = slices.DeleteFunc(ws.Samples, func(s Sample) bool {
+		expired := s.EventTime.Before(cutoff)
+		if expired {
+			ws.changes.expire(s)
+		}
+		return expired
+	})
 }
 
 func compareSamples(a, b Sample) int {

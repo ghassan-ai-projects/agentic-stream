@@ -1,0 +1,86 @@
+{
+  "protocol_version": 1,
+  "routes": {
+    "schedule_maintenance": {
+      "operation": "schedule_maintenance",
+      "target_bindings": {
+        "site-a:pump-1": "site-a:pump-1",
+        "site-a:pump-2": "site-a:pump-2",
+        "site-a:pump-3": "site-a:pump-3",
+        "site-a:pump-4": "site-a:pump-4",
+        "site-a:pump-5": "site-a:pump-5",
+        "site-a:pump-6": "site-a:pump-6",
+        "site-a:pump-7": "site-a:pump-7",
+        "site-a:pump-8": "site-a:pump-8"
+      },
+      "target_arg": "pump_id",
+      "selector_field": "work_order",
+      "expires_after_ms": 180000,
+      "presets": {
+        "bearing_wear": {
+          "work_order": "bearing_wear"
+        },
+        "misalignment": {
+          "work_order": "misalignment"
+        },
+        "sensor_drift": {
+          "work_order": "sensor_drift"
+        },
+        "sensor_failure": {
+          "work_order": "sensor_failure"
+        },
+        "lubrication_due": {
+          "work_order": "lubrication_due"
+        }
+      }
+    },
+    "reduce_load": {
+      "operation": "reduce_load",
+      "target_bindings": {
+        "site-a:pump-1": "site-a:pump-1",
+        "site-a:pump-2": "site-a:pump-2",
+        "site-a:pump-3": "site-a:pump-3",
+        "site-a:pump-4": "site-a:pump-4",
+        "site-a:pump-5": "site-a:pump-5",
+        "site-a:pump-6": "site-a:pump-6",
+        "site-a:pump-7": "site-a:pump-7",
+        "site-a:pump-8": "site-a:pump-8"
+      },
+      "target_arg": "pump_id",
+      "selector_field": "level",
+      "expires_after_ms": 20000,
+      "presets": {
+        "relieve": {
+          "target_load": 0.6
+        }
+      },
+      "bounds": {
+        "target_load": {
+          "min": 0.2,
+          "max": 1.0
+        }
+      }
+    },
+    "stop_motor": {
+      "operation": "stop_motor",
+      "target_bindings": {
+        "site-a:pump-1": "site-a:pump-1",
+        "site-a:pump-2": "site-a:pump-2",
+        "site-a:pump-3": "site-a:pump-3",
+        "site-a:pump-4": "site-a:pump-4",
+        "site-a:pump-5": "site-a:pump-5",
+        "site-a:pump-6": "site-a:pump-6",
+        "site-a:pump-7": "site-a:pump-7",
+        "site-a:pump-8": "site-a:pump-8"
+      },
+      "target_arg": "pump_id",
+      "selector_field": "reason",
+      "expires_after_ms": 20000,
+      "presets": {
+        "operator_stop": {
+          "reason": "operator_stop"
+        }
+      }
+    }
+  }
+}

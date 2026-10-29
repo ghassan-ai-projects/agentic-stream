@@ -36,6 +36,8 @@ type Service struct {
 	deploymentID string
 	logger       *slog.Logger
 
+	operatorStates operatorStateCache
+
 	opRuntime *operators.OperatorRuntime
 	sitEngine *situations.Engine
 	cogEngine *cognition.Service
@@ -103,6 +105,7 @@ func (s *Service) restoreSituations(ctx context.Context) error {
 }
 
 func (s *Service) restoreAfterRollback(ctx context.Context) error {
+	s.operatorStates.forget()
 	s.sitEngine.Reset()
 	return s.restoreSituations(ctx)
 }

@@ -24,7 +24,10 @@ expiry), then in one transaction accepts an identical earlier install of the sam
 watch identity, rejects a conflicting one, asserts ownership and the interlock,
 inserts, and reads the row back. A fire asserts the same guards, expires due
 watches, requires the watch's Situation and target to match, evaluates the
-expression (an evaluation error is a logged no-fire), records the fire once per
+expression against the features of the watch's own Situation, read from its
+runtime state through a `FeatureSource` (the spec's feature names, as of the
+latest applied event; a Situation the source does not hold is a logged no-fire;
+an evaluation error is a logged no-fire too), records the fire once per
 event and spends one allowance, disabling the watch at zero.
 
 Migration record.

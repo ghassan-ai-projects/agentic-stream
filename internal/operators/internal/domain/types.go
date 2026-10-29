@@ -45,12 +45,14 @@ type Sample struct {
 	BootID    string    `json:"boot_id,omitempty"`
 }
 
-// WindowState stores samples for windowed aggregates.
+// WindowState stores samples for windowed aggregates. The samples are durable
+// as rows of their own, so the JSON form carries the window's position only.
 type WindowState struct {
 	BootID    string    `json:"boot_id,omitempty"`
-	Samples   []Sample  `json:"samples"`
+	Samples   []Sample  `json:"-"`
 	LastEmit  time.Time `json:"last_emit"`
 	WindowEnd time.Time `json:"window_end"`
+	changes   sampleChanges
 }
 
 // HeartbeatState stores the last seen heartbeat for a keyed entity.

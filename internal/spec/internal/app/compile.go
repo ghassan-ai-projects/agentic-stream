@@ -28,3 +28,11 @@ func CompileFile(ctx context.Context, path string, options ...CompileOption) (*d
 	}
 	return compiler.CompileBytes(ctx, data, path) //nolint:wrapcheck // The compiler's CompileError carries the operator-facing path and message.
 }
+
+func CompilePlaybookFile(compiled *domain.CompiledSpec, path string) (*domain.CompiledPlaybook, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read file: %w", err)
+	}
+	return domain.CompilePlaybook(compiled, data)
+}

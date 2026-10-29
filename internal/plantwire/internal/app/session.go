@@ -1,6 +1,7 @@
 package app
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"io"
@@ -9,7 +10,6 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/authority"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire/internal/transport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire/internal/wire"
@@ -39,7 +39,7 @@ type session struct {
 	conversation *domain.Conversation
 	clock        sources.Clock
 	beat         timer
-	queue        chan<- contractsv1.Envelope
+	queue        *ingestQueue
 	lines        chan readResult
 	calls        chan call
 	settings     domain.Settings
@@ -48,14 +48,18 @@ type session struct {
 	claims       map[string]authority.TargetClaim
 	mailboxes    map[string]chan<- domain.Settlement
 	watchers     map[string]chan<- domain.Verification
+	held         []domain.Record
+	reasoning    ReasoningInFlight
+	recheck      timer
+	born         *bornKinds
 	done         chan struct{}
 }
 
-func (h *Host) serve(ctx context.Context, conn *transport.Conn, queue chan<- contractsv1.Envelope) {
+func (h *Host) serve(ctx context.Context, conn *transport.Conn, queue *ingestQueue) {
 	s := &session{conn: conn, conversation: domain.NewConversation(h.admission, h.epoch, h.mapping), clock: h.clock,
 		queue: queue, lines: make(chan readResult), calls: make(chan call), mailboxes: map[string]chan<- domain.Settlement{},
 		watchers: map[string]chan<- domain.Verification{}, authority: h.authority, claims: map[string]authority.TargetClaim{},
-		settings: h.settings, done: make(chan struct{})}
+		settings: h.settings, born: h.born, reasoning: h.reasoning, done: make(chan struct{})}
 	h.goLive(s)
 	defer h.goLive(nil)
 	defer s.close()
@@ -77,14 +81,18 @@ func (s *session) run(ctx context.Context) string {
 func (s *session) step(ctx context.Context) string {
 	select {
 	case <-ctx.Done():
-		_ = s.send(s.conversation.Goodbye())
+		_ = s.send(append(s.conversation.Transmit(s.held), s.conversation.Goodbye()...))
 		return endHostStopping
 	case read := <-s.lines:
 		return s.receive(ctx, read)
 	case <-s.beats():
 		return s.heartbeat()
-	case do := <-s.calls:
+	case do := <-s.pendingCalls():
 		return do()
+	case <-s.draining():
+		return s.releaseHeld(ctx)
+	case <-s.rechecks():
+		return s.releaseHeld(ctx)
 	}
 }
 
@@ -94,12 +102,20 @@ func (s *session) receive(ctx context.Context, read readResult) string {
 	}
 	reaction := s.conversation.Receive(s.arrivalOf(read.line))
 	report(ctx, reaction)
+	s.born.record(reaction.BornKinds)
 	s.startBeating(reaction)
 	s.deliverReaction(reaction)
-	if !enqueue(s.queue, reaction.Events) {
+	if !s.queue.enqueue(reaction.Events) {
 		return endPipelineBehind
 	}
-	if err := s.send(reaction.Replies); err != nil {
+	return s.answer(ctx, reaction)
+}
+
+func (s *session) answer(ctx context.Context, reaction domain.Reaction) string {
+	if s.holdUntilDrained(reaction.Replies) {
+		return cmp.Or(reaction.End, s.releaseHeld(ctx))
+	}
+	if err := s.send(s.conversation.Transmit(reaction.Replies)); err != nil {
 		slog.WarnContext(ctx, "plant wire host record not written", "error", err)
 		return endWriteFailed
 	}
@@ -167,6 +183,7 @@ func (s *session) close() {
 	if s.beat != nil {
 		s.beat.Stop()
 	}
+	s.stopRecheck()
 	_ = s.conn.Close()
 }
 

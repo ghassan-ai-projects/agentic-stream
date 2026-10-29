@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:agentic-stream:schema:playbook:v1",
+  "title": "Agentic Stream Playbook v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "kind", "metadata", "rules"],
+  "properties": {
+    "apiVersion": {"const": "agentic-stream/v1"},
+    "kind": {"const": "Playbook"},
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "spec"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1, "maxLength": 128},
+        "spec": {"type": "string", "minLength": 1, "maxLength": 128}
+      }
+    },
+    "rules": {
+      "type": ["array", "null"],
+      "maxItems": 256,
+      "items": {"$ref": "#/$defs/rule"}
+    }
+  },
+  "$defs": {
+    "name": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,62}$"},
+    "ranges": {
+      "type": ["object", "null"],
+      "maxProperties": 32,
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["min", "max"],
+        "properties": {"min": {"type": "number"}, "max": {"type": "number"}}
+      }
+    },
+    "rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version", "diagnosisCode", "when", "recommend", "envelope", "cap", "pinnedKind", "mode", "rateCapPerHour", "provenance"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]{0,127}$"},
+        "version": {"type": "integer", "minimum": 1},
+        "diagnosisCode": {"$ref": "#/$defs/name"},
+        "when": {"type": "string", "minLength": 1, "maxLength": 4096},
+        "recommend": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["intent", "preset"],
+          "properties": {
+            "intent": {"$ref": "#/$defs/name"},
+            "preset": {"type": "string", "minLength": 1, "maxLength": 128}
+          }
+        },
+        "envelope": {"$ref": "#/$defs/ranges"},
+        "cap": {"$ref": "#/$defs/ranges"},
+        "pinnedKind": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "digest"],
+          "properties": {
+            "name": {"type": "string", "minLength": 1, "maxLength": 128},
+            "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+          }
+        },
+        "mode": {"enum": ["shadow", "active"]},
+        "shadowExit": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["agreeing", "disagreeing"],
+          "properties": {
+            "agreeing": {"type": "integer", "minimum": 1, "maximum": 10000},
+            "disagreeing": {"type": "integer", "minimum": 0, "maximum": 10000}
+          }
+        },
+        "auditEvery": {"type": "integer", "minimum": 0, "maximum": 1000},
+        "rateCapPerHour": {"type": "integer", "minimum": 1, "maximum": 100000},
+        "provenance": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["sourceEpisodes"],
+          "properties": {
+            "sourceEpisodes": {
+              "type": ["array", "null"],
+              "maxItems": 64,
+              "uniqueItems": true,
+              "items": {"type": "string", "minLength": 1, "maxLength": 256}
+            },
+            "approvalDigest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+          }
+        },
+        "reads": {"type": ["array", "null"]}
+      }
+    }
+  }
+}

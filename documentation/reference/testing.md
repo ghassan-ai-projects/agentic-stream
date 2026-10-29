@@ -52,6 +52,32 @@ STREAMSIM_BIN=/tmp/streamsim STREAMSIM_REPO=<streams-simulator checkout> \
 
 The test kills the node at the test deadline, so a hung node cannot stall the run.
 
+The rule-promotion campaign driver (`internal/testsupport/campaign`,
+`TestCampaignDrivesTheConsumerThroughItsRuns`) also needs `CAMPAIGN_DIR`, a
+folder made by `streamsim suite campaign`. `CAMPAIGN_ARM` picks the arm (`0`,
+`A`, `B` (default) or `C`), `CAMPAIGN_RUNS` how many runs to drive (default 1),
+`CAMPAIGN_OUT` where the database, run folders, verdicts, `responses.jsonl` and
+`campaign-score.json` are kept (default a temporary folder) and
+`CAMPAIGN_REPLAY` a `responses.jsonl` to replay instead of asking the canned
+worker. `CAMPAIGN_TAMOZ_SOCKET` forwards every episode and draft to a running
+Tamoz worker on that socket instead, and `CAMPAIGN_LOG_EXCHANGES=1` then logs
+each forwarded request and every event of its response to
+`worker-exchanges.jsonl` beside `responses.jsonl`. `CAMPAIGN_PHASES` drives only
+the runs of the listed phases (comma-separated), and `CAMPAIGN_FROM_DB` starts
+from a copy of an earlier arm's database instead of an empty one. A learning arm
+skips its remaining learn runs once learning has settled (no draft or proposal
+in flight and every playbook rule active) and keeps the database its learning
+ended with as `learned.db`, so arm A can play the holdout from the same state; a
+run whose planned world start lies past a gap starts where the database's world
+ended. The node waits up to 240 s at each barrier, an episode's wall-time
+budget, so the world does not move on while the consumer reasons; a session that
+ends before its run's end fails the run:
+
+```bash
+STREAMSIM_BIN=/tmp/streamsim STREAMSIM_REPO=<streams-simulator checkout> CAMPAIGN_DIR=<campaign> \
+  CAMPAIGN_ARM=B CAMPAIGN_RUNS=2 CAMPAIGN_OUT=<out> go test ./cmd/agentic-stream -run Campaign -timeout 90m
+```
+
 Optional local tools such as `deadcode` and `govulncheck` are reported as
 skipped by the Makefile when not installed.
 

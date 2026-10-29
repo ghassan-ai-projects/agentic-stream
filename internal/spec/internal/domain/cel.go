@@ -9,9 +9,6 @@ import (
 	"github.com/google/cel-go/ext"
 )
 
-// NewCELEnv creates a restricted CEL environment for SituationSpec expressions.
-// It allows only deterministic functions and rejects sources of non-determinism
-// such as timestamps, randomness, and external calls.
 func NewCELEnv() (*cel.Env, error) {
 	opts := []cel.EnvOption{
 		cel.Variable("features", cel.MapType(cel.StringType, cel.DynType)),
@@ -28,8 +25,6 @@ func NewCELEnv() (*cel.Env, error) {
 	return env, nil
 }
 
-// validateExpressions compiles every CEL expression in the spec and reports the
-// first error.
 func validateExpressions(spec *CompiledSpec) error {
 	env, err := NewCELEnv()
 	if err != nil {
@@ -46,14 +41,10 @@ func validateExpressions(spec *CompiledSpec) error {
 	return nil
 }
 
-// celExpression is one CEL source in the spec and the path that names it in
-// a compile error.
 type celExpression struct {
 	path, source string
 }
 
-// specExpressions lists every CEL expression in the spec, in the order errors
-// are reported.
 func specExpressions(spec *CompiledSpec) []celExpression {
 	expressions := []celExpression{
 		{"situation.occurrence.openWhen", spec.Situation.Occurrence.OpenWhen},
@@ -81,8 +72,6 @@ func triggerExpressions(triggers []Trigger) []celExpression {
 	return expressions
 }
 
-// CELBool converts an evaluated SituationSpec condition to a Go bool,
-// rejecting any non-boolean result.
 func CELBool(out ref.Val) (bool, error) {
 	v, err := out.ConvertToNative(reflect.TypeOf(true))
 	if err != nil {

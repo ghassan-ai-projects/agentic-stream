@@ -16,20 +16,20 @@ func TestConversationAnswersTheHandshakeBarriersAndHeartbeats(t *testing.T) {
 		t.Fatal("a conversation beats or says goodbye before its handshake")
 	}
 	reaction := conversation.Receive(birthArrival(t, 0, 0))
-	assertReply(t, reaction, map[string]any{"type": "STATE", "online": true, "heartbeat": uint64(0), "authority_epoch": int64(9), "seq": uint64(0), "session_id": "s-1"})
+	assertReply(t, conversation.Transmit(reaction.Replies), map[string]any{"type": "STATE", "online": true, "heartbeat": uint64(0), "authority_epoch": int64(9), "seq": uint64(0), "session_id": "s-1"})
 	if reaction.Verdict == nil || !reaction.Verdict.Accepted() || len(reaction.Quarantined) != 0 {
 		t.Fatalf("handshake reaction = %+v, want an accepted verdict and no quarantine", reaction)
 	}
-	assertReply(t, conversation.Receive(syncArrival(1)), map[string]any{"type": "HSYNC", "through_seq": uint64(1), "seq": uint64(1)})
-	assertReply(t, domain.Reaction{Replies: conversation.Beat()}, map[string]any{"type": "STATE", "heartbeat": uint64(1), "seq": uint64(2)})
-	assertReply(t, domain.Reaction{Replies: conversation.Goodbye()}, map[string]any{"type": "STATE", "online": false, "heartbeat": uint64(1)})
+	assertReply(t, conversation.Transmit(conversation.Receive(syncArrival(1)).Replies), map[string]any{"type": "HSYNC", "through_seq": uint64(1), "seq": uint64(1)})
+	assertReply(t, conversation.Beat(), map[string]any{"type": "STATE", "heartbeat": uint64(1), "seq": uint64(2)})
+	assertReply(t, conversation.Goodbye(), map[string]any{"type": "STATE", "online": false, "heartbeat": uint64(1)})
 }
 
 func TestConversationRefusesABirthAndEndsTheSession(t *testing.T) {
 	t.Parallel()
 	conversation := domain.NewConversation(admissionFor(t, domain.EnvironmentSimulated, []string{"V9"}), 1, domain.Mapping{})
 	reaction := conversation.Receive(birthArrival(t, 0, 0))
-	assertReply(t, reaction, map[string]any{"type": "STATE", "online": false, "refusal": domain.RefusalInventoryMismatch})
+	assertReply(t, conversation.Transmit(reaction.Replies), map[string]any{"type": "STATE", "online": false, "refusal": domain.RefusalInventoryMismatch})
 	if reaction.End != domain.EndRefused || conversation.Beat() != nil {
 		t.Fatalf("reaction = %+v, want the session ended as refused and no heartbeat", reaction)
 	}
@@ -110,7 +110,7 @@ func TestConversationRefusesARebirthThatContradictsTheAdmission(t *testing.T) {
 	if got.Verdict == nil || got.Verdict.Accepted() || got.End != domain.EndRefused {
 		t.Fatalf("a rebirth that contradicts the admission gave %+v, want the session refused", got)
 	}
-	if len(got.Replies) != 1 || got.Replies[0]["refusal"] != domain.RefusalEnvironmentMismatch {
+	if len(got.Replies) != 1 || got.Replies[0].Fields["refusal"] != domain.RefusalEnvironmentMismatch {
 		t.Fatalf("the refusal replies = %v, want a STATE naming the environment mismatch", got.Replies)
 	}
 }
@@ -176,14 +176,14 @@ func deathArrival(seq, bdSeq uint64) domain.Arrival {
 		Sequenced: true, Death: &domain.NodeDeath{BDSeq: bdSeq, Reason: "shutdown"}}
 }
 
-func assertReply(t *testing.T, reaction domain.Reaction, want map[string]any) {
+func assertReply(t *testing.T, replies []map[string]any, want map[string]any) {
 	t.Helper()
-	if len(reaction.Replies) != 1 {
-		t.Fatalf("replies = %v, want one %v", reaction.Replies, want["type"])
+	if len(replies) != 1 {
+		t.Fatalf("replies = %v, want one %v", replies, want["type"])
 	}
 	for member, value := range want {
-		if reaction.Replies[0][member] != value {
-			t.Errorf("%v %s = %#v, want %#v", want["type"], member, reaction.Replies[0][member], value)
+		if replies[0][member] != value {
+			t.Errorf("%v %s = %#v, want %#v", want["type"], member, replies[0][member], value)
 		}
 	}
 }
@@ -191,7 +191,19 @@ func assertReply(t *testing.T, reaction domain.Reaction, want map[string]any) {
 func replyTypes(reaction domain.Reaction) string {
 	var types []string
 	for _, reply := range reaction.Replies {
-		types = append(types, reply["type"].(string))
+		types = append(types, reply.Type)
 	}
 	return strings.Join(types, ",")
+}
+
+func TestConversationNumbersAReplyWhenItIsTransmittedNotWhenItIsProduced(t *testing.T) {
+	t.Parallel()
+	conversation := domain.NewConversation(admissionFor(t, domain.EnvironmentSimulated, nil), 9, domain.Mapping{})
+	conversation.Transmit(conversation.Receive(birthArrival(t, 0, 0)).Replies)
+	held := conversation.Receive(syncArrival(1)).Replies
+	beat := conversation.Beat()
+	answered := conversation.Transmit(held)
+	if beat[0]["seq"] != uint64(1) || answered[0]["seq"] != uint64(2) || answered[0]["type"] != domain.TypeHostSync {
+		t.Fatalf("heartbeat %v then held answer %v, want seq 1 then seq 2", beat, answered)
+	}
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 )
@@ -43,6 +44,7 @@ type CommandOrder struct {
 	Command        string
 	Args           map[string]any
 	ExpectedBootID string
+	Expiry         time.Duration
 	DeadlineNS     int64
 }
 

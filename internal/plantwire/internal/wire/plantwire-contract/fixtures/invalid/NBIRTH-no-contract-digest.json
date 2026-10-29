@@ -9,7 +9,7 @@
     "lane": "control",
     "protocol_min": 1,
     "protocol_max": 1,
-    "contract_version": "1.4.0",
+    "contract_version": "1.5.0",
     "environment": "simulated",
     "bd_seq": 0,
     "prior_last_seq": -1,

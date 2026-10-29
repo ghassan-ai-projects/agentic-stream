@@ -36,6 +36,7 @@ func TestACommandBindingIsFirstRecordedThenOnlyRepeatedIdentically(t *testing.T)
 		{"different owner conflicts", &bound, with(func(b *CommandBinding) { b.Owner = ownerB }), false, true},
 		{"different target conflicts", &bound, with(func(b *CommandBinding) { b.Target = "led-01" }), false, true},
 		{"different normalized target conflicts", &bound, with(func(b *CommandBinding) { b.NormalizedTarget = "zone-01" }), false, true},
+		{"different readback conflicts", &bound, with(func(b *CommandBinding) { b.NoReadback = true }), false, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
