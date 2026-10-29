@@ -13,6 +13,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/worker"
 )
@@ -63,7 +64,8 @@ func (core *runtimeCore) openServeEffects(ctx context.Context, flags serveFlags,
 	if err != nil {
 		return effects{}, err
 	}
-	opened.plant, err = core.openPlantWireHost(flags, cleanup)
+	opened.decision = decisionClockOf(flags)
+	opened.plant, err = core.openPlantWireHost(flags, opened.decision, cleanup)
 	if opened.plant != nil && flags.profileOptions().DeviceCatalog != "" {
 		opened.device = opened.plant
 	}
@@ -76,7 +78,28 @@ type plantWireCommanding struct {
 	epoch     string
 }
 
-func (core *runtimeCore) openPlantWireHost(flags serveFlags, cleanup *cleanups) (*plantwire.Host, error) {
+func decisionClockOf(flags serveFlags) *sources.Decision {
+	if flags.effect.PlantWireSocket == "" {
+		return nil
+	}
+	return sources.NewDecision(sources.Physical())
+}
+
+func worldOf(flags serveFlags, decision *sources.Decision) *sources.Decision {
+	if flags.liveSocket != "" {
+		return nil
+	}
+	return decision
+}
+
+func (e effects) decisionClock() sources.Clock {
+	if e.decision == nil {
+		return nil
+	}
+	return e.decision
+}
+
+func (core *runtimeCore) openPlantWireHost(flags serveFlags, decision *sources.Decision, cleanup *cleanups) (*plantwire.Host, error) {
 	options := flags.profileOptions()
 	if options.PlantWireSocket == "" {
 		return nil, nil
@@ -85,7 +108,7 @@ func (core *runtimeCore) openPlantWireHost(flags serveFlags, cleanup *cleanups) 
 	if err != nil {
 		return nil, err
 	}
-	host, err := newPlantWireHost(flags.plantWire, options, commanding, core.reasoningInFlight)
+	host, err := newPlantWireHost(flags.plantWire, options, commanding, plantWireClocks{world: worldOf(flags, decision), reasoning: core.reasoningInFlight(decision)})
 	if err != nil {
 		return nil, err
 	}
@@ -124,22 +147,29 @@ func plantWireCallTimeout(options effectProfileOptions) time.Duration {
 	return call - plantwire.AnswerGrace - plantwire.VerificationWindow
 }
 
-func (core *runtimeCore) reasoningInFlight(ctx context.Context) (bool, error) {
-	inFlight, err := episodeledger.ReasoningInFlight(ctx, core.db.DB)
-	if err != nil {
-		return false, fmt.Errorf("read the reasoning in flight: %w", err)
+func (core *runtimeCore) reasoningInFlight(decision sources.Clock) func(context.Context) (bool, error) {
+	return func(ctx context.Context) (bool, error) {
+		inFlight, err := episodeledger.ReasoningInFlight(ctx, core.db.DB, decision.Now())
+		if err != nil {
+			return false, fmt.Errorf("read the reasoning in flight: %w", err)
+		}
+		return inFlight, nil
 	}
-	return inFlight, nil
 }
 
-func newPlantWireHost(flags plantWireFlags, options effectProfileOptions, commanding plantWireCommanding, reasoning func(context.Context) (bool, error)) (*plantwire.Host, error) {
+type plantWireClocks struct {
+	world     *sources.Decision
+	reasoning func(context.Context) (bool, error)
+}
+
+func newPlantWireHost(flags plantWireFlags, options effectProfileOptions, commanding plantWireCommanding, clocks plantWireClocks) (*plantwire.Host, error) {
 	listener, err := worker.ListenEvidenceSocket(options.PlantWireSocket)
 	if err != nil {
 		return nil, fmt.Errorf("listen on the plant wire socket: %w", err)
 	}
 	host, err := plantwire.New(plantwire.Config{Listener: listener, Settings: flags.settings(options),
 		KindsDir: flags.kindsDir, SitePath: flags.sitePath, Catalog: commanding.catalog, Authority: commanding.authority,
-		OwnerEpoch: commanding.epoch, ReasoningInFlight: reasoning})
+		OwnerEpoch: commanding.epoch, ReasoningInFlight: clocks.reasoning, World: clocks.world})
 	if err != nil {
 		_ = listener.Close()
 		return nil, fmt.Errorf("open the plant wire host: %w", err)

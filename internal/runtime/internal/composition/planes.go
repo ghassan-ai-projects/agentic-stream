@@ -1,6 +1,7 @@
 package composition
 
 import (
+	"cmp"
 	"fmt"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
@@ -27,6 +28,7 @@ func pipelineDefaults(cfg PipelineConfig) PipelineConfig {
 		cfg.TenantID = contractsv1.TenantID
 	}
 	cfg.Clock = sources.OrPhysical(cfg.Clock)
+	cfg.DecisionClock = cmp.Or(cfg.DecisionClock, cfg.Clock)
 	cfg.IDGenerator = sources.OrRandom(cfg.IDGenerator)
 	return pipelineExecutionDefaults(cfg)
 }
@@ -105,7 +107,7 @@ func composeGovernance(cfg PipelineConfig) (*policy.Service, *actions.Service, e
 }
 
 func composeAdmission(cfg PipelineConfig, transactions *store.PipelineStore) (*app.Admitter, error) {
-	admitter, err := app.NewAdmitter(app.AdmitterConfig{Store: transactions, Clock: cfg.Clock, OwnerEpoch: cfg.OwnerEpoch, EpochControl: cfg.EpochControl, DemoMode: cfg.DemoMode})
+	admitter, err := app.NewAdmitter(app.AdmitterConfig{Store: transactions, Clock: cfg.DecisionClock, OwnerEpoch: cfg.OwnerEpoch, EpochControl: cfg.EpochControl, DemoMode: cfg.DemoMode})
 	if err != nil {
 		return nil, fmt.Errorf("compose admission: %w", err)
 	}

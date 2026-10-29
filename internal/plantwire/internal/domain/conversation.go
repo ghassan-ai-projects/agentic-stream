@@ -35,6 +35,7 @@ type Reaction struct {
 	Quarantined   []string
 	BornKinds     map[string]string
 	Rebirth       bool
+	World         *WorldTime
 	Dropped       string
 	End           string
 }

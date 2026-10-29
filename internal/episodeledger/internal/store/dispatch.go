@@ -5,8 +5,10 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger/internal/domain"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -14,7 +16,7 @@ var (
 	liveEpisodePredicate = "lifecycle_status IN " + domain.LifecycleSQL(domain.LifecycleStatus.Live)
 
 	reasoningInFlightSQL = `SELECT 1 FROM episodes WHERE ` + liveEpisodePredicate + `
-		UNION ALL SELECT 1 FROM scheduler_items WHERE status = 'pending' AND not_before IS NULL LIMIT 1`
+		UNION ALL SELECT 1 FROM scheduler_items WHERE status = 'pending' AND (not_before IS NULL OR not_before <= ?) LIMIT 1`
 
 	killedUnstartedEpisodePredicate = ` OR (lifecycle_status = '` + string(domain.LifecycleSuperseded) + `' AND current_attempt_id IS NULL
 			AND EXISTS (SELECT 1 FROM epoch_control WHERE epoch = episodes.policy_epoch AND state = 'killed'))`
@@ -43,8 +45,8 @@ func dispatchableEpisodeQuery(killedSuperseded bool) string {
 		ORDER BY accepted_at, episode_id LIMIT 1`
 }
 
-func (t *Tx) ReasoningInFlight(ctx context.Context) (bool, error) {
-	_, found, err := storage.QueryOptional[int](ctx, t.q, reasoningInFlightSQL)
+func (t *Tx) ReasoningInFlight(ctx context.Context, now time.Time) (bool, error) {
+	_, found, err := storage.QueryOptional[int](ctx, t.q, reasoningInFlightSQL, kernel.FormatTime(now))
 	if err != nil {
 		return false, fmt.Errorf("look for reasoning in flight: %w", err)
 	}

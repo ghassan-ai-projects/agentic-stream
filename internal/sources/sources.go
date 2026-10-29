@@ -29,6 +29,15 @@ func NewVirtual(start time.Time) *domain.Virtual {
 	return domain.NewVirtual(start)
 }
 
+// Decision is the clock that times scheduling: the wall clock until a world
+// takes it with FollowWorld, then that world's time, which never moves back.
+type Decision = domain.Decision
+
+// NewDecision creates a decision clock that reads wall until a world takes it.
+func NewDecision(wall Clock) *domain.Decision {
+	return domain.NewDecision(wall)
+}
+
 const PrefixEvent = domain.PrefixEvent
 
 const PrefixSituation = domain.PrefixSituation

@@ -43,6 +43,8 @@ as behavior qualified for a production deployment.
   marker advances even when the evaluation starts no episode.
 - **Debounce:** sets the earliest run time after a queue opportunity is created.
 - **Cooldown:** delays work until the configured interval after the latest trigger admission.
+- **Expiry:** `expiresAfter` (default 15 minutes) ends the usefulness of queued
+  work, counted from the earliest time it may start.
 - **Coalescing:** replaces open work for the same Situation and trigger; it
   does not merge old request payloads.
 - **Capacity:** defers when bounded concurrency or budget capacity is used.
@@ -53,6 +55,23 @@ as behavior qualified for a production deployment.
   feature conditions, such as the motor heartbeat check, supply actual gates.
 - **Supersession:** eligible replacement work coalesces older open items for
   the same Situation and trigger and cancels their live attempts.
+
+## The clock that times scheduling
+
+Debounce, cooldown and expiry are durations on the **decision clock**, and the
+admitter compares every queued item's start and expiry against the same clock.
+The decision clock is the wall clock in a live deployment and the virtual
+clock in replay. In a barrier-paced simulated world it is the world's clock,
+which the plant wire host moves to each barrier's world time (see
+[the plant wire adapter](plant-wire-adapter.md), rule 5): a one-minute
+debounce is then one minute of the world, not one minute of the wall while the
+world runs hours. A queued item whose window is already open and that is not yet
+admitted counts as reasoning in flight, so a paced world waits for it. Budgets
+and deadlines of an episode are not scheduling: the episode wall-time budget,
+leases and command deadlines stay on the wall clock, because a model call takes
+real time. The clocks never mix inside the queue: an item is written and read
+on the clock that was the decision clock when the process started its
+scheduler.
 
 ## Episode contract
 

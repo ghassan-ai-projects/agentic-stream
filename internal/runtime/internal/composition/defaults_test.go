@@ -21,6 +21,24 @@ func TestPipelineDefaultsFillOnlyWhatIsUnset(t *testing.T) {
 			t.Fatalf("defaults left a dependency unset: %+v", got)
 		}
 	})
+	t.Run("without a decision clock scheduling runs on the wall clock", func(t *testing.T) {
+		t.Parallel()
+		clock := sources.NewVirtual(sources.Physical().Now())
+		if got := pipelineDefaults(PipelineConfig{Clock: clock}); got.DecisionClock != sources.Clock(clock) {
+			t.Fatalf("decision clock = %v, want the configured wall clock", got.DecisionClock)
+		}
+		if got := pipelineDefaults(PipelineConfig{}); got.DecisionClock == nil || got.DecisionClock != got.Clock {
+			t.Fatalf("decision clock = %v, want the default physical clock %v", got.DecisionClock, got.Clock)
+		}
+	})
+	t.Run("a configured decision clock is kept beside the wall clock", func(t *testing.T) {
+		t.Parallel()
+		wall, decision := sources.NewVirtual(sources.Physical().Now()), sources.NewVirtual(sources.Physical().Now())
+		got := pipelineDefaults(PipelineConfig{Clock: wall, DecisionClock: decision})
+		if got.Clock != sources.Clock(wall) || got.DecisionClock != sources.Clock(decision) {
+			t.Fatalf("clocks = %v and %v, want the wall and the decision clock configured", got.Clock, got.DecisionClock)
+		}
+	})
 	t.Run("configured values are kept", func(t *testing.T) {
 		t.Parallel()
 		clock, ids, executor, effector := sources.NewVirtual(sources.Physical().Now()), sources.Deterministic(), fixture.New(), device.NewSimulatedEffector()

@@ -20,16 +20,19 @@ import (
 // on every stream transaction; control.RuntimeOwner.Assert is the production
 // check and ReplayOwnership is the explicit choice for deterministic replay and
 // tests. Clock defaults to the physical clock and TenantID to the default
-// tenant. Cognition selects whether Situation versions reach cognition.
+// tenant. Cognition selects whether Situation versions reach cognition;
+// DecisionClock is the clock that cognition times its scheduling with (the
+// debounce, cooldown and expiry of a trigger) and defaults to Clock.
 type Config struct {
-	DB           *storage.DB
-	Log          *eventlog.EventLog
-	Clock        sources.Clock
-	Spec         *spec.CompiledSpec
-	TenantID     string
-	RuntimeOwner storage.OwnerCheck
-	Epoch        string
-	Cognition    bool
+	DB            *storage.DB
+	Log           *eventlog.EventLog
+	Clock         sources.Clock
+	DecisionClock sources.Clock
+	Spec          *spec.CompiledSpec
+	TenantID      string
+	RuntimeOwner  storage.OwnerCheck
+	Epoch         string
+	Cognition     bool
 }
 
 // ReplayOwnership is the ownership check for runs that have no runtime owner:
@@ -55,5 +58,5 @@ func applicationConfig(cfg Config) app.Config {
 		tenantID = contractsv1.TenantID
 	}
 	return app.Config{Store: store.New(cfg.DB, cfg.RuntimeOwner, cfg.Epoch, tenantID, cfg.Spec.Digest),
-		Log: cfg.Log, Clock: cfg.Clock, Spec: cfg.Spec, TenantID: tenantID, Cognition: cfg.Cognition}
+		Log: cfg.Log, Clock: cfg.Clock, DecisionClock: cfg.DecisionClock, Spec: cfg.Spec, TenantID: tenantID, Cognition: cfg.Cognition}
 }

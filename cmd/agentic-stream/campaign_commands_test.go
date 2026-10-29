@@ -66,7 +66,9 @@ func bookBearingWearMaintenance(_ context.Context, req *runtimev1.EpisodeRequest
 func bornPumpNode(t *testing.T, socket string) *plantwirefake.Node {
 	t.Helper()
 	node := plantwirefake.Dial(t, "unix", socket, "pump-station-1")
-	node.Send(plantwirefake.Birth(t, filepath.Join(pumpStationPlantWire, "kinds"), "mega-01", "site-a:pump-1", "site-a:pump-2", pumpUnderTest, "site-a:pump-4", "site-a:pump-5", "site-a:pump-6", "site-a:pump-7", "site-a:pump-8"))
+	birth := plantwirefake.Birth(t, filepath.Join(pumpStationPlantWire, "kinds"), "mega-01", "site-a:pump-1", "site-a:pump-2", pumpUnderTest, "site-a:pump-4", "site-a:pump-5", "site-a:pump-6", "site-a:pump-7", "site-a:pump-8")
+	birth["node_metrics"] = map[string]any{"clock_mode": "wall", "run_state": "running"}
+	node.Send(birth)
 	node.Expect("STATE")
 	metrics := make([]any, 0, len(pumpMetricAliases))
 	for name, alias := range pumpMetricAliases {

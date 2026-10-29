@@ -50,6 +50,8 @@ type session struct {
 	watchers     map[string]chan<- domain.Verification
 	held         []domain.Record
 	reasoning    ReasoningInFlight
+	world        *sources.Decision
+	barrierWorld time.Time
 	recheck      timer
 	born         *bornKinds
 	done         chan struct{}
@@ -59,7 +61,7 @@ func (h *Host) serve(ctx context.Context, conn *transport.Conn, queue *ingestQue
 	s := &session{conn: conn, conversation: domain.NewConversation(h.admission, h.epoch, h.mapping), clock: h.clock,
 		queue: queue, lines: make(chan readResult), calls: make(chan call), mailboxes: map[string]chan<- domain.Settlement{},
 		watchers: map[string]chan<- domain.Verification{}, authority: h.authority, claims: map[string]authority.TargetClaim{},
-		settings: h.settings, born: h.born, reasoning: h.reasoning, done: make(chan struct{})}
+		settings: h.settings, born: h.born, reasoning: h.reasoning, world: h.world, done: make(chan struct{})}
 	h.goLive(s)
 	defer h.goLive(nil)
 	defer s.close()
@@ -112,9 +114,11 @@ func (s *session) receive(ctx context.Context, read readResult) string {
 }
 
 func (s *session) answer(ctx context.Context, reaction domain.Reaction) string {
+	s.noteWorld(reaction.World)
 	if s.holdUntilDrained(reaction.Replies) {
 		return cmp.Or(reaction.End, s.releaseHeld(ctx))
 	}
+	s.followBarrierWorld()
 	if err := s.send(s.conversation.Transmit(reaction.Replies)); err != nil {
 		slog.WarnContext(ctx, "plant wire host record not written", "error", err)
 		return endWriteFailed

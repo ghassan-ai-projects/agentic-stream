@@ -1,6 +1,7 @@
 package app
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -18,23 +19,25 @@ import (
 )
 
 type Config struct {
-	Store     store.Store
-	Log       *eventlog.EventLog
-	Clock     sources.Clock
-	Spec      *spec.CompiledSpec
-	TenantID  string
-	Cognition bool
+	Store         store.Store
+	Log           *eventlog.EventLog
+	Clock         sources.Clock
+	DecisionClock sources.Clock
+	Spec          *spec.CompiledSpec
+	TenantID      string
+	Cognition     bool
 }
 
 type Service struct {
-	mu           sync.Mutex
-	store        store.Store
-	log          *eventlog.EventLog
-	clock        sources.Clock
-	spec         *spec.CompiledSpec
-	tenantID     string
-	deploymentID string
-	logger       *slog.Logger
+	mu            sync.Mutex
+	store         store.Store
+	log           *eventlog.EventLog
+	clock         sources.Clock
+	decisionClock sources.Clock
+	spec          *spec.CompiledSpec
+	tenantID      string
+	deploymentID  string
+	logger        *slog.Logger
 
 	operatorStates operatorStateCache
 
@@ -53,11 +56,17 @@ func New(ctx context.Context, cfg Config) (*Service, error) {
 	if domain.RequiresSchemaValidation(cfg.Spec.Inputs) {
 		cfg.Log.RequireSchemaValidation()
 	}
-	service := &Service{store: cfg.Store, log: cfg.Log, clock: sources.OrPhysical(cfg.Clock), spec: cfg.Spec, tenantID: cfg.TenantID, deploymentID: cfg.Spec.Digest, logger: slog.Default()}
+	service := newService(cfg)
 	if err := service.buildPlanes(ctx, cfg.Cognition); err != nil {
 		return nil, fmt.Errorf("build engine planes: %w", err)
 	}
 	return service, nil
+}
+
+func newService(cfg Config) *Service {
+	clock := sources.OrPhysical(cfg.Clock)
+	return &Service{store: cfg.Store, log: cfg.Log, clock: clock, decisionClock: cmp.Or(cfg.DecisionClock, clock), spec: cfg.Spec,
+		tenantID: cfg.TenantID, deploymentID: cfg.Spec.Digest, logger: slog.Default()}
 }
 
 func (s *Service) buildPlanes(ctx context.Context, cognitionEnabled bool) error {
@@ -80,7 +89,7 @@ func (s *Service) newCognition(enabled bool) (*cognition.Service, error) {
 	if !enabled {
 		return nil, nil
 	}
-	engine, err := cognition.New(cognition.Config{DeploymentID: s.spec.Digest, TenantID: s.tenantID, Spec: s.spec, Clock: s.clock})
+	engine, err := cognition.New(cognition.Config{DeploymentID: s.spec.Digest, TenantID: s.tenantID, Spec: s.spec, Clock: s.decisionClock})
 	if err != nil {
 		return nil, fmt.Errorf("cognition engine: %w", err)
 	}

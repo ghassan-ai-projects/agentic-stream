@@ -70,7 +70,13 @@ type Settings = domain.Settings
 // while it holds a barrier answer after its ingest queue has drained: the
 // answer is released when it reports false (an error is logged and counts as
 // false), so a node that paces itself by barriers cannot outrun the consumer's
-// reasoning. Without it a barrier waits for the ingest queue only.
+// reasoning. Without it a barrier waits for the ingest queue only. World is the
+// optional decision clock that the host binds to a barrier-paced simulated
+// world (a node that announces environment simulated and no wall clock mode):
+// at the first device birth, then to the world time of each barrier just before
+// the answer is released (after the ingest queue has drained, before the
+// reasoning check). It never moves back. Without it, and for any other node,
+// the decision clock is left alone.
 type Config struct {
 	Listener   net.Listener
 	Settings   Settings
@@ -82,6 +88,7 @@ type Config struct {
 	Clock      sources.Clock
 
 	ReasoningInFlight func(context.Context) (bool, error)
+	World             *sources.Decision
 }
 
 // Host serves one plant wire session at a time on its listener.
@@ -91,7 +98,7 @@ type Host struct{ app *app.Host }
 func New(cfg Config) (*Host, error) {
 	host, err := app.New(app.Config{Listener: transport.NewListener(cfg.Listener), Settings: cfg.Settings,
 		KindsDir: cfg.KindsDir, SitePath: cfg.SitePath, Catalog: cfg.Catalog, Authority: cfg.Authority, OwnerEpoch: cfg.OwnerEpoch,
-		Clock: cfg.Clock, ReasoningInFlight: cfg.ReasoningInFlight})
+		Clock: cfg.Clock, ReasoningInFlight: cfg.ReasoningInFlight, World: cfg.World})
 	if err != nil {
 		return nil, err
 	}

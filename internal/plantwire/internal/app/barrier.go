@@ -50,7 +50,7 @@ func (s *session) rechecks() <-chan time.Time {
 
 func (s *session) releaseHeld(ctx context.Context) string {
 	s.stopRecheck()
-	if s.queue.pending() || s.reasoningInFlight(ctx) {
+	if !s.drainedAndIdle(ctx) {
 		return ""
 	}
 	held := s.held
@@ -59,6 +59,38 @@ func (s *session) releaseHeld(ctx context.Context) string {
 		return endWriteFailed
 	}
 	return ""
+}
+
+func (s *session) drainedAndIdle(ctx context.Context) bool {
+	if s.queue.pending() {
+		return false
+	}
+	s.followBarrierWorld()
+	return !s.reasoningInFlight(ctx)
+}
+
+func (s *session) noteWorld(world *domain.WorldTime) {
+	switch {
+	case world == nil || s.world == nil:
+	case world.AtBarrier:
+		s.barrierWorld = world.At
+	default:
+		s.followWorld(world.At)
+	}
+}
+
+func (s *session) followBarrierWorld() {
+	if s.world != nil && !s.barrierWorld.IsZero() {
+		s.followWorld(s.barrierWorld)
+	}
+	s.barrierWorld = time.Time{}
+}
+
+func (s *session) followWorld(at time.Time) {
+	if !s.world.FollowsWorld() {
+		slog.Info("a paced plant wire world takes the decision clock", "world_start", at)
+	}
+	s.world.FollowWorld(at)
 }
 
 func (s *session) reasoningInFlight(ctx context.Context) bool {

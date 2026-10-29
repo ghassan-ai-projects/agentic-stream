@@ -7,6 +7,9 @@
 | Physical clock | Wall time in UTC, for live processing. | `Physical` | quality `physical` |
 | Virtual clock | Deterministic time that moves only when advanced, for replay and tests. | `Virtual`, `NewVirtual` | quality `virtual` |
 | Advance | Moves a virtual clock forward and fires every due timer in due-time order, ties broken by scheduling order. | `Virtual.Advance` | — |
+| Advance to | Moves a virtual clock forward to a given time and fires every due timer; a time at or before the current one changes nothing, so the clock never moves back. | `Virtual.AdvanceTo` | — |
+| Decision clock | The clock that times scheduling (debounce, cooldown, expiry and the reads against them): the wall clock until a world takes it, then that world's time. | `Decision`, `NewDecision` | quality of the clock it reads now |
+| Follow world | Binds a decision clock to a world's time at the first call and moves it forward at the later ones. | `Decision.FollowWorld` | — |
 | Clock quality | Whether time is virtual or physical, recorded with replay evidence. | `Quality` | `physical`, `virtual` |
 | Generator | Produces unique identifiers from a prefix; safe for concurrent use. | `Generator.New` | `<prefix><suffix>` |
 | Random generator | Base64url random identifiers, for live runs. | `Random` | `evt_AbC…` |

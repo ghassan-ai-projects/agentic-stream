@@ -60,7 +60,7 @@ func TestReasoningIsInFlightWhileAnEpisodeIsLiveOrAnItemMayStartAtOnce(t *testin
 	t.Parallel()
 	within(t, func(ctx context.Context, tx *store.Tx, raw *sql.Tx) {
 		inFlight := func() bool {
-			found, err := tx.ReasoningInFlight(ctx)
+			found, err := tx.ReasoningInFlight(ctx, at)
 			must(t, err)
 			return found
 		}
@@ -94,14 +94,15 @@ func TestAPendingItemIsReasoningInFlightUnlessAWindowHoldsItBack(t *testing.T) {
 		for _, tc := range []struct {
 			name, notBefore string
 			want            bool
-		}{{"due at once", "NULL", true}, {"held by a window", "'" + ts(time.Hour) + "'", false}} {
+		}{{"due at once", "NULL", true}, {"held by a window", "'" + ts(time.Hour) + "'", false},
+			{"window opened since", "'" + ts(-time.Minute) + "'", true}, {"window opens now", "'" + ts(0) + "'", true}} {
 			execSQL(t, ctx, raw, "UPDATE scheduler_items SET not_before = "+tc.notBefore)
-			if got, err := tx.ReasoningInFlight(ctx); err != nil || got != tc.want {
+			if got, err := tx.ReasoningInFlight(ctx, at); err != nil || got != tc.want {
 				t.Errorf("%s: in flight = %v err=%v, want %v", tc.name, got, err, tc.want)
 			}
 		}
 		execSQL(t, ctx, raw, "UPDATE scheduler_items SET not_before = NULL, status = 'admitted'")
-		if got, err := tx.ReasoningInFlight(ctx); err != nil || got {
+		if got, err := tx.ReasoningInFlight(ctx, at); err != nil || got {
 			t.Errorf("an admitted item alone: in flight = %v err=%v, want false", got, err)
 		}
 	})

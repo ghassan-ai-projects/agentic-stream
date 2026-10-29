@@ -36,7 +36,13 @@ type ingest struct {
 	devices map[string]*liveDevice
 	nowNS   int64
 	nowAt   time.Time
+	paced   bool
 	tally   Tally
+}
+
+type WorldTime struct {
+	At        time.Time
+	AtBarrier bool
 }
 
 func newIngest(mapping Mapping) *ingest {
@@ -46,6 +52,7 @@ func newIngest(mapping Mapping) *ingest {
 func (g *ingest) rebirth(b Birth, quarantined []string) {
 	clear(g.devices)
 	clear(g.kinds)
+	g.paced = b.PacedWorld()
 	g.boards = boardEnvironments(b)
 	for _, kind := range b.Kinds {
 		if !slices.Contains(quarantined, kind.Name()) {
@@ -148,7 +155,14 @@ func (g *ingest) deviceDeath(d DeviceDeath, r *Reaction) {
 
 func (g *ingest) advance(ns int64, a Arrival, r *Reaction) {
 	g.noteNodeTime(ns, a.ReceivedAt)
+	g.noteWorldTime(ns, a.Type, r)
 	g.beat(a, r)
+}
+
+func (g *ingest) noteWorldTime(ns int64, recordType string, r *Reaction) {
+	if g.paced {
+		r.World = &WorldTime{At: eventTime(ns), AtBarrier: recordType == TypeSync}
+	}
 }
 
 func (g *ingest) noteNodeTime(ns int64, receivedAt time.Time) {

@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger/internal/store"
@@ -28,6 +29,6 @@ func ReadAdmission(ctx context.Context, tx *store.Tx, episodeID string) (domain.
 	return tx.ReadAdmission(ctx, episodeID)
 }
 
-func ReasoningInFlight(ctx context.Context, tx *store.Tx) (bool, error) {
-	return tx.ReasoningInFlight(ctx)
+func ReasoningInFlight(ctx context.Context, tx *store.Tx, now time.Time) (bool, error) {
+	return tx.ReasoningInFlight(ctx, now)
 }

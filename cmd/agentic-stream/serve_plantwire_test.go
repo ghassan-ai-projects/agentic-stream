@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage/storagetest"
 )
 
@@ -66,7 +67,8 @@ func plantWireServeFlags() serveFlags {
 func TestThePlantWireHostReadsReasoningInFlightFromTheRuntimeDatabase(t *testing.T) {
 	t.Parallel()
 	core := &runtimeCore{db: storagetest.OpenTempWithoutForeignKeys(t)}
-	if inFlight, err := core.reasoningInFlight(t.Context()); err != nil || inFlight {
+	reasoningInFlight := core.reasoningInFlight(sources.NewVirtual(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)))
+	if inFlight, err := reasoningInFlight(t.Context()); err != nil || inFlight {
 		t.Fatalf("empty ledger: in flight = %v err=%v", inFlight, err)
 	}
 	digest := make([]byte, 32)
@@ -75,7 +77,28 @@ func TestThePlantWireHostReadsReasoningInFlightFromTheRuntimeDatabase(t *testing
 		) VALUES ('i1', 't1', 'tenant', 's', 1, 'fast', 1, 'pending', ?, 'later', 'now', 'now')`, digest); err != nil {
 		t.Fatal(err)
 	}
-	if inFlight, err := core.reasoningInFlight(t.Context()); err != nil || !inFlight {
+	if inFlight, err := reasoningInFlight(t.Context()); err != nil || !inFlight {
 		t.Fatalf("a pending item: in flight = %v err=%v", inFlight, err)
+	}
+}
+
+func TestServeTimesSchedulingOnTheWallUnlessAPlantWireWorldTakesTheDecisionClock(t *testing.T) {
+	t.Parallel()
+	withoutSocket := plantWireServeFlags()
+	withoutSocket.effect.PlantWireSocket = ""
+	if decisionClockOf(withoutSocket) != nil || (effects{}).decisionClock() != nil {
+		t.Fatal("a serve without a plant wire socket got a decision clock of its own")
+	}
+	flags := plantWireServeFlags()
+	decision := decisionClockOf(flags)
+	if decision == nil || decision.FollowsWorld() || (effects{decision: decision}).decisionClock() == nil {
+		t.Fatalf("a plant wire serve decision clock = %v, want one that still reads the wall", decision)
+	}
+	if worldOf(flags, decision) != decision {
+		t.Fatal("the plant wire host was not given the decision clock to bind to a world")
+	}
+	flags.liveSocket = "/tmp/live.sock"
+	if worldOf(flags, decision) != nil {
+		t.Fatal("a live socket beside the plant wire host still let a world take the decision clock")
 	}
 }

@@ -9,7 +9,11 @@ import (
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/domain"
 )
 
-// PipelineConfig configures one owner-scoped live pipeline.
+// PipelineConfig configures one owner-scoped live pipeline. Clock is the wall
+// clock (default: physical) and times everything bounded by real time.
+// DecisionClock times scheduling only (the debounce, cooldown and expiry of a
+// trigger and the admitter's due and expired items) and defaults to Clock; a
+// barrier-paced simulated world supplies one that follows the world's time.
 type PipelineConfig = composition.PipelineConfig
 
 // PipelineReport describes one completed live batch.

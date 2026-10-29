@@ -21,8 +21,11 @@ type Clock interface {
 // Quality identifies whether a clock is virtualized for replay or backed by
 // wall time for live processing.
 func Quality(c Clock) string {
-	if _, ok := c.(*Virtual); ok {
+	switch clock := c.(type) {
+	case *Virtual:
 		return "virtual"
+	case *Decision:
+		return Quality(clock.current())
 	}
 	return "physical"
 }
@@ -84,6 +87,18 @@ func (v *Virtual) Advance(d time.Duration) {
 	defer v.mu.Unlock()
 
 	v.now = v.now.Add(d)
+	v.sortTimersByDue()
+	v.fireDueTimers()
+}
+
+func (v *Virtual) AdvanceTo(at time.Time) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+
+	if !at.After(v.now) {
+		return
+	}
+	v.now = at.UTC()
 	v.sortTimersByDue()
 	v.fireDueTimers()
 }

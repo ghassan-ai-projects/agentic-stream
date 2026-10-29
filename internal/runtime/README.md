@@ -47,6 +47,14 @@ module contracts; private use-case and connection objects are never returned.
 - `Pipeline.ApprovalForSigning` and `Pipeline.ResolveApproval` bind the configured
   tenant and trusted runtime clock before joining the policy transaction.
 
+`PipelineConfig.Clock` is the wall clock (default: physical) and
+`PipelineConfig.DecisionClock` the clock that times scheduling (default:
+`Clock`). Composition hands the decision clock to cognition and the admitter
+only, and the wall clock to everything else; `serve` makes it a
+`sources.Decision` that a barrier-paced plant wire world moves (see
+[the plant wire adapter](../../documentation/design/plant-wire-adapter.md),
+rule 5).
+
 A configured remote route never constructs the native executor. Evidence starts
 before the remote connection when enabled. Setup failures close partially opened
 resources. Teardown stops evidence serving, closes its listener, then closes the

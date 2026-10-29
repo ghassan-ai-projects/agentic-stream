@@ -3,6 +3,7 @@ package episodeledger
 import (
 	"context"
 	"database/sql"
+	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger/internal/app"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger/internal/domain"
@@ -53,7 +54,8 @@ func ReadAdmission(ctx context.Context, db *sql.DB, episodeID string) (Admission
 // ReasoningInFlight reports from a database handle whether reasoning is in
 // flight: an episode is admitted or running, or a scheduler item that may start
 // at once is still pending. An item held back by a debounce or cooldown window
-// is not reasoning in flight.
-func ReasoningInFlight(ctx context.Context, db *sql.DB) (bool, error) {
-	return app.ReasoningInFlight(ctx, store.Reader(db))
+// that has not opened at now is not reasoning in flight; now is the time of the
+// clock that times scheduling, the one the admitter polls the queue at.
+func ReasoningInFlight(ctx context.Context, db *sql.DB, now time.Time) (bool, error) {
+	return app.ReasoningInFlight(ctx, store.Reader(db), now)
 }

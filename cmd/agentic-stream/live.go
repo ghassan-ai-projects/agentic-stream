@@ -51,6 +51,7 @@ type effects struct {
 	effector      actionport.RoutedEffector
 	serial        *device.GatewayEffector
 	plant         *plantwire.Host
+	decision      *sources.Decision
 	device        deviceEffector
 	dispatchLease time.Duration
 }
@@ -158,7 +159,7 @@ func (core *runtimeCore) startPipeline(ctx context.Context, compiled *spec.Compi
 	pipeline, err := runtime.NewPipeline(ctx, runtime.PipelineConfig{
 		DB: core.db, Spec: compiled, Playbook: core.playbook, TenantID: tenantID, Owner: core.owner, OwnerEpoch: core.epoch,
 		Executor: workerRuntime.Executor, Effector: opened.effector, GatewayEffector: opened.serial, DeviceEffector: opened.device, DispatchLease: opened.dispatchLease,
-		IDGenerator: sources.Random(), Telemetry: metrics, EpochControl: core.epochControl, DemoMode: demoMode,
+		DecisionClock: opened.decisionClock(), IDGenerator: sources.Random(), Telemetry: metrics, EpochControl: core.epochControl, DemoMode: demoMode,
 		KindDigests: opened.kindDigests(), EntityKind: opened.entityKind(),
 		PlaybookPath: core.playbookPath, Drafter: workerRuntime.Drafter(), DraftAfter: core.draftAfter,
 	})

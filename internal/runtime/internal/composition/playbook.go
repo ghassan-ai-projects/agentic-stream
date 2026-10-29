@@ -35,7 +35,7 @@ func composePlaybook(cfg PipelineConfig) (*playbook.Service, error) {
 	if cfg.Playbook == nil {
 		return nil, nil
 	}
-	audits, err := cognition.New(cognition.Config{DeploymentID: cfg.Spec.Digest, TenantID: cfg.TenantID, Spec: cfg.Spec, Clock: cfg.Clock})
+	audits, err := cognition.New(cognition.Config{DeploymentID: cfg.Spec.Digest, TenantID: cfg.TenantID, Spec: cfg.Spec, Clock: cfg.DecisionClock})
 	if err != nil {
 		return nil, fmt.Errorf("compose playbook audits: %w", err)
 	}

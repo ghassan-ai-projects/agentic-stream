@@ -73,7 +73,8 @@ the code implements.
    have left the ingest queue and the consumer has no reasoning in flight:
    an episode admitted and not yet terminal, or scheduler work that may start
    at once and has not yet been admitted (work held back by a debounce or
-   cooldown window is not in flight). Reading never waits on the pipeline, but
+   cooldown window that the decision clock has not yet passed is not in flight;
+   rule 5). Reading never waits on the pipeline, but
    the barrier answer does, so a node that paces itself by barriers (an
    unpaced simulated world) cannot outrun the pipeline or the reasoning on its
    evidence; a real plant does not pace by barriers and is unaffected. The
@@ -87,7 +88,36 @@ the code implements.
    when the `NSYNC` is read, so the records stay in `seq` order around the
    heartbeats sent meanwhile. A node that floods the queue without waiting
    for barriers still ends the session: the pipeline fell behind.
-5. A sequence gap asks for one rebirth. A socket loss or `NDEATH` ends the
+5. **The decision clock follows a paced world.** The runtime keeps two clock
+   domains. The *decision clock* times scheduling: the debounce, cooldown and
+   expiry of a trigger, and every read that compares against them (the
+   admitter's due and expired items, and whether scheduler work that may start
+   at once is waiting). The *wall clock* times everything bounded by real time:
+   the owner lease and its heartbeat, dispatch and command leases, the
+   host's heartbeats, answer waits and verification windows, the episode wall
+   time budget (a model call takes real time), HTTP, notifications and evidence
+   leases. Both are the wall clock unless a world takes the decision clock. A
+   node whose `NBIRTH` announces `environment: simulated` and no
+   `node_metrics.clock_mode: wall` is a barrier-paced world: its time is the
+   world's, and it runs far faster than the wall (about 30 simulated hours in 8
+   minutes), so a wall debounce of one minute would span hours of world. The
+   host then binds the decision clock to the world at the node's first
+   `DBIRTH` (its `birth_time_ns`, the world's start) and moves it to
+   `world_time_ns` of every `NSYNC` when it is about to answer the barrier:
+   after the events read before the `NSYNC` have left the ingest queue (they
+   were processed with the clock at the previous slice end, so a run does not
+   depend on thread timing) and before the reasoning check, so the work that
+   became due when the clock moved is part of the wait. It never moves back and
+   fires its timers when it moves. The admitter is polled (`--poll-interval`),
+   so due work is admitted within one poll of the clock moving, not after a wall
+   minute. A node that is a hardware node, mixed, or a simulated world paced to
+   the wall (`clock_mode: wall`, whose world time is UTC) leaves the decision
+   clock on the wall clock, as does a `serve` without a plant wire socket or with
+   a `--live-socket` beside it. Once a world has bound the decision clock it
+   stays bound for the process: a later session's world must not begin before
+   the earlier world ended, and a database kept from an earlier process holds
+   scheduler items in the earlier process's time.
+6. A sequence gap asks for one rebirth. A socket loss or `NDEATH` ends the
    session: claims are released, commands in flight are settled as the contract
    says, devices go offline. The host then accepts the next session without a
    restart. When `serve` stops, the host says goodbye (`STATE` offline).

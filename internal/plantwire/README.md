@@ -28,7 +28,11 @@ feeder signals each time it does; while an answer is held the session keeps its
 heartbeat, numbers the held answers when they are sent, and runs no command). With `Config.ReasoningInFlight` (`serve`
 wires `episodeledger.ReasoningInFlight`) every barrier answer is held until the
 queue is empty and the check reports no reasoning in flight, polled every 50 ms
-on the injected clock; a failing check is logged and counts as none. The session's state is the pure
+on the injected clock; a failing check is logged and counts as none. With `Config.World` (`serve`
+wires a `sources.Decision`) a barrier-paced simulated world (`NBIRTH` environment `simulated`, no
+`node_metrics.clock_mode: wall`) takes the decision clock that times scheduling: it is bound at the
+first `DBIRTH` and moved to each `NSYNC`'s `world_time_ns` once the ingest queue has drained and before
+the reasoning check (rule 5 of the design page); the wall clock stays the injected clock. The session's state is the pure
 `domain.Conversation`; the app layer only moves lines and timers. Heartbeats
 use the injected clock, so tests drive them with a virtual clock. The app layer
 reads the kind files and the site file from disk (the module's edge is the

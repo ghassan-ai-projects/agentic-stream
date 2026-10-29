@@ -33,6 +33,7 @@ type PipelineConfig struct {
 	Owner             *runtimecontrol.RuntimeOwner
 	OwnerEpoch        string
 	Clock             sources.Clock
+	DecisionClock     sources.Clock
 	Executor          episodes.Executor
 	Effector          actionport.RoutedEffector
 	IDGenerator       sources.Generator
@@ -87,7 +88,7 @@ func composeOwnedPipeline(ctx context.Context, cfg PipelineConfig, watch *watch.
 }
 
 func newOwnedStream(ctx context.Context, cfg PipelineConfig, log *eventlog.EventLog) (*engine.Service, error) {
-	stream, err := engine.New(ctx, engine.Config{DB: cfg.DB, Log: log, Clock: cfg.Clock, Spec: cfg.Spec, TenantID: cfg.TenantID,
+	stream, err := engine.New(ctx, engine.Config{DB: cfg.DB, Log: log, Clock: cfg.Clock, DecisionClock: cfg.DecisionClock, Spec: cfg.Spec, TenantID: cfg.TenantID,
 		RuntimeOwner: runtimeOwnershipCheck(cfg), Epoch: cfg.OwnerEpoch, Cognition: true})
 	if err != nil {
 		return nil, fmt.Errorf("create stream engine: %w", err)
