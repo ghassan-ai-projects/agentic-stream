@@ -5,23 +5,20 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"math"
+	"slices"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actionport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 )
 
-// Bound is an inclusive hard limit re-enforced on a materialized device
-// parameter. An absent Min or Max means that side is unbounded.
 type Bound struct {
 	Min *float64 `json:"min,omitempty"`
 	Max *float64 `json:"max,omitempty"`
 }
 
-// Route is the closed mapping from one accepted intent route to one
-// bounded device operation. The model may only select a preset by name; it can
-// never introduce a target, operation, or parameter value.
 type Route struct {
 	Operation      string                    `json:"operation"`
 	Target         string                    `json:"target"`
@@ -30,28 +27,20 @@ type Route struct {
 	ExpiresAfterMs int                       `json:"expires_after_ms"`
 	Presets        map[string]map[string]any `json:"presets"`
 	Bounds         map[string]Bound          `json:"bounds,omitempty"`
+	TargetArg      string                    `json:"target_arg,omitempty"`
 }
 
-// SafeStopRoute is a catalog-owned, parameter-free operation that requests the
-// device's safe state. It is never produced from model or intent payloads.
 type SafeStopRoute struct {
 	Operation      string `json:"operation"`
 	ExpiresAfterMs int    `json:"expires_after_ms"`
 }
 
-// CapabilityCatalog is the whole closed device-capability surface for one
-// serial effector. It is loaded from configuration (never a Go literal); the
-// concrete bench values live in a JSON file the hardware owner tunes.
 type CapabilityCatalog struct {
 	ProtocolVersion int                      `json:"protocol_version"`
 	Routes          map[string]Route         `json:"routes"`
 	SafeStops       map[string]SafeStopRoute `json:"safe_stops,omitempty"`
 }
 
-// Digest returns the canonical identity of this validated capability catalog.
-// A device session must match this digest before the catalog can authorize a
-// command, preventing a stale local route table from being used with a new
-// firmware capability set.
 func (c *CapabilityCatalog) Digest() (string, error) {
 	if c == nil {
 		return "", fmt.Errorf("capability catalog is required")
@@ -66,9 +55,6 @@ func (c *CapabilityCatalog) Digest() (string, error) {
 	return digest, nil
 }
 
-// LoadCapabilityCatalog parses and validates a capability catalog. A structurally
-// invalid catalog is rejected — the effector must never load a catalog it cannot
-// fully enforce.
 func LoadCapabilityCatalog(data []byte) (*CapabilityCatalog, error) {
 	var catalog CapabilityCatalog
 	decoder := json.NewDecoder(bytes.NewReader(data))
@@ -122,8 +108,8 @@ func (spec Route) validate(route string) error {
 	if route == actionport.WatchInstallRoute {
 		return fmt.Errorf("route %q is reserved for the runtime's watch effector; a device catalog may not name it", route)
 	}
-	if spec.Operation == "" || spec.Target == "" || spec.SelectorField == "" {
-		return fmt.Errorf("route %q must set operation, target, and selector_field", route)
+	if spec.Operation == "" || spec.SelectorField == "" || len(spec.Targets()) == 0 {
+		return fmt.Errorf("route %q must set operation, a target or target bindings, and selector_field", route)
 	}
 	if err := spec.validateTargetBindings(route); err != nil {
 		return err
@@ -136,11 +122,24 @@ func (spec Route) validateTargetBindings(route string) error {
 		if logicalTarget == "" || physicalTarget == "" {
 			return fmt.Errorf("route %q contains an empty target binding", route)
 		}
-		if physicalTarget != spec.Target {
+		if spec.Target != "" && physicalTarget != spec.Target {
 			return fmt.Errorf("route %q target binding %q resolves to %q, want route target %q", route, logicalTarget, physicalTarget, spec.Target)
 		}
 	}
 	return nil
+}
+
+func (spec Route) Targets() []string {
+	if spec.Target != "" {
+		return []string{spec.Target}
+	}
+	targets := make([]string, 0, len(spec.TargetBindings))
+	for _, logical := range slices.Sorted(maps.Keys(spec.TargetBindings)) {
+		if physical := spec.TargetBindings[logical]; !slices.Contains(targets, physical) {
+			targets = append(targets, physical)
+		}
+	}
+	return targets
 }
 
 func (spec Route) validatePresets(route string) error {
@@ -150,12 +149,24 @@ func (spec Route) validatePresets(route string) error {
 	if len(spec.Presets) == 0 {
 		return fmt.Errorf("route %q has no presets", route)
 	}
+	if err := spec.validateTargetArg(route); err != nil {
+		return err
+	}
 	return spec.validateBounds(route)
 }
 
-// validateBounds requires every bounded parameter to be produced by every
-// preset, so a selector can never silently bypass a declared hard bound, and
-// every bound to be finite and ordered.
+func (spec Route) validateTargetArg(route string) error {
+	if spec.TargetArg == "" {
+		return nil
+	}
+	for presetName, preset := range spec.Presets {
+		if _, ok := preset[spec.TargetArg]; ok {
+			return fmt.Errorf("route %q preset %q sets %q, which the route fills with its target", route, presetName, spec.TargetArg)
+		}
+	}
+	return nil
+}
+
 func (spec Route) validateBounds(route string) error {
 	for param := range spec.Bounds {
 		if err := spec.requireBoundedByEveryPreset(route, param); err != nil {
@@ -182,7 +193,6 @@ func (spec Route) requireBoundedByEveryPreset(route, param string) error {
 	return nil
 }
 
-// validate requires finite limits with the minimum at or below the maximum.
 func (bound Bound) validate(route, param string) error {
 	if bound.Min != nil && !isFinite(*bound.Min) {
 		return fmt.Errorf("route %q bound %q has a non-finite minimum", route, param)

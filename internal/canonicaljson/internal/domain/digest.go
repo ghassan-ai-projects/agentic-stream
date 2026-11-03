@@ -36,6 +36,7 @@ const (
 	DomainCapabilityCatalog Domain = "situation-runtime/capability-catalog/v1\n"
 	DomainShadowComparison  Domain = "situation-runtime/shadow-comparison/v1\n"
 	DomainEventSchemas      Domain = "situation-runtime/event-schemas/v1\n"
+	DomainPlaybook          Domain = "situation-runtime/playbook/v1\n"
 )
 
 // Marshal returns the canonical JSON encoding of v.

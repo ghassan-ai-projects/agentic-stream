@@ -3,6 +3,7 @@ package remote
 import (
 	"context"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/draftport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	app "github.com/ghassan-ai-projects/agentic-stream/internal/executor/remote/internal/app"
 	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
@@ -42,4 +43,23 @@ func NewExecutorWithEvidence(client runtimev1.EpisodeWorkerClient, name, runtime
 // Execute runs one episode on the worker and returns its validated Outcome.
 func (e *Executor) Execute(ctx context.Context, req *episodes.Request) (*episodes.Outcome, error) {
 	return e.app.Execute(ctx, req) //nolint:wrapcheck // The application names each failed step.
+}
+
+// Drafter asks an already-connected worker for playbook rule drafts over the
+// feature-gated DraftPlaybookRule call; a worker that does not announce the
+// feature refuses with draftport.ErrUnsupported.
+type Drafter struct {
+	app *app.Drafter
+}
+
+var _ draftport.Drafter = (*Drafter)(nil)
+
+// NewDrafter creates a drafter for an already-connected worker.
+func NewDrafter(client runtimev1.EpisodeWorkerClient, name, runtimeInstance string) *Drafter {
+	return &Drafter{app: app.NewDrafter(client, name, runtimeInstance)}
+}
+
+// Draft runs one draft call and returns its terminal reply.
+func (d *Drafter) Draft(ctx context.Context, request draftport.Request) (draftport.Reply, error) {
+	return d.app.Draft(ctx, request)
 }

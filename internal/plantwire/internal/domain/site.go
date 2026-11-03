@@ -172,4 +172,13 @@ func (d Directory) DeviceFor(target string) (string, bool) {
 	return target, named
 }
 
+func (d Directory) KindOfEntity(entityID string) (string, bool) {
+	for _, device := range slices.Sorted(maps.Keys(d.devices)) {
+		if entry := d.devices[device]; entry.Entity != nil && entry.Entity.ID == entityID {
+			return entry.Kind, true
+		}
+	}
+	return "", false
+}
+
 func (m Mapping) Directory() Directory { return m.directory }

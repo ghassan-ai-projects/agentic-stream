@@ -14,6 +14,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/api"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/playbook"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/runtime"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/sources"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/telemetry"
@@ -23,6 +24,8 @@ type serveFlags struct {
 	liveFlags
 	plantWire                 plantWireFlags
 	listenAddress, liveSocket string
+	playbookPath              string
+	draftAfter                int
 	ownerLease, pollInterval  time.Duration
 	demoMode                  bool
 }
@@ -48,6 +51,8 @@ func newServeCommand() *cobra.Command {
 func registerServeFlags(cmd *cobra.Command, flags *serveFlags) {
 	cmd.Flags().StringVar(&flags.dbPath, "db", "", "SQLite runtime database path")
 	cmd.Flags().StringVar(&flags.specPath, "spec", "", "SituationSpec YAML path for continuous ingestion")
+	cmd.Flags().StringVar(&flags.playbookPath, "playbook", "", "playbook YAML path compiled against --spec at start; its rules answer the cases they cover without a model call, and approved rules are written to it")
+	cmd.Flags().IntVar(&flags.draftAfter, "draft-after", playbook.DefaultDraftAfter, "verified, uncontradicted cases of one key that ask the worker to draft a playbook rule")
 	cmd.Flags().StringVar(&flags.tracePath, "trace", "", "append-only JSONL trace path for continuous ingestion")
 	cmd.Flags().StringVar(&flags.liveSocket, "live-socket", "", "Unix socket for live normalized JSONL telemetry ingestion")
 	cmd.Flags().StringVar(&flags.traceFormat, "trace-format", "normalized", "Trace format: normalized or simulator")
@@ -90,6 +95,9 @@ func (f serveFlags) validateEffects() error {
 func (f serveFlags) validateSources() error {
 	if err := validateServeSources(f.specPath, f.tracePath, f.liveSocket, f.effect.PlantWireSocket, f.worker.WorkerSocket); err != nil {
 		return err
+	}
+	if f.playbookPath != "" && f.specPath == "" {
+		return fmt.Errorf("--playbook requires --spec")
 	}
 	if f.liveSocket != "" && f.traceFormat != "normalized" {
 		return fmt.Errorf("--live-socket requires --trace-format normalized")

@@ -49,6 +49,7 @@ type IntentRecord struct {
 	RequiresApproval        int
 	ExpiresAt               time.Time
 	ExpiryUnreadable        bool
+	EventHorizon            time.Time
 	PolicyStatus            string
 	ValidationStatus        string
 	DecisionJSON            []byte

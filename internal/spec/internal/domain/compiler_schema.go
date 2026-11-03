@@ -26,9 +26,9 @@ func compileEmbeddedSchema() (*jsonschema.Schema, error) {
 
 const schemaID = "urn:agentic-stream:schema:situation-spec:v1"
 
-// validateSchema checks the decoded spec against the embedded JSON Schema to
+// validateSchema checks a decoded document against an embedded JSON Schema to
 // catch structural errors.
-func validateSchema(schema *jsonschema.Schema, raw *rawSpec) error {
+func validateSchema(schema *jsonschema.Schema, raw any) error {
 	jsonData, err := json.Marshal(raw)
 	if err != nil {
 		return fmt.Errorf("marshal for validation: %w", err)

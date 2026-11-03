@@ -60,6 +60,7 @@ func (s *session) deviceOf(ctx context.Context, device string) (domain.DeviceVie
 
 func (s *session) lookUp(device string) deviceReply {
 	view, err := s.conversation.Device(device)
+	view.NodeNowNS = s.conversation.NodeNowNS(s.clock.Now())
 	return deviceReply{view: view, err: err}
 }
 

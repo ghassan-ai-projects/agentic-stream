@@ -125,3 +125,12 @@ func AuthorizedApprover(active int, readFailed bool) error {
 	}
 	return nil
 }
+
+type SignedApproval struct {
+	TenantID  string
+	Approver  string
+	Relay     string
+	RiskClass string
+	Message   []byte
+	Signature []byte
+}

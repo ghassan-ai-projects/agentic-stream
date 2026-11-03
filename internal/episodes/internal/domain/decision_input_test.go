@@ -130,3 +130,25 @@ func TestDecisionInputRefusesAnUndecodableRequest(t *testing.T) {
 		t.Fatalf("error = %v, want decode request tools", err)
 	}
 }
+
+func TestDecisionInputBindsTheRequestDiagnosisCatalog(t *testing.T) {
+	t.Parallel()
+	payload := honestDecisionPayload(t)
+	executor, _ := payload["executor"].(map[string]any)
+	executor["diagnosis_catalog"] = `[{"code":"unknown"},{"code":"wear"}]`
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input, err := DecisionInput(decisionRequest(raw), episodeledger.Identity{EpisodeID: "epi", AttemptID: "att", Fence: 1}, decisionInputNow)
+	if err != nil {
+		t.Fatalf("decision input: %v", err)
+	}
+	if _, ok := input.DiagnosisCodes["wear"]; !ok || len(input.DiagnosisCodes) != 2 {
+		t.Fatalf("diagnosis codes = %v, want unknown and wear", input.DiagnosisCodes)
+	}
+	executor["diagnosis_catalog"] = "not json"
+	if err := decisionInputFor(t, payload); err == nil || !strings.Contains(err.Error(), "diagnosis catalog") {
+		t.Fatalf("a malformed catalog = %v, want refused", err)
+	}
+}

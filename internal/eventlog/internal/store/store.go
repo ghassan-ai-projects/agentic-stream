@@ -4,8 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/eventlog/internal/domain"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
@@ -61,3 +63,20 @@ func scanQuarantineRecord(rows *sql.Rows) (domain.QuarantineRecord, error) {
 }
 
 const currentPositionSQL = "SELECT COALESCE(MAX(position), 0) FROM event_log WHERE tenant_id = ?"
+
+func JoinUnit(tx *sql.Tx) *Unit { return &Unit{tx: tx} }
+
+func (u *Unit) LatestEventTime(ctx context.Context, tenantID string) (time.Time, bool, error) {
+	text, found, err := storage.QueryOptional[sql.NullString](ctx, u.tx, `SELECT MAX(event_time) FROM event_log WHERE tenant_id = ?`, tenantID)
+	if err != nil {
+		return time.Time{}, false, fmt.Errorf("read the latest event time of tenant %q: %w", tenantID, err)
+	}
+	if !found || !text.Valid {
+		return time.Time{}, false, nil
+	}
+	at, err := kernel.ParseStoredTime(text.String)
+	if err != nil {
+		return time.Time{}, false, fmt.Errorf("parse the latest event time %q: %w", text.String, err)
+	}
+	return at, true, nil
+}

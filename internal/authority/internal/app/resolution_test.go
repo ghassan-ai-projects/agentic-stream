@@ -8,10 +8,14 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/authority/internal/domain"
 )
 
-// insertUnknownOutcome records a command bound to device whose outcome the
-// action ledger still treats as unknown.
 func (f *fixture) insertUnknownOutcome(t *testing.T, commandID string, device domain.DeviceBoot) {
 	t.Helper()
+	f.insertUnresolvedCommand(t, domain.CommandBinding{CommandID: commandID, Target: "led-b", Device: device, Owner: ownerOne})
+}
+
+func (f *fixture) insertUnresolvedCommand(t *testing.T, binding domain.CommandBinding) {
+	t.Helper()
+	commandID := binding.CommandID
 	if _, err := f.db.ExecContext(t.Context(), "PRAGMA foreign_keys = OFF"); err != nil {
 		t.Fatal(err)
 	}
@@ -22,7 +26,7 @@ func (f *fixture) insertUnknownOutcome(t *testing.T, commandID string, device do
 		commandID, "intent-"+commandID, key[:], []byte("{}"), make([]byte, 32)); err != nil {
 		t.Fatalf("insert command: %v", err)
 	}
-	if err := f.service.BindCommand(t.Context(), domain.CommandBinding{CommandID: commandID, Target: "led-b", Device: device, Owner: ownerOne}); err != nil {
+	if err := f.service.BindCommand(t.Context(), binding); err != nil {
 		t.Fatal(err)
 	}
 }

@@ -1,0 +1,6 @@
+apiVersion: agentic-stream/v1
+kind: Playbook
+metadata:
+  name: site-a
+  spec: pump_station
+rules: []

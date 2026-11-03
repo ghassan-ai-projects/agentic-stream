@@ -25,14 +25,15 @@ func (c *CapabilityCatalog) Bound(command actionport.Command) (BoundedCommand, e
 	if err != nil {
 		return BoundedCommand{}, err
 	}
-	if err := spec.checkTarget(command); err != nil {
-		return BoundedCommand{}, err
-	}
-	parameters, err := spec.boundedParameters(command)
+	target, err := spec.resolveTarget(command)
 	if err != nil {
 		return BoundedCommand{}, err
 	}
-	return BoundedCommand{Route: command.EffectorRoute, Target: spec.Target, Operation: spec.Operation,
+	parameters, err := spec.boundedParameters(command, target)
+	if err != nil {
+		return BoundedCommand{}, err
+	}
+	return BoundedCommand{Route: command.EffectorRoute, Target: target, Operation: spec.Operation,
 		Parameters: parameters, ExpiresAfterMs: spec.ExpiresAfterMs}, nil
 }
 

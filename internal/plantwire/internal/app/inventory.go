@@ -48,11 +48,20 @@ func checkCatalogTargets(catalog *device.CapabilityCatalog, mapping domain.Mappi
 		return nil
 	}
 	for _, name := range slices.Sorted(maps.Keys(catalog.Routes)) {
-		if err := checkSiteDevice(mapping, catalog.Routes[name].Target); err != nil {
+		if err := checkRouteTargets(mapping, catalog.Routes[name].Targets()); err != nil {
 			return fmt.Errorf("plant wire route %q: %w", name, err)
 		}
 	}
 	return checkSafeStops(catalog, mapping)
+}
+
+func checkRouteTargets(mapping domain.Mapping, targets []string) error {
+	for _, target := range targets {
+		if err := checkSiteDevice(mapping, target); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func checkSafeStops(catalog *device.CapabilityCatalog, mapping domain.Mapping) error {

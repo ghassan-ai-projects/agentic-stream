@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"time"
 
@@ -56,8 +55,7 @@ func tripInterlock(ctx context.Context, db *storage.DB, reason string) (interloc
 func clearInterlock(ctx context.Context, db *storage.DB, reason string) (interlock.State, error) {
 	var state interlock.State
 	err := withRuntimeOwnership(ctx, db, func(ownership operatorOwnership) (err error) {
-		fence := func(ctx context.Context, tx *sql.Tx) error { return ownership.owner.Assert(ctx, tx, ownership.epoch) }
-		state, err = interlock.Clear(ctx, db, fence, reason, time.Now())
+		state, err = interlock.Clear(ctx, db, ownership.fence, reason, time.Now())
 		if err != nil {
 			return fmt.Errorf("interlock clear: %w", err)
 		}

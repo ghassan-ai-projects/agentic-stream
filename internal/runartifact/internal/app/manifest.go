@@ -8,17 +8,18 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/runartifact/internal/store"
 )
 
-// enrichManifest completes the operator's manifest from the snapshot: schema
-// defaults, migration version, recorded digests and device identity.
 func enrichManifest(ctx context.Context, snapshot *store.Snapshot, input domain.Manifest) (domain.Manifest, error) {
 	manifest := input.WithDefaults()
 	version, err := snapshot.MigrationVersion(ctx)
 	if err != nil {
-		return domain.Manifest{}, err //nolint:wrapcheck // The store names the failed read.
+		return domain.Manifest{}, err
 	}
 	manifest.MigrationVersion = version
 	manifest, err = withRecordedDigests(ctx, snapshot, manifest)
 	if err != nil {
+		return domain.Manifest{}, err
+	}
+	if manifest.PlaybookDigests, err = recordedPlaybookDigests(ctx, snapshot, manifest); err != nil {
 		return domain.Manifest{}, err
 	}
 	return withDeviceIdentity(ctx, snapshot, manifest)
@@ -42,9 +43,16 @@ func recordedSpecDigest(ctx context.Context, snapshot *store.Snapshot, manifest 
 	}
 	raw, err := snapshot.LatestSpecDigest(ctx, manifest.TenantID)
 	if err != nil || len(raw) == 0 {
-		return "", err //nolint:wrapcheck // The store names the failed read.
+		return "", err
 	}
 	return canonicaljson.EncodeDigest(raw), nil
+}
+
+func recordedPlaybookDigests(ctx context.Context, snapshot *store.Snapshot, manifest domain.Manifest) ([]string, error) {
+	if len(manifest.PlaybookDigests) > 0 {
+		return manifest.PlaybookDigests, nil
+	}
+	return snapshot.PlaybookDigests(ctx, manifest.TenantID)
 }
 
 func recordedPolicyDigest(ctx context.Context, snapshot *store.Snapshot, manifest domain.Manifest) (string, error) {
@@ -52,25 +60,30 @@ func recordedPolicyDigest(ctx context.Context, snapshot *store.Snapshot, manifes
 		return "", nil
 	}
 	evaluation, err := snapshot.LatestPolicyEvaluation(ctx, manifest.TenantID)
-	return evaluation.Digest, err //nolint:wrapcheck // The store names the failed read.
+	return evaluation.Digest, err
 }
 
 func withDeviceIdentity(ctx context.Context, snapshot *store.Snapshot, manifest domain.Manifest) (domain.Manifest, error) {
-	if manifest.Device.DeviceID == "" {
-		count, err := snapshot.DeviceStateCount(ctx)
-		if err != nil {
-			return domain.Manifest{}, err //nolint:wrapcheck // The store names the failed read.
-		}
-		if err := domain.RequireUnambiguousDevice(count); err != nil {
-			return domain.Manifest{}, err //nolint:wrapcheck // The domain rule's message is the operator-facing text.
-		}
+	if err := requireOneDevice(ctx, snapshot, manifest); err != nil {
+		return domain.Manifest{}, err
 	}
 	raw, err := snapshot.DeviceState(ctx, manifest.Device.DeviceID)
 	if err != nil {
-		return domain.Manifest{}, err //nolint:wrapcheck // The store names the failed read.
+		return domain.Manifest{}, err
 	}
 	if state, ok := domain.DecodeDeviceState(raw); ok {
 		manifest = manifest.WithDeviceState(state)
 	}
 	return manifest, nil
+}
+
+func requireOneDevice(ctx context.Context, snapshot *store.Snapshot, manifest domain.Manifest) error {
+	if manifest.Device.DeviceID != "" {
+		return nil
+	}
+	count, err := snapshot.DeviceStateCount(ctx)
+	if err != nil {
+		return err
+	}
+	return domain.RequireUnambiguousDevice(count)
 }

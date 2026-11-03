@@ -25,6 +25,8 @@ func TestDeviceStateDecidesTheOutcomeAfterADispatch(t *testing.T) {
 			ledger{Command: "succeeded", Outbox: "delivered", Outcome: "succeeded", Reconciliation: "observed", Verification: "observed", Outcomes: 1}},
 		{"unknown outcome resolved by the device state", &deviceEffector{scriptedEffector: *failsWith(unknownOutcome), finalStatus: "failed", evidence: deviceEvidence(true)},
 			ledger{Command: "failed", Outbox: "failed", Outcome: "reconciled", Reconciliation: "reconciled", Verification: "refuted", Outcomes: 2}},
+		{"unknown outcome with nothing to read concluded as manual review", &deviceEffector{scriptedEffector: *failsWith(unknownOutcome), finalStatus: "manual_review", evidence: deviceEvidence(false)},
+			ledger{Command: "manual_review", Outbox: "failed", Outcome: "reconciled", Reconciliation: "reconciled", Verification: "inconclusive", Outcomes: 2}},
 		{"state query failure keeps the outcome unknown", &deviceEffector{scriptedEffector: *pendingVerification(), verifyErr: errors.New("state query failed")},
 			ledger{Command: "reconciling", Outbox: "failed", Outcome: "unknown", Reconciliation: "required", Verification: "awaiting", Outcomes: 1}},
 	}

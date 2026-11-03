@@ -42,3 +42,22 @@ func ApplyPrincipals(ctx context.Context, tx *sql.Tx, ownership Ownership, docum
 func GovernanceSummary(ctx context.Context, tx *sql.Tx, tenant string) (PrincipalSummary, error) {
 	return app.GovernanceSummary(ctx, store.Join(tx), tenant)
 }
+
+// SignedApproval is a principal's signature over an approval statement that is
+// not an intent's (a playbook rule proposal): the tenant, the approver and the
+// relay, the risk class the approver must hold authority for, the signed bytes
+// and the Ed25519 signature.
+type SignedApproval = domain.SignedApproval
+
+// CheckApprovalSigner checks, on the caller's transaction, that the relay is
+// active and the approver has a verification key and authority for the risk
+// class; a refusal wraps ErrApprovalUnauthorized.
+func CheckApprovalSigner(ctx context.Context, tx *sql.Tx, signed SignedApproval) error {
+	return app.CheckApprovalSigner(ctx, store.Join(tx), signed)
+}
+
+// VerifySignedApproval checks the signer like CheckApprovalSigner and verifies
+// the signature over the message; it returns the digest of the signed bytes.
+func VerifySignedApproval(ctx context.Context, tx *sql.Tx, signed SignedApproval) (string, error) {
+	return app.VerifySignedApproval(ctx, store.Join(tx), signed)
+}

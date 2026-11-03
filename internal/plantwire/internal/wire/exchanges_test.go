@@ -50,7 +50,7 @@ func conversationReplies(t *testing.T, header map[string]any, steps []map[string
 		if reaction.Dropped != "" {
 			t.Errorf("the host dropped %v: %s", step["record"].(map[string]any)["type"], reaction.Dropped)
 		}
-		replies = append(replies, reaction.Replies...)
+		replies = append(replies, conversation.Transmit(reaction.Replies)...)
 	}
 	return replies
 }

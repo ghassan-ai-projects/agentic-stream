@@ -14,12 +14,31 @@ import (
 )
 
 func (tx *Tx) LoadOperatorState(ctx context.Context, partitionID int, entityID string) (*operators.PartitionState, error) {
-	state := &operators.PartitionState{OperatorStates: make(map[string]map[string]*operators.OperatorStateBlob)}
-	rows, scope, err := tx.operatorStateRows(ctx, partitionID, entityID)
+	rows, err := tx.entityOperatorStateRows(ctx, partitionID, entityID)
 	if err != nil {
 		return nil, err
 	}
+	state, err := scanOperatorStates(rows, "")
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.restoreWindowSamples(ctx, partitionID, entityID, state); err != nil {
+		return nil, err
+	}
+	return state, nil
+}
+
+func (tx *Tx) LoadHeartbeatState(ctx context.Context, partitionID int) (*operators.PartitionState, error) {
+	rows, err := tx.partitionOperatorStateRows(ctx, partitionID)
+	if err != nil {
+		return nil, err
+	}
+	return scanOperatorStates(rows, "partition ")
+}
+
+func scanOperatorStates(rows *sql.Rows, scope string) (*operators.PartitionState, error) {
 	defer func() { _ = rows.Close() }()
+	state := &operators.PartitionState{OperatorStates: make(map[string]map[string]*operators.OperatorStateBlob)}
 	for rows.Next() {
 		if err := scanOperatorState(rows, state, scope); err != nil {
 			return nil, err
@@ -31,20 +50,16 @@ func (tx *Tx) LoadOperatorState(ctx context.Context, partitionID int, entityID s
 	return state, nil
 }
 
-func (tx *Tx) operatorStateRows(ctx context.Context, partitionID int, entityID string) (*sql.Rows, string, error) {
-	if entityID == "" {
-		rows, err := tx.partitionOperatorStateRows(ctx, partitionID)
-		return rows, "partition ", err
-	}
+func (tx *Tx) entityOperatorStateRows(ctx context.Context, partitionID int, entityID string) (*sql.Rows, error) {
 	args := append([]any{tx.deploymentID, tx.tenantID, partitionID}, entityScopeArgs(entityID)...)
 	rows, err := tx.tx.QueryContext(ctx,
 		`SELECT operator_id, state_key, state_blob FROM operator_state
 			 WHERE deployment_id = ? AND tenant_id = ? AND partition_id = ?
 			   AND `+entityScopePredicate, args...)
 	if err != nil {
-		return nil, "", fmt.Errorf("query operator state: %w", err)
+		return nil, fmt.Errorf("query operator state: %w", err)
 	}
-	return rows, "", nil
+	return rows, nil
 }
 
 func (tx *Tx) partitionOperatorStateRows(ctx context.Context, partitionID int) (*sql.Rows, error) {
@@ -86,18 +101,26 @@ func (tx *Tx) SaveOperatorState(ctx context.Context, partitionID int, entityID s
 	if state == nil {
 		return nil
 	}
-	stored, err := tx.storedOperatorDigests(ctx, partitionID, entityID)
+	stored, encoded, err := tx.writeOperatorBlobs(ctx, partitionID, entityID, state, now)
 	if err != nil {
 		return err
 	}
-	encoded, err := encodeOperatorStates(state)
-	if err != nil {
-		return err
-	}
-	if err := tx.writeChangedOperatorStates(ctx, partitionID, stored, encoded, kernel.FormatTime(now)); err != nil {
+	if err := tx.writeWindowSampleChanges(ctx, partitionID, state); err != nil {
 		return err
 	}
 	return tx.deleteRetiredOperatorStates(ctx, partitionID, stored, encoded)
+}
+
+func (tx *Tx) writeOperatorBlobs(ctx context.Context, partitionID int, entityID string, state *operators.PartitionState, now time.Time) (map[operatorStateRef][]byte, map[operatorStateRef]encodedOperatorState, error) {
+	stored, err := tx.storedOperatorDigests(ctx, partitionID, entityID)
+	if err != nil {
+		return nil, nil, err
+	}
+	encoded, err := encodeOperatorStates(state)
+	if err != nil {
+		return nil, nil, err
+	}
+	return stored, encoded, tx.writeChangedOperatorStates(ctx, partitionID, stored, encoded, kernel.FormatTime(now))
 }
 
 type operatorStateRef struct{ operatorID, stateKey string }
@@ -175,6 +198,9 @@ func (tx *Tx) deleteRetiredOperatorStates(ctx context.Context, partitionID int, 
 			WHERE deployment_id = ? AND tenant_id = ? AND partition_id = ? AND operator_id = ? AND state_key = ?`,
 			tx.deploymentID, tx.tenantID, partitionID, ref.operatorID, ref.stateKey); err != nil {
 			return fmt.Errorf("retire operator state %s/%s: %w", ref.operatorID, ref.stateKey, err)
+		}
+		if err := tx.deleteWindowSamples(ctx, partitionID, ref); err != nil {
+			return err
 		}
 	}
 	return nil

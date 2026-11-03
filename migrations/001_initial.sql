@@ -125,6 +125,27 @@ CREATE TABLE operator_state (
     )
 ) STRICT;
 
+CREATE TABLE operator_window_samples (
+    deployment_id       TEXT NOT NULL REFERENCES spec_deployments(deployment_id),
+    tenant_id           TEXT NOT NULL,
+    partition_id        INTEGER NOT NULL CHECK (partition_id >= 0),
+    state_key           TEXT NOT NULL,
+    operator_id         TEXT NOT NULL,
+    event_time          TEXT NOT NULL,
+    event_id            TEXT NOT NULL,
+    value               REAL NOT NULL,
+    boot_id             TEXT NOT NULL,
+    PRIMARY KEY (
+        deployment_id,
+        tenant_id,
+        partition_id,
+        state_key,
+        operator_id,
+        event_time,
+        event_id
+    )
+) STRICT, WITHOUT ROWID;
+
 CREATE TABLE timers (
     timer_id            TEXT PRIMARY KEY,
     deployment_id       TEXT NOT NULL REFERENCES spec_deployments(deployment_id),

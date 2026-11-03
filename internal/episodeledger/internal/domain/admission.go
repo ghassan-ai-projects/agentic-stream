@@ -2,15 +2,15 @@ package domain
 
 import "errors"
 
-// ErrLiveEpisodeConflict means a reconsideration collides with a live episode.
 var ErrLiveEpisodeConflict = errors.New("one live episode per situation constraint")
+
+var ErrLiveEpisodeBusy = errors.New("the situation already has a live episode")
 
 const (
 	KindStandard   = "standard"
 	KindReconsider = "reconsider"
 )
 
-// Admission is the materialized durable episode input, independent of an executor.
 type Admission struct {
 	EpisodeID, SchedulerItemID, Kind, TenantID, SituationID                  string
 	SituationVersion                                                         int
@@ -19,8 +19,6 @@ type Admission struct {
 	DispatchPolicy, PolicyEpoch                                              string
 }
 
-// ReportsLiveConflict reports whether a live-episode uniqueness violation
-// counts as a conflict: only a reconsideration reports one.
 func (a Admission) ReportsLiveConflict() bool { return a.Kind == KindReconsider }
 
 type DispatchableEpisode struct {

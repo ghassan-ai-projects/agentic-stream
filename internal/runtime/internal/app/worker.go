@@ -3,26 +3,25 @@ package app
 import (
 	"context"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/draftport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	domain "github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/domain"
 )
 
-// WorkerBackend is the resource boundary used by setup sequencing.
 type WorkerBackend interface {
 	NativeExecutor() (episodes.Executor, error)
 	StartEvidence() ([]byte, error)
 	ConnectWorker(context.Context, []byte) (episodes.Executor, error)
 	Errors() <-chan error
+	Drafter() draftport.Drafter
 	Close() error
 }
 
-// WorkerRuntime owns setup ordering; backend owns concrete connection resources.
 type WorkerRuntime struct {
 	Executor episodes.Executor
 	backend  WorkerBackend
 }
 
-// NewWorkerRuntime initializes a configuration already validated by composition.
 func NewWorkerRuntime(ctx context.Context, cfg domain.WorkerOptions, backend WorkerBackend) (*WorkerRuntime, error) {
 	r := &WorkerRuntime{backend: backend}
 	cleanupOnError := true
@@ -40,7 +39,7 @@ func NewWorkerRuntime(ctx context.Context, cfg domain.WorkerOptions, backend Wor
 }
 
 func (r *WorkerRuntime) configureExecutor(ctx context.Context, cfg domain.WorkerOptions) error {
-	// A remote route must never construct the native executor.
+
 	if cfg.WorkerSocket == "" {
 		nativeExecutor, err := r.backend.NativeExecutor()
 		if err != nil {
@@ -69,7 +68,13 @@ func (r *WorkerRuntime) configureWorkerEvidence(ctx context.Context, cfg domain.
 	return nil
 }
 
-// Errors reports asynchronous failures without transferring channel ownership.
+func (r *WorkerRuntime) Drafter() draftport.Drafter {
+	if r == nil || r.backend == nil {
+		return nil
+	}
+	return r.backend.Drafter()
+}
+
 func (r *WorkerRuntime) Errors() <-chan error {
 	if r == nil || r.backend == nil {
 		return nil
@@ -77,7 +82,6 @@ func (r *WorkerRuntime) Errors() <-chan error {
 	return r.backend.Errors()
 }
 
-// Close releases partially or fully initialized resources through their owner.
 func (r *WorkerRuntime) Close() error {
 	if r == nil || r.backend == nil {
 		return nil

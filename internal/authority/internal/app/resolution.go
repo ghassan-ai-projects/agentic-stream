@@ -9,10 +9,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/authority/internal/store"
 )
 
-// ResolveReconciliation records evidence and an outcome for the open
-// reconciliation of a device boot, and reports whether it cleared. Command
-// outcomes must already be reconciled by the dispatcher; manual review keeps
-// the reconciliation required.
 func (s *Service) ResolveReconciliation(ctx context.Context, request domain.ResolutionRequest) (bool, error) {
 	if err := request.Check(); err != nil {
 		return false, err
@@ -44,8 +40,6 @@ func (s *Service) resolveReconciliation(ctx context.Context, tx *store.Tx, reque
 	return tx.AppendAuthorityEvent(ctx, domain.ResolutionEvent(resolution, now))
 }
 
-// checkResolvable requires an open reconciliation bound by the evidence and
-// no command of the boot still awaiting reconciliation.
 func (s *Service) checkResolvable(ctx context.Context, tx *store.Tx, resolution domain.Resolution) error {
 	recorded, err := tx.LoadReconciliation(ctx, resolution.Device.DeviceID)
 	if err != nil {
@@ -57,10 +51,8 @@ func (s *Service) checkResolvable(ctx context.Context, tx *store.Tx, resolution 
 	return s.checkCommandsReconciled(ctx, tx, resolution.Device)
 }
 
-// checkCommandsReconciled asks the action ledger about the commands bound to
-// the device boot; the ledger owns what "unresolved" means.
 func (s *Service) checkCommandsReconciled(ctx context.Context, tx *store.Tx, device domain.DeviceBoot) error {
-	commandIDs, err := tx.BoundCommands(ctx, device)
+	commandIDs, err := tx.ReadBackCommands(ctx, device)
 	if err != nil {
 		return err
 	}

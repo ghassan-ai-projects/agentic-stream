@@ -6,9 +6,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 )
 
-// CommandBinding ties a command to the target, device boot and owner that
-// delivered it, plus the command digest. It is written immediately before
-// delivery and never changes.
 type CommandBinding struct {
 	CommandID        string
 	Target           string
@@ -16,16 +13,13 @@ type CommandBinding struct {
 	Device           DeviceBoot
 	Owner            Owner
 	CommandDigest    string
+	NoReadback       bool
 }
 
-// Complete reports whether every identity of the binding is present. The
-// digest is optional.
 func (b CommandBinding) Complete() bool {
 	return b.CommandID != "" && b.Target != "" && b.Device.Complete() && b.Owner.Complete()
 }
 
-// DecideBinding reports whether the command already carries this exact
-// binding, which makes a repeat idempotent. A different binding is a conflict.
 func DecideBinding(existing *CommandBinding, requested CommandBinding) (bool, error) {
 	if existing == nil {
 		return false, nil
@@ -38,7 +32,7 @@ func DecideBinding(existing *CommandBinding, requested CommandBinding) (bool, er
 
 func sameBinding(existing, requested CommandBinding) bool {
 	return existing.Target == requested.Target && existing.NormalizedTarget == requested.NormalizedTarget && existing.Device == requested.Device &&
-		existing.Owner == requested.Owner && sameDigest(existing.CommandDigest, requested.CommandDigest)
+		existing.Owner == requested.Owner && existing.NoReadback == requested.NoReadback && sameDigest(existing.CommandDigest, requested.CommandDigest)
 }
 
 func sameDigest(existing, requested string) bool {
@@ -60,17 +54,12 @@ func (b CommandBinding) commandTarget() string {
 	return b.Target
 }
 
-// CommandEvidence is reconciliation evidence presented for one command whose
-// outcome is being reconciled.
 type CommandEvidence struct {
 	CommandID string
 	Target    string
 	Evidence  map[string]any
 }
 
-// CheckCommandEvidence requires reconciliation evidence for a device-bound
-// command to name the bound target and the bound device boot. A command with
-// no binding was not delivered to a device and needs no device evidence.
 func CheckCommandEvidence(binding *CommandBinding, presented CommandEvidence) error {
 	if binding == nil {
 		return nil

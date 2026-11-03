@@ -11,8 +11,22 @@ generated Go output is under
 ```text
 EpisodeWorker.Handshake(HandshakeRequest) -> HandshakeResponse
 EpisodeWorker.Execute(EpisodeRequest) -> stream EpisodeEvent
+EpisodeWorker.DraftPlaybookRule(DraftRequest) -> stream DraftEvent
 EvidenceTools.Call(EvidenceToolCall) -> EvidenceToolResult
 ```
+
+`DraftPlaybookRule` is optional: the runtime calls it only when the worker's
+handshake announces the feature `draft_playbook_rule` (it does not require the
+feature, so a worker without it still connects). A draft request carries the
+key (diagnosis code, kind digest, intent, preset), up to 20 verified cases
+(episode id, answer, verdict, the features at decision time as canonical JSON,
+and the model's summary as untrusted evidence), the playbook's rules with the
+same diagnosis code, the allowed feature names, a budget and the spec digest.
+The stream ends with exactly one `PlaybookProposal` (the key, a condition over
+the allowed features, the cited episode ids, a rationale; no mode, envelope or
+free value) or `NoProposal` (a reason); `usage` may ride on any event. The
+accepted decision is the rule promotion plan
+([F4](../design/rule-promotion.md)); see the [playbook](../design/playbook.md).
 
 ## Compatibility requirements
 

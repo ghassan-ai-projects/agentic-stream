@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -17,7 +18,10 @@ import (
 
 const benchReadings = 6
 
-var benchPlantWire = filepath.Join("..", "..", "examples", "real-world-sensor", "testdata", "plant-wire")
+var (
+	benchPlantWire = filepath.Join("..", "..", "examples", "real-world-sensor", "testdata", "plant-wire")
+	benchCatalog   = filepath.Join(benchPlantWire, "thermal-bench.catalog.json")
+)
 
 type plantWireServe struct {
 	dir, socket, db string
@@ -28,35 +32,41 @@ func startPlantWireServe(t *testing.T, specPath, kindsDir, sitePath string, extr
 	t.Helper()
 	dir := privateSocketDir(t)
 	run := plantWireServe{dir: dir, socket: filepath.Join(dir, "host.sock"), db: newMigratedDatabasePath(t)}
-	address := freeLoopbackAddress(t)
-	args := []string{"--db", run.db, "--spec", specPath, "--effect-profile", "emulator", "--plant-wire-socket", run.socket,
+	run.stop = servePlantWire(t, run, freeLoopbackAddress(t), specPath, kindsDir, sitePath, extra...)
+	return run
+}
+
+func servePlantWire(t *testing.T, run plantWireServe, address, specPath, kindsDir, sitePath string, extra ...string) func() {
+	t.Helper()
+	args := []string{"serve", "--db", run.db, "--spec", specPath, "--effect-profile", "emulator", "--plant-wire-socket", run.socket,
 		"--plant-wire-kinds", kindsDir, "--plant-wire-epoch", "11", "--listen", address, "--poll-interval", "50ms"}
 	if sitePath != "" {
 		args = append(args, "--plant-wire-site", sitePath)
 	}
 	args = append(args, extra...)
 	ctx, cancel := context.WithCancel(t.Context())
-	cmd := newServeCommand()
+	cmd := newRootCommand()
 	cmd.SetArgs(args)
 	done := make(chan error, 1)
 	go func() { done <- cmd.ExecuteContext(ctx) }()
 	waitReady(t, "http://"+address+"/health/live", done)
-	run.stop = func() {
+	stop := sync.OnceFunc(func() {
 		cancel()
 		if err := <-done; err != nil {
 			t.Errorf("serve returned %v after cancellation", err)
 		}
-	}
-	t.Cleanup(run.stop)
-	return run
+	})
+	t.Cleanup(stop)
+	return stop
 }
 
 func TestServeHostsPlantWireSessionsOneAfterAnother(t *testing.T) {
 	t.Parallel()
-	run := startPlantWireServe(t, testSpec, plantwirefake.KindsDir(t, "."), "")
+	kinds := plantwirefake.KindsDir(t, ".")
+	run := startPlantWireServe(t, testSpec, kinds, experimentSite(t), "--device-catalog", experimentCatalog, "--dispatch-lease", "2m")
 	for _, session := range []string{"s-1", "s-2"} {
 		node := plantwirefake.Dial(t, "unix", run.socket, session)
-		node.Send(plantwirefake.Fixture(t, ".", "NBIRTH.json"))
+		node.Send(plantwirefake.Birth(t, kinds, "board-01", "led-01", "fan-01"))
 		if state := node.Expect("STATE"); state["online"] != true || state["authority_epoch"] != json.Number("11") {
 			t.Fatalf("%s: STATE = %v, want online at epoch 11", session, state)
 		}
@@ -72,7 +82,7 @@ func TestServeHostsPlantWireSessionsOneAfterAnother(t *testing.T) {
 func TestServeIngestsTheBenchReadingsOfAPlantWireNodeAndOpensASituation(t *testing.T) {
 	t.Parallel()
 	kinds := filepath.Join(benchPlantWire, "kinds")
-	run := startPlantWireServe(t, benchSpec, kinds, filepath.Join(benchPlantWire, "thermal-bench.site.json"))
+	run := startPlantWireServe(t, benchSpec, kinds, filepath.Join(benchPlantWire, "thermal-bench.site.json"), "--device-catalog", benchCatalog)
 	node := plantwirefake.Dial(t, "unix", run.socket, "bench-1")
 	node.Send(plantwirefake.Birth(t, kinds, "mega-01", "zone-01", "led-01", "fan-01"))
 	node.Expect("STATE")
@@ -106,19 +116,24 @@ func benchSample(alias int, value float64, atNS int64) map[string]any {
 
 func eventTypeCounts(t *testing.T, dbPath string) map[string]int {
 	t.Helper()
-	rows, err := openReadOnly(t, dbPath).QueryContext(t.Context(), "SELECT event_type, COUNT(*) FROM event_log GROUP BY event_type")
+	return countsBy(t, dbPath, "SELECT event_type, COUNT(*) FROM event_log GROUP BY event_type")
+}
+
+func countsBy(t *testing.T, dbPath, query string) map[string]int {
+	t.Helper()
+	rows, err := openReadOnly(t, dbPath).QueryContext(t.Context(), query)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = rows.Close() }()
 	counts := map[string]int{}
 	for rows.Next() {
-		var eventType string
+		var key string
 		var count int
-		if err := rows.Scan(&eventType, &count); err != nil {
+		if err := rows.Scan(&key, &count); err != nil {
 			t.Fatal(err)
 		}
-		counts[eventType] = count
+		counts[key] = count
 	}
 	if err := rows.Err(); err != nil {
 		t.Fatal(err)
@@ -171,7 +186,7 @@ func TestServeMakesThePlantWireHostTheDeviceEffectorOfItsCatalog(t *testing.T) {
 	if err := cmd.ExecuteContext(t.Context()); err == nil || !strings.Contains(err.Error(), `route "select_thermal_mode" has no effector`) {
 		t.Fatalf("serve with a catalog missing a dispatched route = %v, want the route refused at start", err)
 	}
-	startPlantWireServe(t, benchSpec, kinds, site, "--device-catalog", filepath.Join(benchPlantWire, "thermal-bench.catalog.json"))
+	startPlantWireServe(t, benchSpec, kinds, site, "--device-catalog", benchCatalog)
 }
 
 func writePrivateFile(t *testing.T, path, content string) {

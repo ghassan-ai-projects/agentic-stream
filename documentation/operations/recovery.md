@@ -64,7 +64,10 @@ reconciliation state (`agentic-stream intent show <intent-id>` prints them).
 Unknown outcomes require provider-side reconciliation; never blindly replay
 them. Once the provider's evidence is in hand, close the command with
 `agentic-stream commands resolve <command-id> --status succeeded|failed|manual_review --evidence <file>`
-(`commands list` shows the commands waiting).
+(`commands list` shows the commands waiting). A plant wire command with nothing
+to read back (a maintenance booking) whose outcome is unknown waits there as
+`manual_review`; closing it is optional bookkeeping, since it no longer holds
+its device's reconciliation barrier.
 
 ## 6. Restore and backup
 

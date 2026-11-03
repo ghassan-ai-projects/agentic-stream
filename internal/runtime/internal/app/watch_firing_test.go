@@ -27,7 +27,7 @@ func TestWatchFiringReadsEveryPageOfRecentEvents(t *testing.T) {
 	log := eventlog.NewEventLog(db)
 	appendLevelEvents(t, log, events, "target-final")
 
-	pipeline := &Pipeline{log: log, watch: watch, tenantID: "default", watchPageSize: pageSize}
+	pipeline := &Pipeline{log: log, watch: watch, tenantID: "default", watchPageSize: pageSize, situationFeatures: levelOne}
 	span := noopSpan(t)
 	if err := pipeline.fireRecentWatches(t.Context(), 0, span); err != nil {
 		t.Fatalf("fire paginated watches: %v", err)
@@ -52,7 +52,7 @@ func TestWatchFiringOnlyReadsEventsAfterTheBatchStartPosition(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pipeline := &Pipeline{log: log, watch: watch, tenantID: "default"}
+	pipeline := &Pipeline{log: log, watch: watch, tenantID: "default", situationFeatures: levelOne}
 	if err := pipeline.fireRecentWatches(t.Context(), current, noopSpan(t)); err != nil {
 		t.Fatal(err)
 	}
@@ -139,4 +139,8 @@ func noopSpan(t *testing.T) trace.Span {
 	_, span := noop.NewTracerProvider().Tracer("runtime-test").Start(t.Context(), "watch")
 	t.Cleanup(func() { span.End() })
 	return span
+}
+
+func levelOne(context.Context, string) (map[string]any, bool, error) {
+	return map[string]any{"level": float64(1)}, true, nil
 }
