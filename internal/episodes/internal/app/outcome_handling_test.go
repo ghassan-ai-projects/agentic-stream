@@ -140,18 +140,22 @@ func settledMicrounits(t *testing.T, db *storage.DB, episodeID string) (string, 
 	return status, actual
 }
 
+func tamperedOutcome(tamper func(*app.Outcome)) executorFunc {
+	return func(ctx context.Context, req *app.Request) (*app.Outcome, error) {
+		outcome, err := fixture.New().Execute(ctx, req)
+		if outcome != nil {
+			tamper(outcome)
+		}
+		return outcome, err //nolint:wrapcheck // Test double.
+	}
+}
+
 func TestRunnerSettlesTheReservedCostWithWhatTheWorkerReported(t *testing.T) {
 	t.Parallel()
 	db := storagetest.OpenTemp(t)
 	seedEpisode(t, db, "epi-cost")
 	reserveCost(t, db, "epi-cost", 50)
-	executor := executorFunc(func(ctx context.Context, req *app.Request) (*app.Outcome, error) {
-		outcome, err := fixture.New().Execute(ctx, req)
-		if outcome != nil {
-			outcome.CostMicrounits = 7
-		}
-		return outcome, err //nolint:wrapcheck // Test double.
-	})
+	executor := tamperedOutcome(func(outcome *app.Outcome) { outcome.CostMicrounits = 7 })
 
 	mustRunOnce(t, permissiveRunner(db, executor).WithCostLedger(&control.CostLedger{}))
 
@@ -197,13 +201,7 @@ func TestRunnerConcludesAnEpisodeAfterThreeRejectedOutcomes(t *testing.T) {
 	db := storagetest.OpenTemp(t)
 	seedEpisode(t, db, "epi-forged")
 	reserveCost(t, db, "epi-forged", 50)
-	executor := executorFunc(func(ctx context.Context, req *app.Request) (*app.Outcome, error) {
-		outcome, err := fixture.New().Execute(ctx, req)
-		if outcome != nil {
-			outcome.AttemptID = "att-foreign"
-		}
-		return outcome, err //nolint:wrapcheck // Test double.
-	})
+	executor := tamperedOutcome(func(outcome *app.Outcome) { outcome.AttemptID = "att-foreign" })
 	runner := permissiveRunner(db, executor).WithCostLedger(&control.CostLedger{})
 
 	for range 3 {

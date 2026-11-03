@@ -148,12 +148,7 @@ func TestReleaseAllowsRedriveOnceAndOnlyForQuarantinedRecords(t *testing.T) {
 		}
 		return u.MarkRedriven(ctx, "tenant", "bad-1", storedAt)
 	})
-	inUnit(t, st, func(ctx context.Context, u *Unit) error {
-		if _, err := u.ReleasedEnvelope(ctx, "tenant", "bad-1"); err == nil || !strings.Contains(err.Error(), "is not released") {
-			t.Fatalf("redriven envelope err = %v, want is not released", err)
-		}
-		return nil
-	})
+	requireReleasedEnvelopeRefused(t, st, "is not released")
 	records, err := st.Quarantined(t.Context(), "tenant")
 	if err != nil || records[0].Status != "redriven" {
 		t.Fatalf("records = %+v err=%v, want status redriven", records, err)
@@ -190,12 +185,7 @@ func TestReleasedEnvelopeRefusesAnUndecodablePayload(t *testing.T) {
 	if _, err := st.DB.ExecContext(t.Context(), `UPDATE event_quarantine SET payload_json = X'5B5D'`); err != nil {
 		t.Fatal(err)
 	}
-	inUnit(t, st, func(ctx context.Context, u *Unit) error {
-		if _, err := u.ReleasedEnvelope(ctx, "tenant", "bad-1"); err == nil || !strings.Contains(err.Error(), "decode released envelope") {
-			t.Fatalf("err = %v, want decode released envelope", err)
-		}
-		return nil
-	})
+	requireReleasedEnvelopeRefused(t, st, "decode released envelope")
 }
 
 func TestQuarantinedListsTheTenantsRecordsNewestFirstWithinTheBound(t *testing.T) {
@@ -266,4 +256,14 @@ func newStoreWithoutTable(t *testing.T, table string) Store {
 		t.Fatal(err)
 	}
 	return st
+}
+
+func requireReleasedEnvelopeRefused(t *testing.T, st Store, want string) {
+	t.Helper()
+	inUnit(t, st, func(ctx context.Context, u *Unit) error {
+		if _, err := u.ReleasedEnvelope(ctx, "tenant", "bad-1"); err == nil || !strings.Contains(err.Error(), want) {
+			t.Fatalf("released envelope err = %v, want %s", err, want)
+		}
+		return nil
+	})
 }

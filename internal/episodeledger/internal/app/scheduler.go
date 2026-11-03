@@ -18,10 +18,7 @@ func UpsertSchedulerItem(ctx context.Context, tx *store.Tx, item domain.Schedule
 
 func MarkSchedulerItemAdmitted(ctx context.Context, tx *store.Tx, schedulerItemID string, now time.Time) error {
 	rows, err := tx.AdmitPendingSchedulerItem(ctx, schedulerItemID, now)
-	if err != nil {
-		return fmt.Errorf("admit scheduler item %s: %w", schedulerItemID, err)
-	}
-	return domain.CheckStillPending(rows, schedulerItemID)
+	return requireStillPending(rows, err, "admit", schedulerItemID)
 }
 
 func CoalesceSchedulerItems(ctx context.Context, tx *store.Tx, situationID, triggerName string, now time.Time) ([]domain.CoalescedItem, error) {
@@ -42,16 +39,17 @@ func CoalesceSkippedItem(ctx context.Context, tx *store.Tx, schedulerItemID stri
 
 func coalescePending(ctx context.Context, tx *store.Tx, schedulerItemID string, now time.Time, operation string) error {
 	rows, err := tx.CoalescePendingSchedulerItem(ctx, schedulerItemID, now, operation)
-	if err != nil {
-		return fmt.Errorf("coalesce scheduler item %s: %w", schedulerItemID, err)
-	}
-	return domain.CheckStillPending(rows, schedulerItemID)
+	return requireStillPending(rows, err, "coalesce", schedulerItemID)
 }
 
 func ExpireSchedulerItem(ctx context.Context, tx *store.Tx, schedulerItemID string, now time.Time) error {
 	rows, err := tx.ExpirePendingSchedulerItem(ctx, schedulerItemID, now)
+	return requireStillPending(rows, err, "expire", schedulerItemID)
+}
+
+func requireStillPending(rows int64, err error, action, schedulerItemID string) error {
 	if err != nil {
-		return fmt.Errorf("expire scheduler item %s: %w", schedulerItemID, err)
+		return fmt.Errorf("%s scheduler item %s: %w", action, schedulerItemID, err)
 	}
 	return domain.CheckStillPending(rows, schedulerItemID)
 }

@@ -5,8 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
-
 	"github.com/ghassan-ai-projects/agentic-stream/internal/actions/internal/domain"
 	deviceauthority "github.com/ghassan-ai-projects/agentic-stream/internal/authority"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
@@ -80,12 +78,8 @@ func (tx *Tx) LoadReconciledProvenance(ctx context.Context, outcomeID, commandID
 
 func (s Store) AwaitingReconciliation(ctx context.Context, tenantID string) ([]domain.AwaitingCommand, error) {
 	unresolved, statusArgs := unresolvedCommandFilter()
-	awaiting, err := storage.QueryAll(ctx, s.db, "commands awaiting reconciliation", scanAwaitingCommand, `SELECT command_id, intent_id, effector_route, normalized_target, status, updated_at FROM commands
+	return readAll(ctx, s.db, "commands awaiting reconciliation", scanAwaitingCommand, `SELECT command_id, intent_id, effector_route, normalized_target, status, updated_at FROM commands
 		WHERE tenant_id = ? AND `+unresolved+` ORDER BY updated_at, command_id`, append([]any{tenantID}, statusArgs...)...)
-	if err != nil {
-		return nil, fmt.Errorf("list commands awaiting reconciliation: %w", err)
-	}
-	return awaiting, nil
 }
 
 func scanAwaitingCommand(rows *sql.Rows) (domain.AwaitingCommand, error) {

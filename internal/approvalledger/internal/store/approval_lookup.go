@@ -16,19 +16,11 @@ const latestApprovedOfIntentSQL = `SELECT approval_id, expires_at FROM approvals
 const pendingBindingSQL = `SELECT expires_at, nonce FROM approvals WHERE approval_id = ? AND status = ?`
 
 func (t *Tx) PendingOfIntent(ctx context.Context, intentID string) (domain.Approval, bool, error) {
-	approval, found, err := t.lookup(ctx, pendingOfIntentSQL, intentID, domain.StatusPending)
-	if err != nil {
-		return domain.Approval{}, false, fmt.Errorf("load pending approval: %w", err)
-	}
-	return approval, found, nil
+	return t.lookup(ctx, "load pending approval", pendingOfIntentSQL, intentID, domain.StatusPending)
 }
 
 func (t *Tx) LatestApprovedOfIntent(ctx context.Context, intentID string) (domain.Approval, bool, error) {
-	approval, found, err := t.lookup(ctx, latestApprovedOfIntentSQL, intentID, domain.StatusApproved)
-	if err != nil {
-		return domain.Approval{}, false, fmt.Errorf("load approved approval: %w", err)
-	}
-	return approval, found, nil
+	return t.lookup(ctx, "load approved approval", latestApprovedOfIntentSQL, intentID, domain.StatusApproved)
 }
 
 func (t *Tx) PendingBinding(ctx context.Context, approvalID string) (domain.AssertionBinding, error) {
@@ -39,14 +31,14 @@ func (t *Tx) PendingBinding(ctx context.Context, approvalID string) (domain.Asse
 	return binding, nil
 }
 
-func (t *Tx) lookup(ctx context.Context, query, key, status string) (domain.Approval, bool, error) {
+func (t *Tx) lookup(ctx context.Context, failure, query, key, status string) (domain.Approval, bool, error) {
 	var approval domain.Approval
 	err := t.tx.QueryRowContext(ctx, query, key, status).Scan(&approval.ID, &approval.ExpiresAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.Approval{}, false, nil
 	}
 	if err != nil {
-		return domain.Approval{}, false, fmt.Errorf("scan approval: %w", err)
+		return domain.Approval{}, false, fmt.Errorf("%s: scan approval: %w", failure, err)
 	}
 	return approval, true, nil
 }

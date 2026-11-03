@@ -9,26 +9,24 @@ import (
 
 // MigrationVersion is the highest applied schema migration.
 func (s *Snapshot) MigrationVersion(ctx context.Context) (int, error) {
-	var version int
-	if err := s.tx.QueryRowContext(ctx, "SELECT COALESCE(MAX(version), 0) FROM schema_migrations").Scan(&version); err != nil {
-		return 0, fmt.Errorf("read migration version: %w", err)
-	}
-	return version, nil
+	return s.count(ctx, "read migration version", "SELECT COALESCE(MAX(version), 0) FROM schema_migrations")
 }
 
 // LatestSpecDigest is the digest of the tenant's newest deployment, or empty.
 func (s *Snapshot) LatestSpecDigest(ctx context.Context, tenantID string) ([]byte, error) {
-	var digest []byte
-	err := s.tx.QueryRowContext(ctx, "SELECT spec_sha256 FROM spec_deployments WHERE tenant_id = ? ORDER BY created_at DESC, deployment_id DESC LIMIT 1", tenantID).Scan(&digest)
-	return digest, noRowsIsEmpty(err, "read latest spec digest")
+	return s.latestDeployment(ctx, "read latest spec digest", "spec_sha256", tenantID)
 }
 
 // LatestSpecSource is the source document of the tenant's newest deployment, or
 // nil when there is none.
 func (s *Snapshot) LatestSpecSource(ctx context.Context, tenantID string) ([]byte, error) {
-	var source []byte
-	err := s.tx.QueryRowContext(ctx, "SELECT source_json FROM spec_deployments WHERE tenant_id = ? ORDER BY created_at DESC, deployment_id DESC LIMIT 1", tenantID).Scan(&source)
-	return source, noRowsIsEmpty(err, "read canonical spec")
+	return s.latestDeployment(ctx, "read canonical spec", "source_json", tenantID)
+}
+
+func (s *Snapshot) latestDeployment(ctx context.Context, failure, column, tenantID string) ([]byte, error) {
+	var value []byte
+	err := s.tx.QueryRowContext(ctx, "SELECT "+column+" FROM spec_deployments WHERE tenant_id = ? ORDER BY created_at DESC, deployment_id DESC LIMIT 1", tenantID).Scan(&value)
+	return value, noRowsIsEmpty(err, failure)
 }
 
 // PolicyEvaluation is the policy version and digest of the tenant's newest
@@ -50,9 +48,13 @@ func (s *Snapshot) LatestPolicyEvaluation(ctx context.Context, tenantID string) 
 
 // DeviceStateCount is the number of devices that have reported state.
 func (s *Snapshot) DeviceStateCount(ctx context.Context) (int, error) {
+	return s.count(ctx, "count device states", "SELECT COUNT(*) FROM device_reconciliation")
+}
+
+func (s *Snapshot) count(ctx context.Context, failure, query string) (int, error) {
 	var count int
-	if err := s.tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM device_reconciliation").Scan(&count); err != nil {
-		return 0, fmt.Errorf("count device states: %w", err)
+	if err := s.tx.QueryRowContext(ctx, query).Scan(&count); err != nil {
+		return 0, fmt.Errorf("%s: %w", failure, err)
 	}
 	return count, nil
 }

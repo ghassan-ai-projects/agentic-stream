@@ -41,17 +41,10 @@ func sqlStep(statement string) func(*testing.T, *storage.DB) {
 	}
 }
 
-func approvedUntil(expiresAt time.Time) func(*testing.T, *storage.DB) {
+func stepWith[T any](step func(*testing.T, *storage.DB, T), argument T) func(*testing.T, *storage.DB) {
 	return func(t *testing.T, db *storage.DB) {
 		t.Helper()
-		approve(t, db, expiresAt)
-	}
-}
-
-func policyApproving(digest string) func(*testing.T, *storage.DB) {
-	return func(t *testing.T, db *storage.DB) {
-		t.Helper()
-		approveWithPolicy(t, db, digest)
+		step(t, db, argument)
 	}
 }
 
@@ -72,12 +65,12 @@ func TestAnIntentIsRevalidatedAgainstCurrentStateJustBeforeTheEffector(t *testin
 		{name: "the episode has not produced its decision", prepare: sqlStep("UPDATE episodes SET lifecycle_status = 'running'")},
 		{name: "the intent expired", clockAfter: 2 * time.Hour},
 		{name: "approval is required and absent", prepare: sqlStep("UPDATE intents SET requires_approval = 1")},
-		{name: "approval is required and unexpired", prepare: approvedUntil(fixtureNow.Add(30 * time.Minute)), dispatches: true},
-		{name: "approval expired", prepare: approvedUntil(fixtureNow.Add(-time.Second))},
+		{name: "approval is required and unexpired", prepare: stepWith(approve, fixtureNow.Add(30*time.Minute)), dispatches: true},
+		{name: "approval expired", prepare: stepWith(approve, fixtureNow.Add(-time.Second))},
 		{name: "command policy digest matches the approving evaluation", spec: fixtureSpec{policyDigest: zeroDigest},
-			prepare: policyApproving(zeroDigest), dispatches: true},
+			prepare: stepWith(approveWithPolicy, zeroDigest), dispatches: true},
 		{name: "command policy digest is stale", spec: fixtureSpec{policyDigest: zeroDigest},
-			prepare: policyApproving(staleDigest)},
+			prepare: stepWith(approveWithPolicy, staleDigest)},
 		{name: "command policy digest has no approving evaluation", spec: fixtureSpec{policyDigest: zeroDigest}},
 	}
 	for _, tc := range cases {

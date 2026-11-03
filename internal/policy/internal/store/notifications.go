@@ -12,8 +12,12 @@ import (
 
 // AppendApprovalWithdrawn publishes stale approval withdrawal evidence.
 func (tx *Tx) AppendApprovalWithdrawn(ctx context.Context, event domain.ApprovalEvent) error {
-	if err := notify.AppendLifecycleEvent(ctx, tx.tx, approvalWithdrawnEvent(event)); err != nil {
-		return fmt.Errorf("append approval withdrawn notification: %w", err)
+	return tx.appendLifecycle(ctx, "approval withdrawn", approvalWithdrawnEvent(event))
+}
+
+func (tx *Tx) appendLifecycle(ctx context.Context, name string, event notify.LifecycleEvent) error {
+	if err := notify.AppendLifecycleEvent(ctx, tx.tx, event); err != nil {
+		return fmt.Errorf("append %s notification: %w", name, err)
 	}
 	return nil
 }
@@ -28,10 +32,7 @@ func approvalWithdrawnEvent(event domain.ApprovalEvent) notify.LifecycleEvent {
 
 // AppendApprovalResolved publishes a durable approval disposition.
 func (tx *Tx) AppendApprovalResolved(ctx context.Context, event domain.ApprovalEvent) error {
-	if err := notify.AppendLifecycleEvent(ctx, tx.tx, approvalResolvedEvent(event)); err != nil {
-		return fmt.Errorf("append approval resolved notification: %w", err)
-	}
-	return nil
+	return tx.appendLifecycle(ctx, "approval resolved", approvalResolvedEvent(event))
 }
 
 func approvalResolvedEvent(event domain.ApprovalEvent) notify.LifecycleEvent {
@@ -57,10 +58,7 @@ func (tx *Tx) AppendApprovalRequested(ctx context.Context, row domain.IntentReco
 		return fmt.Errorf("append approval requested notification: %w", err)
 	}
 	event := notify.ApprovalRequestedEvent(row.TenantID, approvalRequested(request.Data), now, traceContext(row))
-	if err := notify.AppendLifecycleEvent(ctx, tx.tx, event); err != nil {
-		return fmt.Errorf("append approval requested notification: %w", err)
-	}
-	return nil
+	return tx.appendLifecycle(ctx, "approval requested", event)
 }
 
 func approvalRequested(n domain.ApprovalNotification) notify.ApprovalRequested {

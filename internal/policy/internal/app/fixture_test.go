@@ -40,14 +40,19 @@ func unownedCheck(context.Context, *sql.Tx, string) error { return nil }
 
 func exec(t *testing.T, db *storage.DB, query string, args ...any) {
 	t.Helper()
-	if _, err := db.ExecContext(t.Context(), query, args...); err != nil {
-		t.Fatalf("%s: %v", query, err)
-	}
+	mustExec(t, db, query, args...)
 }
 
 func execIn(t *testing.T, tx *sql.Tx, query string, args ...any) {
 	t.Helper()
-	if _, err := tx.ExecContext(t.Context(), query, args...); err != nil {
+	mustExec(t, tx, query, args...)
+}
+
+func mustExec(t *testing.T, target interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}, query string, args ...any) {
+	t.Helper()
+	if _, err := target.ExecContext(t.Context(), query, args...); err != nil {
 		t.Fatalf("%s: %v", query, err)
 	}
 }

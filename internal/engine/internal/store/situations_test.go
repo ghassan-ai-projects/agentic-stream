@@ -30,10 +30,7 @@ func TestSituationVersionsPersistWithLineageAndGuardRuntimeState(t *testing.T) {
 		t.Fatalf("lineage rows = %d err=%v, want one however often the same evidence set is recorded", lineages, err)
 	}
 	publish(t, s, publishedVersion(1))
-	inTx(t, s, func(tx *Tx) error {
-		current := situations.Situation{SituationID: "sit-1", Version: 1, Phase: "alert", LatestEventTime: testNow}
-		return tx.SaveSituationRuntimeState(t.Context(), current, []byte(`{"a":1}`), make([]byte, 32), testNow)
-	})
+	saveRuntimeState(t, s, 1, []byte(`{"a":1}`))
 	restored := eachCurrentSituation(t, s)
 	if len(restored) != 1 || restored[0].Phase != "alert" || restored[0].Version != 1 || restored[0].StateCodecVersion != 1 {
 		t.Fatalf("restored = %+v, want one situation at version 1 in phase alert with codec 1", restored)
@@ -83,10 +80,7 @@ func TestAPublishedSituationVersionIsNeverRewritten(t *testing.T) {
 	second := publishedVersion(2)
 	second.SnapshotJSON = []byte(`{"v":2}`)
 	publish(t, s, second)
-	inTx(t, s, func(tx *Tx) error {
-		current := situations.Situation{SituationID: "sit-1", Version: 2, Phase: "alert", LatestEventTime: testNow}
-		return tx.SaveSituationRuntimeState(t.Context(), current, []byte(`{}`), make([]byte, 32), testNow)
-	})
+	saveRuntimeState(t, s, 2, []byte(`{}`))
 	if after := snapshotOf(); after != before {
 		t.Fatalf("version 1 snapshot changed from %s to %s", before, after)
 	}
@@ -200,4 +194,12 @@ func eachCurrentSituation(t *testing.T, s Store) []domain.StoredSituation {
 		t.Fatal(err)
 	}
 	return restored
+}
+
+func saveRuntimeState(t *testing.T, s Store, version int, state []byte) {
+	t.Helper()
+	inTx(t, s, func(tx *Tx) error {
+		current := situations.Situation{SituationID: "sit-1", Version: version, Phase: "alert", LatestEventTime: testNow}
+		return tx.SaveSituationRuntimeState(t.Context(), current, state, make([]byte, 32), testNow)
+	})
 }

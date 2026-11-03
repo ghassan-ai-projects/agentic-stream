@@ -95,17 +95,18 @@ func linkedSchemaDirectory(t *testing.T) string {
 
 func pipeSchemaDirectory(t *testing.T) string {
 	t.Helper()
-	dir := t.TempDir()
-	if err := syscall.Mkfifo(filepath.Join(dir, "pipe.json"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	return dir
+	return directoryWithEntry(t, "pipe.json", func(path string) error { return syscall.Mkfifo(path, 0o600) })
 }
 
 func nestedSchemaDirectory(t *testing.T) string {
 	t.Helper()
+	return directoryWithEntry(t, "nested.json", func(path string) error { return os.Mkdir(path, 0o700) })
+}
+
+func directoryWithEntry(t *testing.T, name string, create func(path string) error) string {
+	t.Helper()
 	dir := t.TempDir()
-	if err := os.Mkdir(filepath.Join(dir, "nested.json"), 0o700); err != nil {
+	if err := create(filepath.Join(dir, name)); err != nil {
 		t.Fatal(err)
 	}
 	return dir
