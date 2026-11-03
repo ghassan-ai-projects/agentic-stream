@@ -49,7 +49,7 @@ export function transport(root, clock, { label = 'Play' } = {}) {
   const speed = h('select', { 'aria-label': 'Speed' }, [h('option', { value: 0.5 }, '0.5×'), h('option', { value: 1, selected: '' }, '1×'), h('option', { value: 2 }, '2×')]);
   play.onclick = () => (clock.playing ? clock.pause() : clock.play());
   reset.onclick = () => { clock.pause(); clock.seek(0); };
-  scrub.oninput = () => { clock.pause(); clock.seek((scrub.value / 1000) * clock.duration); };
+  scrub.oninput = () => { const t = (scrub.value / 1000) * clock.duration; clock.pause(); clock.seek(t); };
   speed.onchange = () => { clock.speed = Number(speed.value); };
   root.append(play, reset, scrub, speed);
   const sync = () => { play.textContent = clock.playing ? 'Pause' : clock.t >= clock.duration ? 'Replay' : label; scrub.value = String(Math.round((clock.t / clock.duration) * 1000)); };

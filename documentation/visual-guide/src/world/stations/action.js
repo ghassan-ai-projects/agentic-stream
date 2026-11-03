@@ -115,7 +115,7 @@ export function createAction(bench, gateway, log) {
     tags.put('act-name', P(0, Y + 6.8, 5.2), 'Action dispatch<small>command · outbox · lease · outcome</small>', near * 0.95, 'name effect');
     tags.put('act-key', P(-2.6, Y + 4.0, 0), `idempotency key<small>${RUN.command.idempotencyKey}… · one logical request</small>`, window01(T, action.stamp - 0.1, action.lease, 0.4) * 0.95, 'note');
     tags.put('act-out', P(0, Y + 2.3, 4.0), 'outbox: written before sending<small>a crash cannot lose it</small>', window01(T, action.outbox, action.retry, 0.4) * 0.95, 'note');
-    tags.put('act-retry', P(-6.2, Y + 2.6, 3.2), 'a retry reuses the key<small>a repeat is answered from the receipt cache</small>', window01(T, action.retry - 0.1, action.lease, 0.4) * 0.95, 'note');
+    tags.put('act-retry', P(-6.2, Y + 2.6, 3.2), 'a repeat reuses the key<small>the provider can recognise it as the same request</small>', window01(T, action.retry - 0.1, action.lease, 0.4) * 0.95, 'note');
     tags.put('act-lease', P(2.8, Y + 4.4, 0), 'leased<small>one dispatcher owns it, re-checks, sends</small>', window01(T, action.lease, action.send + 0.8, 0.3) * 0.95, 'note');
 
     const mid = bench.port.board.clone().lerp(gateway.ports.top, 0.5).add(new THREE.Vector3(0, 9.6, 6));

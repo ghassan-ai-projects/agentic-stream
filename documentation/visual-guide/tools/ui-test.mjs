@@ -35,7 +35,7 @@ await sleep(300);
 check('arrow right jumps to chapter 2', (await evaluate(c.cdp, "document.querySelector('.chip b').textContent")) === '2');
 await key('5', 'Digit5');
 await sleep(300);
-check('digit 5 jumps to chapter 6', (await evaluate(c.cdp, "document.querySelector('.chip b').textContent")) === '6');
+check('digit 5 jumps to chapter 5', (await evaluate(c.cdp, "document.querySelector('.chip b').textContent")) === '5');
 await evaluate(c.cdp, "document.querySelector('.controls .track').dispatchEvent(new PointerEvent('pointerdown',{clientX: innerWidth*0.5, clientY: innerHeight-40, pointerId: 1, bubbles:true}))").catch(() => {});
 await key('e', 'KeyE');
 await sleep(300);

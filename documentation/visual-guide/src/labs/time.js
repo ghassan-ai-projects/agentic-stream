@@ -94,7 +94,7 @@ function render(p) {
     if (r.delayed) add(s('text', { x: X(r.e), y: Y_EVT + 28, class: 'small', 'text-anchor': 'middle', fill: '#ff8aa0', style: 'fill:#ff8aa0' }, `reading ${r.i + 1}: sent at ${r.e} s`));
   }
   const dr = A.rs[state.sel];
-  if (p >= dr.a && dr.a > A.closedAt) {
+  if (p >= dr.a && dr.a > A.closedAt && A.late.length) {
     const l = A.late[0];
     const tone = l.within ? '#f5b94a' : '#ff5470';
     add(s('rect', { x: X(dr.a) - 150, y: Y_ARR - 110, width: 300, height: 46, rx: 10, fill: 'rgba(8,13,28,.95)', stroke: tone }));
@@ -107,7 +107,7 @@ function render(p) {
   const afterClose = p >= A.closedAt;
   const arrivedLate = A.late.length && p >= A.late[0].a;
   chips.replaceChildren(
-    h('div', { class: 'chip info' }, [h('b', {}, wm == null ? '–' : `${fmt(Math.max(wm, 0), 0)} s`), h('small', {}, 'watermark: newest event time minus 15 s')]),
+    h('div', { class: 'chip info' }, [h('b', {}, wm == null ? '–' : `${fmt(Math.max(wm, 0), 0)} s`), h('small', {}, 'watermark: newest event time minus 15 s (one source here; with several, the slowest sets it)')]),
     h('div', { class: 'chip good' }, [h('b', {}, `${fmt(A.truth, 2)} °C`), h('small', {}, 'mean of window [0, 300 s) by event time, all readings')]),
     h('div', { class: 'chip bad' }, [h('b', {}, `${fmt(A.naive, 2)} °C`), h('small', {}, `same window grouped by arrival time (wrong by ${fmt(Math.abs(A.naive - A.truth), 2)})`)]),
     h('div', { class: `chip ${afterClose ? cls : ''}` }, [h('b', {}, !afterClose ? 'window open' : arrivedLate ? `${A.outcome}` : `on_time · emitted ${fmt(A.emitted, 2)} °C`), h('small', {}, `policy: ${pol}${arrivedLate && A.outcome === 'corrected' ? ` · result now ${fmt(A.final, 2)} °C` : ''}`)]),

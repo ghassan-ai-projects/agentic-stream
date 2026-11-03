@@ -161,11 +161,16 @@ export function createUI({ stations, hits, canvas, camera, seek, onFree }) {
   const scrub = (ev) => { const r = track.getBoundingClientRect(); jump(clamp((ev.clientX - r.left) / r.width) * TOTAL); };
   track.addEventListener('pointerdown', (ev) => { track.setPointerCapture(ev.pointerId); scrub(ev); track.onpointermove = scrub; });
   track.addEventListener('pointerup', () => { track.onpointermove = null; });
-  track.addEventListener('keydown', (ev) => { if (ev.key === 'ArrowRight') jump(state.T + 2); if (ev.key === 'ArrowLeft') jump(state.T - 2); });
+  track.addEventListener('keydown', (ev) => {
+    if (ev.key !== 'ArrowRight' && ev.key !== 'ArrowLeft') return;
+    ev.stopPropagation();
+    jump(state.T + (ev.key === 'ArrowRight' ? 2 : -2));
+  });
 
   addEventListener('keydown', (ev) => {
-    if (ev.target.closest?.('input,textarea')) return;
+    if (ev.target.closest?.('input,textarea') || ev.ctrlKey || ev.metaKey || ev.altKey) return;
     const k = ev.key.toLowerCase();
+    if (k === ' ' && ev.target.closest?.('button')) return;
     if (k === ' ') { ev.preventDefault(); bPlay.onclick(); }
     else if (k === 'arrowright') chapterJump(1);
     else if (k === 'arrowleft') chapterJump(-1);
@@ -174,7 +179,7 @@ export function createUI({ stations, hits, canvas, camera, seek, onFree }) {
     else if (k === 'e') bFree.onclick();
     else if (k === 'g') bPanel.onclick();
     else if (k === 's') bSpeed.onclick();
-    else if (/^[1-9]$/.test(k)) jump(chapters[Number(k)].start + 0.01);
+    else if (/^[1-9]$/.test(k)) jump(chapters[Number(k) - 1].start + 0.01);
     else if (k === '0') jump(0);
   });
 

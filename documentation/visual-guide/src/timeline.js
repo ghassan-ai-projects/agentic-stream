@@ -35,7 +35,7 @@ export function word(id, i, needle, nth = 0) {
 
 export function chapterAt(T) {
   const t = clamp(T, 0, TOTAL - 1e-6);
-  return chapters.find((c) => t >= c.start && t < c.end) ?? chapters.at(-1);
+  return chapters.findLast((c) => t >= c.start) ?? chapters[0];
 }
 
 export function captionAt(T) {

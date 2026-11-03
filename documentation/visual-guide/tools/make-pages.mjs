@@ -44,8 +44,8 @@ const LABS = {
     lede: 'Send a proposed action down the real path: validator, policy, outbox and dispatch, device, verification. Flip the conditions of the world and watch where it stops, what record is written, and what a lost reply does.',
     cards: [
       ['Reading the picture', 'Gates, records, outcome', 'Each gate either passes the proposal or stops it and writes a durable record with a reason. The chips under the picture are those records, in order.'],
-      ['Key idea', 'Check again, right before acting', 'Policy is evaluated against current state at dispatch. A superseded intent, an operator stop or a new runtime owner can turn an earlier yes into a no.'],
-      ['Why it matters', 'Unknown is a real answer', 'If a reply is lost, the system records an unknown outcome and reconciles with evidence. A stable idempotency key means a retry cannot cause a second effect.'],
+      ['Key idea', 'Check again, right before acting', 'Policy is evaluated against current state at dispatch. A superseded intent is marked stale, an engaged operator stop is denied, and a runtime that lost ownership is fenced from writing.'],
+      ['Why it matters', 'Unknown is a real answer', 'If a reply is lost, the system records an unknown outcome and reconciles with evidence. A stable idempotency key lets a provider that honours it recognise a repeat as the same request.'],
     ],
     note: 'The gate order, the risk classes (R0, R1, R2), the human approval rule for R2, and the three answers (receipt, result, query_state) follow the design and the recorded run. The failure switches are what-ifs; the recorded run passed every gate.',
     src: [['From proposal to effect', '../../learn/safe-actions.md'], ['Decision and action mechanics', '../../design/decisions-and-actions.md'], ['Security model', '../../architecture/security-model.md']],
@@ -107,7 +107,7 @@ const GLOSSARY = [
   ['Trigger and scheduler', 'Declared rules that say when a version deserves reasoning. The scheduler can ignore, queue, replace or admit it.'],
   ['Episode and fence', 'One bounded reasoning session over one immutable snapshot, with a deadline and a budget. The fence rejects output from a stale attempt.'],
   ['Decision and Intent', 'The reasoner\'s typed answer, and the typed action it proposes. A proposal, not a permission.'],
-  ['Policy and approval', 'Rules re-checked against current state just before dispatch. Higher-risk intents wait for a signed human approval.'],
+  ['Policy and approval', 'Rules re-checked against current state just before dispatch. R2 intents wait for a signed human approval; R3 and R4 are refused.'],
   ['Command and idempotency key', 'The governed request that may be dispatched. A retry carries the same key, so a device that honours it recognises the repeat instead of acting twice.'],
   ['Outcome and verification', 'What the device reported, and a separate state query of what the output is now. Only a matching observation verifies the effect. "Unknown" is a legal outcome.'],
 ];
@@ -146,7 +146,7 @@ const indexHtml = `<!doctype html>
 <section class="block">
 <div class="kicker">The map</div>
 <h2>Five planes, each with one job</h2>
-<p class="lede small">Work moves through five planes. Each owns one question and is forbidden from doing the others' jobs. That separation is the safety design.</p>
+<p class="lede small">Work moves through five planes. Each owns one question and is forbidden from doing the others' jobs. That separation is the safety design. The grouping is this guide's own; the architecture overview lists seven planes.</p>
 <div class="planes">${PLANES.map(([k, c, n, q, owns, never, st]) => `<article class="plane" style="--c:${c}"><h3>${n}</h3><div class="q">${q}</div><p>${owns}</p><p class="never"><b>Never:</b> ${never}</p><div class="stlinks">${st.map((id) => `<a href="world.html?station=${id}">${NAMES[id]}</a>`).join('')}</div></article>`).join('')}</div>
 </section>
 
@@ -158,7 +158,7 @@ const indexHtml = `<!doctype html>
 
 <section class="block">
 <div class="kicker">Vocabulary</div>
-<h2>Ten words that carry the design</h2>
+<h2>The words that carry the design</h2>
 <dl class="gloss">${GLOSSARY.map(([t, d]) => `<div><dt>${t}</dt><dd>${d}</dd></div>`).join('')}</dl>
 </section>
 

@@ -27,9 +27,9 @@ function run() {
   if (I.id === 'open_valve') return { steps, ...stop(0, 'Refused: not in the catalog', { table: 'decisions', text: 'rejected: intent type is not in the spec catalog' }) };
   if (rank[I.risk] > rank[state.ceiling]) return { steps, ...stop(0, `Refused: ${I.risk} is above the ${state.ceiling} ceiling`, { table: 'decisions', text: `rejected: risk ${I.risk} exceeds the episode ceiling ${state.ceiling}` }) };
   steps.push({ gate: 0, ok: true, why: 'catalog, schema, writable fields, evidence', record: { table: 'decisions', text: 'accepted, bound to the snapshot digest' } });
-  if (state.stale) return { steps, ...stop(1, 'Denied: superseded', { table: 'policy_evaluations', text: 'denied: a material change superseded this intent' }) };
-  if (state.epoch) return { steps, ...stop(1, 'Denied: owner changed', { table: 'policy_evaluations', text: 'denied: owner epoch changed since the proposal' }) };
-  if (state.stop) return { steps, ...stop(1, 'Held: operator stop', { table: 'policy_evaluations', text: 'deferred: runtime interlock is engaged', }, 'warn') };
+  if (state.stale) return { steps, ...stop(1, 'Stale: superseded', { table: 'policy_evaluations', text: 'stale: situation_version_stale, a material change superseded this intent' }) };
+  if (state.epoch) return { steps, ...stop(1, 'Fenced: owner changed', { table: 'policy_evaluations', text: 'no record: the old owner\'s write is fenced out' }) };
+  if (state.stop) return { steps, ...stop(1, 'Denied: operator stop', { table: 'policy_evaluations', text: 'denied: interlock_not_ready' }) };
   if (I.risk === 'R2') {
     if (state.approval !== 'granted') return { steps, ...stop(1, state.approval === 'pending' ? 'Waiting for a human' : 'Denied: approval not granted', { table: 'approvals', text: state.approval === 'pending' ? 'requested: waiting for a signed approval' : `${state.approval}: no command is created` }, state.approval === 'pending' ? 'warn' : 'bad') };
     steps.push({ gate: 1, ok: true, why: 'R2: signed human approval, then re-checked', record: { table: 'approvals', text: 'approved by a human' } });
@@ -39,7 +39,7 @@ function run() {
     steps.push({ gate: 3, ok: true, why: 'sent; the reply never came back', record: { table: 'outcomes', text: 'unknown: no result received' }, lost: true });
     if (state.noKey) { steps.push({ gate: 4, ok: false, why: 'a second effect happened', record: { table: 'outcomes', text: 'second request sent without the first key' }, tone: 'bad' }); return { steps, final: { tone: 'bad', title: 'Duplicate effect', text: 'Without a stable key, a blind retry is a second request. For effects like opening a ticket that means two.' }, dup: true }; }
     steps.push({ gate: 4, ok: true, why: 'reconciled with query_state', record: { table: 'verifications', text: `observed after reconciliation: ${RUN.device.observed.target} energized` } });
-    return { steps, final: { tone: 'good', title: 'Unknown, then reconciled', text: 'The retry carries the same key, so it is recognised as the same request, and query_state shows the output is on: verified without a second effect.' }, reconciled: true };
+    return { steps, final: { tone: 'good', title: 'Unknown, then reconciled', text: 'The system does not retry blindly. It waits for reconciliation, and query_state shows the output is on: verified without a second effect.' }, reconciled: true };
   }
   steps.push({ gate: 3, ok: true, why: 'receipt accepted · result executed', record: { table: 'outcomes', text: `succeeded, "${RUN.device.detail}"` } });
   steps.push({ gate: 4, ok: true, why: 'the state query agrees', record: { table: 'verifications', text: `observed: ${RUN.device.observed.target} energized, value ${RUN.device.observed.value}` } });
@@ -129,5 +129,5 @@ toggle(ctl, { id: 'stale', label: 'A material change superseded it', onInput: (v
 toggle(ctl, { id: 'stop', label: 'Operator stop engaged', onInput: (v) => { state.stop = v; restart(); } });
 toggle(ctl, { id: 'epoch', label: 'Another runtime took ownership', onInput: (v) => { state.epoch = v; restart(); } });
 toggle(ctl, { id: 'lost', label: 'The device reply is lost', onInput: (v) => { state.lost = v; restart(); } });
-toggle(ctl, { id: 'nokey', label: 'Retry without an idempotency key', onInput: (v) => { state.noKey = v; restart(); } });
+toggle(ctl, { id: 'nokey', label: 'Blind retry without the key (needs "reply lost")', onInput: (v) => { state.noKey = v; restart(); } });
 clock.seek(11);

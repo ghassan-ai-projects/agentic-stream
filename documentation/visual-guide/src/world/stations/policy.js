@@ -12,8 +12,8 @@ const GREEN = new THREE.Color(0x34d399);
 const RINGS = [
   { x: -6.0, label: 'still fresh?' },
   { x: -3.6, label: 'condition open?' },
-  { x: -1.2, label: 'risk ≤ ceiling?' },
-  { x: 1.2, label: 'approval needed?' },
+  { x: -1.2, label: 'risk route?' },
+  { x: 1.2, label: 'R2 approved?' },
   { x: 3.6, label: 'interlock · owner?' },
   { x: 6.0, label: 'rate limit?' },
 ];

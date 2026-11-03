@@ -6,8 +6,10 @@ real-world-sensor experiment, from a warming sensor to a verified effect. In tha
 run a simulator played the sensor bench and a device emulator answered commands;
 no physical hardware was involved.
 
-Open [index.html](index.html) in a browser. It works from the file system, with
-no server and no network.
+Build once (see Rebuild: `tools/build.sh`, then `node make-pages.mjs`), then open
+[index.html](index.html) in a browser. It works from the file system, with no
+server and no network. `dist/` and the rendered film are git-ignored, so on a
+fresh clone the 3D world and the film player stay empty until you build them.
 
 ## What is here
 
@@ -32,7 +34,7 @@ human approval is labelled as designed, not part of this run.
 
 ## Rebuild
 
-Needs Node 22.5 or later, [rolldown](https://rolldown.rs), Three.js 0.186, ffmpeg
+Needs Node 22.13 or later, [rolldown](https://rolldown.rs), Three.js 0.186, ffmpeg
 and Google Chrome. The narration voice is ElevenLabs `eleven-v4` (voice `george`)
 through OpenRouter: `narrate.mjs` reads `OPENROUTER_SPEECH_API_KEY` from the
 environment or the repository `.env`, and caches each synthesized sentence in

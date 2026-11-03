@@ -172,8 +172,8 @@ export const STATIONS = {
   },
   action: {
     name: 'Action dispatch', plane: 'effect', ring: 9,
-    owner: 'internal/actions, internal/device, internal/authority',
-    what: 'Turns an approved intent into a command with a stable idempotency key, records it in an outbox before sending, leases it to the dispatcher, then records the outcome and verifies it.',
+    owner: 'internal/actions, internal/device, internal/authority (internal/policy prepares the command)',
+    what: 'Takes the command that policy prepared at approval, with its stable idempotency key and outbox row, leases it to the dispatcher, re-checks it, sends it, then records the outcome and verifies it.',
     why: 'A lost reply must not turn into a blind second attempt, and "the device said OK" is not the same as "it happened".',
     real: [
       `Command ${run.command.route} → ${run.command.target}, idempotency key ${run.command.idempotencyKey}…`,
