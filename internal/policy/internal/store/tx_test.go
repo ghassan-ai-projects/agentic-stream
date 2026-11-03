@@ -61,7 +61,7 @@ func TestEveryJoinedWriteRollsBackWithTheCallersTransaction(t *testing.T) {
 		for _, write := range []func() error{
 			func() error { _, _, err := tx.StoreCommandOnce(t.Context(), row, command, fixtureNow); return err },
 			func() error { return tx.InsertCommandOutbox(t.Context(), command.ID, command.JSON, fixtureNow) },
-			func() error { _, err := tx.DispatchWithinLimit(t.Context(), row, fixtureNow); return err },
+			func() error { _, err := tx.DispatchWithinLimit(t.Context(), row); return err },
 			func() error {
 				return tx.SetIntentStatus(t.Context(), domain.IntentStatusChange{IntentID: intentID, Status: "approved", Now: fixtureNow, Operation: ApproveIntentStatus})
 			},
@@ -118,7 +118,7 @@ func TestAClosedTransactionFailsEveryOperationWithTheTransactionError(t *testing
 		"ApproverKey":            func() error { _, err := tx.ApproverKey(ctx, "tenant", "operator-1"); return err },
 		"ApprovalAuthority":      func() error { _, err := tx.ApprovalAuthority(ctx, row, "motor-1", "operator-1"); return err },
 		"CompensationTenant":     func() error { _, _, err := tx.CompensationTenant(ctx, intentID); return err },
-		"DispatchWithinLimit":    func() error { _, err := tx.DispatchWithinLimit(ctx, row, fixtureNow); return err },
+		"DispatchWithinLimit":    func() error { _, err := tx.DispatchWithinLimit(ctx, row); return err },
 		"SetIntentStatus": func() error {
 			return tx.SetIntentStatus(ctx, domain.IntentStatusChange{IntentID: intentID, Status: "denied", Now: fixtureNow, Operation: SetPolicyStatus})
 		},

@@ -141,7 +141,7 @@ var facadeSpecs = []facadeSpec{
 		module:       "internal/cognition",
 		constructors: []string{"New", "applicationConfig"},
 		operations: operations(to("app", "Process", "RecordCostRejectionReason", "RecordSchedulerExpiryReason", "TriggerEvaluation",
-			"TriggerEvaluations", "PruneIgnoredEvaluations")),
+			"TriggerEvaluations", "PruneIgnoredEvaluations", "QueueAudit")),
 	},
 	{
 		module: "internal/control",
@@ -156,7 +156,7 @@ var facadeSpecs = []facadeSpec{
 	{
 		module:       "internal/engine",
 		constructors: []string{"New", "applicationConfig", "ReplayOwnership"},
-		operations:   operations(to("app", "RunGlobal", "ListSituations", "SituationVersion", "PruneHistory")),
+		operations:   operations(to("app", "RunGlobal", "SituationFeatures", "ListSituations", "SituationVersion", "PruneHistory", "ResolvedAfter", "ReopenedAfter")),
 	},
 	{
 		module: "internal/episodeledger",
@@ -165,7 +165,7 @@ var facadeSpecs = []facadeSpec{
 				"Rebind", "BindRequest", "AbandonRebind", "Abandon", "Conclude", "RetainForRetry", "SupersedeEpoch", "SupersedeCoalesced",
 				"UpsertSchedulerItem", "MarkSchedulerItemAdmitted", "CoalesceSchedulerItems", "CoalesceCostRejectedItem", "CoalesceSkippedItem",
 				"DueSchedulerItems", "PollSchedulerQueue", "ExpireSchedulerItem", "Scheduling", "Episode",
-				"ReadEpisodeFence", "ReadAttemptStatus", "ReadEpisodeLifecycle", "NextDispatchableEpisode", "ReadAdmission"),
+				"ReadEpisodeFence", "ReadAttemptStatus", "ReadEpisodeLifecycle", "NextDispatchableEpisode", "ReadAdmission", "ReasoningInFlight"),
 			to("domain", "IsTerminalAttempt", "AttemptSQL"),
 		),
 	},
@@ -204,13 +204,18 @@ var facadeSpecs = []facadeSpec{
 		other:        domainEventOperation,
 	},
 	{
+		module:       "internal/playbook",
+		constructors: []string{"New", "applicationConfig"},
+		operations:   operations(to("app", "Digest", "Route", "Settle", "Draft", "Promote", "PresentProposal", "ResolveProposal", "Circuits", "CloseCircuit"), to("domain", "IsProposalID")),
+	},
+	{
 		module:     "internal/executor/remote",
-		operations: operations(where(reachesApp, "NewExecutor", "NewExecutorWithEvidence", "Execute")),
+		operations: operations(where(reachesApp, "NewExecutor", "NewExecutorWithEvidence", "Execute", "NewDrafter", "Draft")),
 	},
 	{
 		module:       "internal/plantwire",
 		constructors: []string{"New"},
-		operations:   operations(to("app", "Run", "Close", "OwnsRoute", "Dispatch", "DispatchAuthorized", "VerifyDeviceCommand"), to("domain", "CheckSettings")),
+		operations:   operations(to("app", "Run", "Close", "OwnsRoute", "Dispatch", "DispatchAuthorized", "VerifyDeviceCommand", "BornKindDigests", "EntityKind"), to("domain", "CheckSettings")),
 	},
 	{
 		module:       "internal/runartifact",

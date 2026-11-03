@@ -66,7 +66,11 @@ type Settings = domain.Settings
 // routes the host owns as an effector; without it the host commands nothing.
 // A host with a catalog needs Authority, the device authority of the runtime
 // owner, and OwnerEpoch, the owner epoch it commands under. Clock defaults to
-// the physical clock.
+// the physical clock. ReasoningInFlight is the optional check the host polls
+// while it holds a barrier answer after its ingest queue has drained: the
+// answer is released when it reports false (an error is logged and counts as
+// false), so a node that paces itself by barriers cannot outrun the consumer's
+// reasoning. Without it a barrier waits for the ingest queue only.
 type Config struct {
 	Listener   net.Listener
 	Settings   Settings
@@ -76,6 +80,8 @@ type Config struct {
 	Authority  *authority.Service
 	OwnerEpoch string
 	Clock      sources.Clock
+
+	ReasoningInFlight func(context.Context) (bool, error)
 }
 
 // Host serves one plant wire session at a time on its listener.
@@ -85,7 +91,7 @@ type Host struct{ app *app.Host }
 func New(cfg Config) (*Host, error) {
 	host, err := app.New(app.Config{Listener: transport.NewListener(cfg.Listener), Settings: cfg.Settings,
 		KindsDir: cfg.KindsDir, SitePath: cfg.SitePath, Catalog: cfg.Catalog, Authority: cfg.Authority, OwnerEpoch: cfg.OwnerEpoch,
-		Clock: cfg.Clock})
+		Clock: cfg.Clock, ReasoningInFlight: cfg.ReasoningInFlight})
 	if err != nil {
 		return nil, err
 	}
@@ -106,6 +112,15 @@ func CheckSettings(settings Settings) error { return domain.CheckSettings(settin
 func (h *Host) Run(ctx context.Context, emit func(context.Context, contractsv1.Envelope) error) error {
 	return h.app.Run(ctx, emit)
 }
+
+// BornKindDigests reports, per kind name, the kind digest the latest birth
+// announced, whether or not a kind file commissions that digest. Rule
+// promotion reads it to switch off rules pinned to another digest.
+func (h *Host) BornKindDigests() map[string]string { return h.app.BornKindDigests() }
+
+// EntityKind is the kind of the site device that reports for an entity; empty
+// when no site device reports for it.
+func (h *Host) EntityKind(entityID string) string { return h.app.EntityKind(entityID) }
 
 // Close closes the listener, so no further session is accepted; a running Run
 // returns when the caller's context ends.

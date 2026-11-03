@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
@@ -23,8 +22,8 @@ func (tx *Tx) LoadIntent(ctx context.Context, intentID string) (domain.IntentRec
 	return row, nil
 }
 
-func (tx *Tx) DispatchWithinLimit(ctx context.Context, row domain.IntentRecord, now time.Time) (bool, error) {
-	bucket := now.UTC().Format("2006-01-02T15:00")
+func (tx *Tx) DispatchWithinLimit(ctx context.Context, row domain.IntentRecord) (bool, error) {
+	bucket := row.EventHorizon.UTC().Format("2006-01-02T15:00")
 	var count int
 	if err := tx.tx.QueryRowContext(ctx, incrementIntentDispatchSQL,
 		row.TenantID, row.IntentType, bucket, row.RateLimitPerHour,
@@ -41,18 +40,26 @@ func scanPolicyIntent(query *sql.Row) (domain.IntentRecord, error) {
 	var row domain.IntentRecord
 	var traceparent, tracestate sql.NullString
 	var lifecycle episodeledger.LifecycleStatus
-	var expiresAt string
-	err := query.Scan(policyIntentDests(&row, &traceparent, &tracestate, &lifecycle, &expiresAt)...)
+	var expiresAt, eventHorizon string
+	err := query.Scan(append(policyIntentDests(&row, &traceparent, &tracestate, &lifecycle, &expiresAt), &eventHorizon)...)
 	if err != nil {
 		return row, fmt.Errorf("scan intent row: %w", err)
 	}
 	row.EpisodeProducedDecision = lifecycle.ProducedDecision()
 	row.Traceparent = traceparent.String
 	row.Tracestate = tracestate.String
+	return row, readIntentTimes(&row, expiresAt, eventHorizon)
+}
+
+func readIntentTimes(row *domain.IntentRecord, expiresAt, eventHorizon string) error {
+	var err error
 	if row.ExpiresAt, err = kernel.ParseTime(expiresAt); err != nil {
 		row.ExpiryUnreadable = true
 	}
-	return row, nil
+	if row.EventHorizon, err = kernel.ParseTime(eventHorizon); err != nil {
+		return fmt.Errorf("read the event horizon of intent %s: %w", row.IntentID, err)
+	}
+	return nil
 }
 
 func policyIntentDests(row *domain.IntentRecord, traceparent, tracestate *sql.NullString, lifecycle *episodeledger.LifecycleStatus, expiresAt *string) []any {
@@ -75,7 +82,8 @@ const loadPolicyIntentSQL = `
 		       d.situation_id, d.situation_version, d.traceparent, d.tracestate,
 		       e.episode_id, e.tenant_id, e.situation_id, e.situation_version,
 		       e.lifecycle_status, e.executor_version, e.policy_epoch, s.tenant_id, s.current_version, s.last_material_version, s.situation_type,
-		       COALESCE((SELECT sv.completeness FROM situation_versions sv WHERE sv.situation_id = s.situation_id AND sv.version = s.current_version), '')
+		       COALESCE((SELECT sv.completeness FROM situation_versions sv WHERE sv.situation_id = s.situation_id AND sv.version = s.current_version), ''),
+		       COALESCE((SELECT sv.event_horizon FROM situation_versions sv WHERE sv.situation_id = i.situation_id AND sv.version = i.situation_version), '')
 		FROM intents i
 		JOIN decisions d ON d.decision_id = i.decision_id
 		JOIN episodes e ON e.episode_id = d.episode_id

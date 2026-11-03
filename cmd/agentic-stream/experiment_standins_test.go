@@ -3,10 +3,8 @@ package main
 import (
 	"bufio"
 	"context"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"maps"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -16,54 +14,40 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/testsupport/workerfake"
 
 	"google.golang.org/grpc"
-	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
-	"github.com/ghassan-ai-projects/agentic-stream/internal/contractsv1"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/worker"
 	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
 )
 
-// The experiment's other two processes, reduced to what this repository can
-// observe at its boundaries: a Tamoz-shaped worker on the gRPC protocol and a
-// Streams-Simulator-shaped device on the device wire. Both speak only the
-// public contracts.
-
-// standInFirmwareDigest is the firmware the stand-in device reports.
 const standInFirmwareDigest = "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
 
-// serveTamozStandIn serves an EpisodeWorker that answers like Tamoz's
-// DecisionBuilder: one actionable intent from the request's catalog, with the
-// model writing only the catalog's model-writable field. It reasons for delay
-// before deciding, as a model call does.
 func serveTamozStandIn(t *testing.T, socketPath string, delay time.Duration) {
 	t.Helper()
 	serveWorkerProposing(t, socketPath, delay, indicatorAlert)
 }
 
-// proposal is one intent the stand-in worker proposes: its type, risk class
-// and the model-writable parameters.
-type proposal struct {
-	intentType, risk string
-	parameters       map[string]any
-}
+type proposal = workerfake.ProposedIntent
 
-var indicatorAlert = proposal{intentType: "set_indicator", risk: "R1", parameters: map[string]any{"state": "alert"}}
+var indicatorAlert = proposal{Type: "set_indicator", Risk: "R1", Parameters: map[string]any{"state": "alert"}}
 
 func serveWorkerProposing(t *testing.T, socketPath string, delay time.Duration, proposals ...proposal) {
+	t.Helper()
+	serveWorker(t, socketPath, proposeAfter(delay, proposals))
+}
+
+func serveWorker(t *testing.T, socketPath string, execute workerfake.ExecuteFunc) {
 	t.Helper()
 	listener, err := worker.ListenEvidenceSocket(socketPath)
 	if err != nil {
 		t.Fatalf("listen worker socket: %v", err)
 	}
 	server := grpc.NewServer()
-	runtimev1.RegisterEpisodeWorkerServer(server, &workerfake.Server{WorkerName: "tamoz", WorkerVersion: "stand-in", ExecuteFunc: proposeAfter(delay, proposals)})
+	runtimev1.RegisterEpisodeWorkerServer(server, &workerfake.Server{WorkerName: "tamoz", WorkerVersion: "stand-in", ExecuteFunc: execute})
 	go func() { _ = server.Serve(listener) }()
 	t.Cleanup(server.Stop)
 }
 
-// proposeAfter proposes one intent per episode, as a decision carries at most
-// one actionable intent: the proposals in order, then the last one again.
 func proposeAfter(delay time.Duration, proposals []proposal) workerfake.ExecuteFunc {
 	var episodes atomic.Int64
 	return func(ctx context.Context, req *runtimev1.EpisodeRequest, emit func(*runtimev1.EpisodeEvent) error) error {
@@ -73,115 +57,11 @@ func proposeAfter(delay time.Duration, proposals []proposal) workerfake.ExecuteF
 		case <-time.After(delay):
 		}
 		next := min(int(episodes.Add(1))-1, len(proposals)-1)
-		return propose(req, emit, proposals[next])
+		return workerfake.Propose(req, emit, workerfake.Answer{Hypothesis: "over_temperature", Summary: "sustained rise above the band",
+			Intents: []workerfake.ProposedIntent{proposals[next]}})
 	}
 }
 
-func propose(req *runtimev1.EpisodeRequest, emit func(*runtimev1.EpisodeEvent) error, proposed proposal) error {
-	decision, err := proposedDecision(req, proposed)
-	if err != nil {
-		return err
-	}
-	decisionJSON, digest, err := digestedDecision(decision)
-	if err != nil {
-		return err
-	}
-	// Like Tamoz's EpisodeStream: the budget update and the terminal usage
-	// prove the attempt stayed inside its limits.
-	usage := &runtimev1.Usage{InputTokens: 1200, OutputTokens: 300}
-	if err := emit(episodeEvent(req, 2, &runtimev1.EpisodeEvent_Budget{Budget: &runtimev1.BudgetUpdated{CumulativeUsage: usage, ModelCallsUsed: 1}})); err != nil {
-		return err
-	}
-	if err := emit(episodeEvent(req, 3, &runtimev1.EpisodeEvent_Decision{Decision: &runtimev1.DecisionProposed{
-		DecisionJson: decisionJSON, DecisionSha256: digest, EpisodeId: req.GetEpisodeId(), AttemptId: req.GetAttemptId(), Fence: req.GetFence(),
-	}})); err != nil {
-		return err
-	}
-	return emit(episodeEvent(req, 4, &runtimev1.EpisodeEvent_Terminal{Terminal: &runtimev1.Terminal{
-		Status: runtimev1.TerminalStatus_TERMINAL_STATUS_PRODUCED, ReasonCode: "decision_produced", Usage: usage,
-	}}))
-}
-
-func proposedDecision(req *runtimev1.EpisodeRequest, proposed proposal) (map[string]any, error) {
-	entityID, err := snapshotEntityID(req.GetSnapshotJson())
-	if err != nil {
-		return nil, err
-	}
-	scope := fmt.Sprintf("%s.%s.%d", req.GetEpisodeId(), req.GetAttemptId(), req.GetFence())
-	validUntil := time.Now().UTC().Add(10 * time.Minute).Format(time.RFC3339)
-	intent, err := proposedIntent(req, proposed, scope, entityID, validUntil)
-	if err != nil {
-		return nil, err
-	}
-	return map[string]any{
-		"decision_id": "decision." + scope, "episode_id": req.GetEpisodeId(), "attempt_id": req.GetAttemptId(), "fence": req.GetFence(),
-		"snapshot_digest": "sha256:" + hex.EncodeToString(req.GetSnapshotSha256()),
-		"situation_id":    req.GetSituationId(), "situation_version": req.GetSituationVersion(),
-		"primary_hypothesis": "over_temperature", "confidence": 0.9, "summary": "sustained rise above the band",
-		"facts_used": []any{}, "alternatives": []any{}, "intents": []any{intent}, "valid_until": validUntil,
-	}, nil
-}
-
-func proposedIntent(req *runtimev1.EpisodeRequest, proposed proposal, scope, entityID, validUntil string) (map[string]any, error) {
-	parameters := map[string]any{"entity_id": entityID, "situation_id": req.GetSituationId(), "situation_version": req.GetSituationVersion()}
-	maps.Copy(parameters, proposed.parameters)
-	intent := map[string]any{
-		"intent_id": "intent." + scope + "." + proposed.intentType, "decision_id": "decision." + scope,
-		"tenant_id": req.GetTenantId(), "situation_id": req.GetSituationId(), "situation_version": req.GetSituationVersion(),
-		"type": proposed.intentType, "risk_class": proposed.risk, "evidence_ids": []any{}, "expires_at": validUntil, "parameters": parameters,
-	}
-	intentDigest, err := contractsv1.IntentDigest(intent)
-	if err != nil {
-		return nil, fmt.Errorf("digest intent: %w", err)
-	}
-	intent["intent_digest"] = intentDigest
-	return intent, nil
-}
-
-func snapshotEntityID(snapshotJSON []byte) (string, error) {
-	var snapshot struct {
-		Entity struct {
-			ID string `json:"id"`
-		} `json:"entity"`
-	}
-	if err := json.Unmarshal(snapshotJSON, &snapshot); err != nil || snapshot.Entity.ID == "" {
-		return "", fmt.Errorf("snapshot has no entity id: %w", err)
-	}
-	return snapshot.Entity.ID, nil
-}
-
-func digestedDecision(decision map[string]any) ([]byte, []byte, error) {
-	decisionJSON, err := canonicaljson.Marshal(decision)
-	if err != nil {
-		return nil, nil, fmt.Errorf("marshal decision: %w", err)
-	}
-	digest, err := canonicaljson.Digest(canonicaljson.DomainDecision, decision)
-	if err != nil {
-		return nil, nil, fmt.Errorf("digest decision: %w", err)
-	}
-	digestBytes, err := canonicaljson.DecodeDigest(digest)
-	if err != nil {
-		return nil, nil, fmt.Errorf("decode decision digest: %w", err)
-	}
-	return decisionJSON, digestBytes, nil
-}
-
-func episodeEvent(req *runtimev1.EpisodeRequest, sequence uint64, payload any) *runtimev1.EpisodeEvent {
-	event := &runtimev1.EpisodeEvent{EpisodeId: req.GetEpisodeId(), Sequence: sequence, AttemptId: req.GetAttemptId(), Fence: req.GetFence(), OccurredAt: timestamppb.Now()}
-	switch p := payload.(type) {
-	case *runtimev1.EpisodeEvent_Budget:
-		event.Payload = p
-	case *runtimev1.EpisodeEvent_Decision:
-		event.Payload = p
-	case *runtimev1.EpisodeEvent_Terminal:
-		event.Payload = p
-	}
-	return event
-}
-
-// deviceStandIn is a device on the wire contract that remembers its output, so
-// query_state reports what the last command did, as the Streams Simulator
-// emulator and the bench firmware do.
 type deviceStandIn struct {
 	capabilityDigest string
 	mu               sync.Mutex
@@ -241,8 +121,6 @@ func (d *deviceStandIn) answer(conn net.Conn, line []byte) error {
 	return d.write(conn, map[string]any{"message_type": "result", "protocol_version": 1, "command_id": frame["command_id"], "boot_id": "boot-A", "status": status, "completed_mono_us": 2})
 }
 
-// apply records the command and sets the output to its single numeric
-// parameter, the way the firmware drives an LED level or a fan duty.
 func (d *deviceStandIn) apply(command map[string]any) string {
 	d.mu.Lock()
 	defer d.mu.Unlock()

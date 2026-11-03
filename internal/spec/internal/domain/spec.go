@@ -4,7 +4,6 @@ import (
 	"fmt"
 )
 
-// CompiledSpec is the immutable result of compiling a SituationSpec.
 type CompiledSpec struct {
 	SchemaVersion string     `json:"schemaVersion"`
 	Metadata      Metadata   `json:"metadata"`
@@ -15,8 +14,8 @@ type CompiledSpec struct {
 	Situation     Situation  `json:"situation"`
 	Cognition     Cognition  `json:"cognition"`
 	Actions       Actions    `json:"actions"`
+	Promotion     *Promotion `json:"promotion,omitempty"`
 
-	// CanonicalJSON is the canonical representation used for the digest.
 	CanonicalJSON []byte `json:"canonicalJSON"`
 	Digest        string `json:"digest"`
 
@@ -27,8 +26,6 @@ func (s *CompiledSpec) EventSchema(ref string) (EventSchema, bool) {
 	return s.eventSchemas.Lookup(ref)
 }
 
-// DeltaKeys are the stable keys available in the `delta` CEL variable when
-// comparing a new Situation version to the last reasoned version.
 var DeltaKeys = struct {
 	PhaseChanged             string
 	SeverityChange           string
@@ -49,7 +46,6 @@ var DeltaKeys = struct {
 	Novelty:                  "novelty",
 }
 
-// Metadata describes the spec.
 type Metadata struct {
 	Name        string            `json:"name" yaml:"name"`
 	Version     string            `json:"version" yaml:"version"`
@@ -57,7 +53,6 @@ type Metadata struct {
 	Labels      map[string]string `json:"labels,omitempty" yaml:"labels,omitempty"`
 }
 
-// Input declares an accepted event schema and how it maps to the runtime.
 type Input struct {
 	Name            string `json:"name" yaml:"name"`
 	EventType       string `json:"eventType" yaml:"eventType"`
@@ -69,7 +64,6 @@ type Input struct {
 	MaxPayloadBytes int    `json:"maxPayloadBytes,omitempty" yaml:"maxPayloadBytes,omitempty"`
 }
 
-// TimePolicy configures event-time semantics.
 type TimePolicy struct {
 	WatermarkStrategy  string `json:"watermarkStrategy" yaml:"watermarkStrategy"`
 	MaxOutOfOrderness  string `json:"maxOutOfOrderness" yaml:"maxOutOfOrderness"`
@@ -79,7 +73,6 @@ type TimePolicy struct {
 	ClockSkewTolerance string `json:"clockSkewTolerance,omitempty" yaml:"clockSkewTolerance,omitempty"`
 }
 
-// Window defines a named time or count window.
 type Window struct {
 	Name     string `json:"name" yaml:"name"`
 	Kind     string `json:"kind" yaml:"kind"`
@@ -90,7 +83,6 @@ type Window struct {
 	Emit     string `json:"emit,omitempty" yaml:"emit,omitempty"`
 }
 
-// Operator defines a deterministic computation over inputs.
 type Operator struct {
 	Name          string         `json:"name" yaml:"name"`
 	Kind          string         `json:"kind" yaml:"kind"`
@@ -107,14 +99,12 @@ type Operator struct {
 	Configuration map[string]any `json:"configuration,omitempty" yaml:"configuration,omitempty"`
 }
 
-// Phase is a state in the Situation lifecycle.
 type Phase struct {
 	Name     string `json:"name" yaml:"name"`
 	Severity int    `json:"severity" yaml:"severity"`
 	Terminal bool   `json:"terminal,omitempty" yaml:"terminal,omitempty"`
 }
 
-// Transition defines a phase change.
 type Transition struct {
 	From        string `json:"from" yaml:"from"`
 	To          string `json:"to" yaml:"to"`
@@ -122,7 +112,6 @@ type Transition struct {
 	MinDuration string `json:"minDuration,omitempty" yaml:"minDuration,omitempty"`
 }
 
-// Reducer defines how a Situation field is derived from operator outputs.
 type Reducer struct {
 	Field    string `json:"field" yaml:"field"`
 	Strategy string `json:"strategy" yaml:"strategy"`
@@ -130,14 +119,12 @@ type Reducer struct {
 	Limit    int    `json:"limit,omitempty" yaml:"limit,omitempty"`
 }
 
-// Occurrence controls when a new Situation is opened.
 type Occurrence struct {
 	OpenWhen       string `json:"openWhen" yaml:"openWhen"`
 	CloseWhen      string `json:"closeWhen" yaml:"closeWhen"`
 	ReopenCooldown string `json:"reopenCooldown,omitempty" yaml:"reopenCooldown,omitempty"`
 }
 
-// Situation configures the central semantic aggregate.
 type Situation struct {
 	Type         string       `json:"type" yaml:"type"`
 	EntityKey    string       `json:"entityKey" yaml:"entityKey"`
@@ -148,7 +135,6 @@ type Situation struct {
 	Reducers     []Reducer    `json:"reducers" yaml:"reducers"`
 }
 
-// Trigger configures when cognition is invoked.
 type Trigger struct {
 	Name          string  `json:"name" yaml:"name"`
 	When          string  `json:"when" yaml:"when"`
@@ -162,15 +148,11 @@ type Trigger struct {
 	MaterialDelta string  `json:"materialDelta" yaml:"materialDelta"`
 }
 
-// SkillRef is one digest-pinned skill the episode may render into its frame —
-// P5/§B6-B9: the worker resolves the text ONLY from the operator-approved
-// directory and requires the tree digest to match.
 type SkillRef struct {
 	Name       string `json:"name" yaml:"name"`
 	TreeSHA256 string `json:"tree_sha256" yaml:"tree_sha256"`
 }
 
-// Executor configures the episode runtime.
 type Executor struct {
 	Name           string     `json:"name" yaml:"name"`
 	Objective      string     `json:"objective" yaml:"objective"`
@@ -182,18 +164,12 @@ type Executor struct {
 	Tools          []string   `json:"tools" yaml:"tools"`
 	RiskCeiling    string     `json:"riskCeiling,omitempty" yaml:"riskCeiling,omitempty"`
 	Budget         Budget     `json:"budget" yaml:"budget"`
-	// P1: the diagnosis catalog is a per-executor document (the Ruby worker
-	// verifies it via DiagnosisCatalog.verify_wire under the shared
-	// situation-runtime/diagnosis-catalog domain).
+
 	DiagnosisCatalog string `json:"diagnosisCatalog" yaml:"diagnosisCatalog"`
-	// P8: the dispatch policy for every episode of this executor — active or
-	// shadow. Shadow proposals are persisted and scored but never enter action
-	// governance; the value is part of the compiled digest, so a mode change
-	// is a new spec version.
+
 	DispatchPolicy string `json:"dispatchPolicy,omitempty" yaml:"dispatchPolicy,omitempty"`
 }
 
-// Budget caps episode resource usage.
 type Budget struct {
 	WallTime             string `json:"wallTime" yaml:"wallTime"`
 	ModelCalls           int    `json:"modelCalls" yaml:"modelCalls"`
@@ -206,17 +182,11 @@ type Budget struct {
 	CostMicrounits       int    `json:"costMicrounits" yaml:"costMicrounits"`
 }
 
-// Cognition groups trigger and executor configuration.
 type Cognition struct {
 	Triggers []Trigger `json:"triggers" yaml:"triggers"`
 	Executor Executor  `json:"executor" yaml:"executor"`
 }
 
-// Intent declares one action type and its authority: the EXACT risk class,
-// the parameter schema, the operator-authored presets, the model-writable
-// fields, and the policy/rate-limit/compensation metadata. P4: these compile
-// into the canonical intent catalog the worker verifies and the validator
-// enforces independently (B9/B10).
 type Intent struct {
 	Type                string                    `json:"type" yaml:"type"`
 	Risk                string                    `json:"risk" yaml:"risk"`
@@ -228,20 +198,19 @@ type Intent struct {
 	RateLimitPerHour    int                       `json:"rateLimitPerHour,omitempty" yaml:"rateLimitPerHour,omitempty"`
 	Compensation        map[string]any            `json:"compensation,omitempty" yaml:"compensation,omitempty"`
 	Baseline            *IntentBaseline           `json:"baseline,omitempty" yaml:"baseline,omitempty"`
+	Emergency           bool                      `json:"emergency,omitempty" yaml:"emergency,omitempty"`
+	SafetyFunction      bool                      `json:"safetyFunction,omitempty" yaml:"safetyFunction,omitempty"`
 }
 
 type IntentBaseline struct {
 	ByPhase map[string]map[string]string `json:"byPhase" yaml:"byPhase"`
 }
 
-// Actions configures allowed intents.
 type Actions struct {
 	Intents              []Intent `json:"intents" yaml:"intents"`
 	WatchConfidenceFloor *float64 `json:"watch_confidence_floor,omitempty" yaml:"watch_confidence_floor,omitempty"`
 }
 
-// EffectiveWatchConfidenceFloor returns the configured watch confidence
-// floor, defaulting to 0.5 when the setting is omitted.
 func (a Actions) EffectiveWatchConfidenceFloor() float64 {
 	if a.WatchConfidenceFloor == nil {
 		return 0.5
@@ -249,7 +218,6 @@ func (a Actions) EffectiveWatchConfidenceFloor() float64 {
 	return *a.WatchConfidenceFloor
 }
 
-// CompileError is a structured diagnostic from the spec compiler.
 type CompileError struct {
 	Path    string `json:"path"`
 	Message string `json:"message"`

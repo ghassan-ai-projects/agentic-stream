@@ -73,7 +73,7 @@ func opening(seq uint64, boot string, historical bool, quality string, value any
 
 func evidenceOf(t *testing.T, conversation *domain.Conversation, seq uint64) []map[string]any {
 	t.Helper()
-	replies := conversation.Receive(syncAt(seq, startNS)).Replies
+	replies := conversation.Transmit(conversation.Receive(syncAt(seq, startNS)).Replies)
 	if len(replies) != 1 || replies[0]["type"] != "HSYNC" {
 		t.Fatalf("NSYNC replies = %v, want one HSYNC", replies)
 	}

@@ -27,3 +27,7 @@ func NextDispatchableEpisode(ctx context.Context, tx *store.Tx, tenantID string,
 func ReadAdmission(ctx context.Context, tx *store.Tx, episodeID string) (domain.Admission, error) {
 	return tx.ReadAdmission(ctx, episodeID)
 }
+
+func ReasoningInFlight(ctx context.Context, tx *store.Tx) (bool, error) {
+	return tx.ReasoningInFlight(ctx)
+}

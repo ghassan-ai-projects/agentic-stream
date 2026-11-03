@@ -25,3 +25,11 @@ type Board struct {
 func (b Birth) carries(device string) bool {
 	return slices.ContainsFunc(b.Boards, func(board Board) bool { return slices.Contains(board.Members, device) })
 }
+
+func (b Birth) KindDigests() map[string]string {
+	digests := make(map[string]string, len(b.Kinds))
+	for _, kind := range b.Kinds {
+		digests[kind.Name()] = kind.DeclaredDigest()
+	}
+	return digests
+}

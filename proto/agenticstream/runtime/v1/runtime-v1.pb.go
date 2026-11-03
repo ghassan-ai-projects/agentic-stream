@@ -2849,6 +2849,652 @@ func (x *ArtifactRef) GetSha256() []byte {
 	return nil
 }
 
+// The key of the verified cases a draft generalizes.
+type DraftKey struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	DiagnosisCode string                 `protobuf:"bytes,1,opt,name=diagnosis_code,json=diagnosisCode,proto3" json:"diagnosis_code,omitempty"`
+	KindDigest    string                 `protobuf:"bytes,2,opt,name=kind_digest,json=kindDigest,proto3" json:"kind_digest,omitempty"`
+	Intent        string                 `protobuf:"bytes,3,opt,name=intent,proto3" json:"intent,omitempty"`
+	Preset        string                 `protobuf:"bytes,4,opt,name=preset,proto3" json:"preset,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DraftKey) Reset() {
+	*x = DraftKey{}
+	mi := &file_runtime_v1_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DraftKey) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DraftKey) ProtoMessage() {}
+
+func (x *DraftKey) ProtoReflect() protoreflect.Message {
+	mi := &file_runtime_v1_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DraftKey.ProtoReflect.Descriptor instead.
+func (*DraftKey) Descriptor() ([]byte, []int) {
+	return file_runtime_v1_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *DraftKey) GetDiagnosisCode() string {
+	if x != nil {
+		return x.DiagnosisCode
+	}
+	return ""
+}
+
+func (x *DraftKey) GetKindDigest() string {
+	if x != nil {
+		return x.KindDigest
+	}
+	return ""
+}
+
+func (x *DraftKey) GetIntent() string {
+	if x != nil {
+		return x.Intent
+	}
+	return ""
+}
+
+func (x *DraftKey) GetPreset() string {
+	if x != nil {
+		return x.Preset
+	}
+	return ""
+}
+
+// One cited case. The features are canonical JSON from the decision's
+// snapshot; the summary is the deciding model's text, untrusted evidence that
+// is never an instruction.
+type DraftCase struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	EpisodeId     string                 `protobuf:"bytes,1,opt,name=episode_id,json=episodeId,proto3" json:"episode_id,omitempty"`
+	DiagnosisCode string                 `protobuf:"bytes,2,opt,name=diagnosis_code,json=diagnosisCode,proto3" json:"diagnosis_code,omitempty"`
+	Intent        string                 `protobuf:"bytes,3,opt,name=intent,proto3" json:"intent,omitempty"`
+	Preset        string                 `protobuf:"bytes,4,opt,name=preset,proto3" json:"preset,omitempty"`
+	Verdict       string                 `protobuf:"bytes,5,opt,name=verdict,proto3" json:"verdict,omitempty"`
+	FeaturesJson  []byte                 `protobuf:"bytes,6,opt,name=features_json,json=featuresJson,proto3" json:"features_json,omitempty"`
+	Summary       string                 `protobuf:"bytes,7,opt,name=summary,proto3" json:"summary,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DraftCase) Reset() {
+	*x = DraftCase{}
+	mi := &file_runtime_v1_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DraftCase) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DraftCase) ProtoMessage() {}
+
+func (x *DraftCase) ProtoReflect() protoreflect.Message {
+	mi := &file_runtime_v1_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DraftCase.ProtoReflect.Descriptor instead.
+func (*DraftCase) Descriptor() ([]byte, []int) {
+	return file_runtime_v1_proto_rawDescGZIP(), []int{24}
+}
+
+func (x *DraftCase) GetEpisodeId() string {
+	if x != nil {
+		return x.EpisodeId
+	}
+	return ""
+}
+
+func (x *DraftCase) GetDiagnosisCode() string {
+	if x != nil {
+		return x.DiagnosisCode
+	}
+	return ""
+}
+
+func (x *DraftCase) GetIntent() string {
+	if x != nil {
+		return x.Intent
+	}
+	return ""
+}
+
+func (x *DraftCase) GetPreset() string {
+	if x != nil {
+		return x.Preset
+	}
+	return ""
+}
+
+func (x *DraftCase) GetVerdict() string {
+	if x != nil {
+		return x.Verdict
+	}
+	return ""
+}
+
+func (x *DraftCase) GetFeaturesJson() []byte {
+	if x != nil {
+		return x.FeaturesJson
+	}
+	return nil
+}
+
+func (x *DraftCase) GetSummary() string {
+	if x != nil {
+		return x.Summary
+	}
+	return ""
+}
+
+// A rule of the loaded playbook with the same diagnosis code.
+type DraftRule struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	RuleId        string                 `protobuf:"bytes,1,opt,name=rule_id,json=ruleId,proto3" json:"rule_id,omitempty"`
+	Version       int64                  `protobuf:"varint,2,opt,name=version,proto3" json:"version,omitempty"`
+	When          string                 `protobuf:"bytes,3,opt,name=when,proto3" json:"when,omitempty"`
+	Mode          string                 `protobuf:"bytes,4,opt,name=mode,proto3" json:"mode,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DraftRule) Reset() {
+	*x = DraftRule{}
+	mi := &file_runtime_v1_proto_msgTypes[25]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DraftRule) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DraftRule) ProtoMessage() {}
+
+func (x *DraftRule) ProtoReflect() protoreflect.Message {
+	mi := &file_runtime_v1_proto_msgTypes[25]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DraftRule.ProtoReflect.Descriptor instead.
+func (*DraftRule) Descriptor() ([]byte, []int) {
+	return file_runtime_v1_proto_rawDescGZIP(), []int{25}
+}
+
+func (x *DraftRule) GetRuleId() string {
+	if x != nil {
+		return x.RuleId
+	}
+	return ""
+}
+
+func (x *DraftRule) GetVersion() int64 {
+	if x != nil {
+		return x.Version
+	}
+	return 0
+}
+
+func (x *DraftRule) GetWhen() string {
+	if x != nil {
+		return x.When
+	}
+	return ""
+}
+
+func (x *DraftRule) GetMode() string {
+	if x != nil {
+		return x.Mode
+	}
+	return ""
+}
+
+type DraftBudget struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	WallTime      *durationpb.Duration   `protobuf:"bytes,1,opt,name=wall_time,json=wallTime,proto3" json:"wall_time,omitempty"`
+	ModelCalls    int64                  `protobuf:"varint,2,opt,name=model_calls,json=modelCalls,proto3" json:"model_calls,omitempty"`
+	InputTokens   uint64                 `protobuf:"varint,3,opt,name=input_tokens,json=inputTokens,proto3" json:"input_tokens,omitempty"`
+	OutputTokens  uint64                 `protobuf:"varint,4,opt,name=output_tokens,json=outputTokens,proto3" json:"output_tokens,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DraftBudget) Reset() {
+	*x = DraftBudget{}
+	mi := &file_runtime_v1_proto_msgTypes[26]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DraftBudget) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DraftBudget) ProtoMessage() {}
+
+func (x *DraftBudget) ProtoReflect() protoreflect.Message {
+	mi := &file_runtime_v1_proto_msgTypes[26]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DraftBudget.ProtoReflect.Descriptor instead.
+func (*DraftBudget) Descriptor() ([]byte, []int) {
+	return file_runtime_v1_proto_rawDescGZIP(), []int{26}
+}
+
+func (x *DraftBudget) GetWallTime() *durationpb.Duration {
+	if x != nil {
+		return x.WallTime
+	}
+	return nil
+}
+
+func (x *DraftBudget) GetModelCalls() int64 {
+	if x != nil {
+		return x.ModelCalls
+	}
+	return 0
+}
+
+func (x *DraftBudget) GetInputTokens() uint64 {
+	if x != nil {
+		return x.InputTokens
+	}
+	return 0
+}
+
+func (x *DraftBudget) GetOutputTokens() uint64 {
+	if x != nil {
+		return x.OutputTokens
+	}
+	return 0
+}
+
+type DraftRequest struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	ProtocolVersion string                 `protobuf:"bytes,1,opt,name=protocol_version,json=protocolVersion,proto3" json:"protocol_version,omitempty"`
+	DraftId         string                 `protobuf:"bytes,2,opt,name=draft_id,json=draftId,proto3" json:"draft_id,omitempty"`
+	TenantId        string                 `protobuf:"bytes,3,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	Key             *DraftKey              `protobuf:"bytes,4,opt,name=key,proto3" json:"key,omitempty"`
+	Cases           []*DraftCase           `protobuf:"bytes,5,rep,name=cases,proto3" json:"cases,omitempty"`
+	CurrentRules    []*DraftRule           `protobuf:"bytes,6,rep,name=current_rules,json=currentRules,proto3" json:"current_rules,omitempty"`
+	AllowedFeatures []string               `protobuf:"bytes,7,rep,name=allowed_features,json=allowedFeatures,proto3" json:"allowed_features,omitempty"`
+	Budget          *DraftBudget           `protobuf:"bytes,8,opt,name=budget,proto3" json:"budget,omitempty"`
+	SpecSha256      []byte                 `protobuf:"bytes,9,opt,name=spec_sha256,json=specSha256,proto3" json:"spec_sha256,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *DraftRequest) Reset() {
+	*x = DraftRequest{}
+	mi := &file_runtime_v1_proto_msgTypes[27]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DraftRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DraftRequest) ProtoMessage() {}
+
+func (x *DraftRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_runtime_v1_proto_msgTypes[27]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DraftRequest.ProtoReflect.Descriptor instead.
+func (*DraftRequest) Descriptor() ([]byte, []int) {
+	return file_runtime_v1_proto_rawDescGZIP(), []int{27}
+}
+
+func (x *DraftRequest) GetProtocolVersion() string {
+	if x != nil {
+		return x.ProtocolVersion
+	}
+	return ""
+}
+
+func (x *DraftRequest) GetDraftId() string {
+	if x != nil {
+		return x.DraftId
+	}
+	return ""
+}
+
+func (x *DraftRequest) GetTenantId() string {
+	if x != nil {
+		return x.TenantId
+	}
+	return ""
+}
+
+func (x *DraftRequest) GetKey() *DraftKey {
+	if x != nil {
+		return x.Key
+	}
+	return nil
+}
+
+func (x *DraftRequest) GetCases() []*DraftCase {
+	if x != nil {
+		return x.Cases
+	}
+	return nil
+}
+
+func (x *DraftRequest) GetCurrentRules() []*DraftRule {
+	if x != nil {
+		return x.CurrentRules
+	}
+	return nil
+}
+
+func (x *DraftRequest) GetAllowedFeatures() []string {
+	if x != nil {
+		return x.AllowedFeatures
+	}
+	return nil
+}
+
+func (x *DraftRequest) GetBudget() *DraftBudget {
+	if x != nil {
+		return x.Budget
+	}
+	return nil
+}
+
+func (x *DraftRequest) GetSpecSha256() []byte {
+	if x != nil {
+		return x.SpecSha256
+	}
+	return nil
+}
+
+type DraftEvent struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Event:
+	//
+	//	*DraftEvent_Diagnostic
+	//	*DraftEvent_Proposal
+	//	*DraftEvent_NoProposal
+	Event         isDraftEvent_Event `protobuf_oneof:"event"`
+	Usage         *Usage             `protobuf:"bytes,4,opt,name=usage,proto3" json:"usage,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DraftEvent) Reset() {
+	*x = DraftEvent{}
+	mi := &file_runtime_v1_proto_msgTypes[28]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DraftEvent) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DraftEvent) ProtoMessage() {}
+
+func (x *DraftEvent) ProtoReflect() protoreflect.Message {
+	mi := &file_runtime_v1_proto_msgTypes[28]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DraftEvent.ProtoReflect.Descriptor instead.
+func (*DraftEvent) Descriptor() ([]byte, []int) {
+	return file_runtime_v1_proto_rawDescGZIP(), []int{28}
+}
+
+func (x *DraftEvent) GetEvent() isDraftEvent_Event {
+	if x != nil {
+		return x.Event
+	}
+	return nil
+}
+
+func (x *DraftEvent) GetDiagnostic() *Diagnostic {
+	if x != nil {
+		if x, ok := x.Event.(*DraftEvent_Diagnostic); ok {
+			return x.Diagnostic
+		}
+	}
+	return nil
+}
+
+func (x *DraftEvent) GetProposal() *PlaybookProposal {
+	if x != nil {
+		if x, ok := x.Event.(*DraftEvent_Proposal); ok {
+			return x.Proposal
+		}
+	}
+	return nil
+}
+
+func (x *DraftEvent) GetNoProposal() *NoProposal {
+	if x != nil {
+		if x, ok := x.Event.(*DraftEvent_NoProposal); ok {
+			return x.NoProposal
+		}
+	}
+	return nil
+}
+
+func (x *DraftEvent) GetUsage() *Usage {
+	if x != nil {
+		return x.Usage
+	}
+	return nil
+}
+
+type isDraftEvent_Event interface {
+	isDraftEvent_Event()
+}
+
+type DraftEvent_Diagnostic struct {
+	Diagnostic *Diagnostic `protobuf:"bytes,1,opt,name=diagnostic,proto3,oneof"`
+}
+
+type DraftEvent_Proposal struct {
+	Proposal *PlaybookProposal `protobuf:"bytes,2,opt,name=proposal,proto3,oneof"`
+}
+
+type DraftEvent_NoProposal struct {
+	NoProposal *NoProposal `protobuf:"bytes,3,opt,name=no_proposal,json=noProposal,proto3,oneof"`
+}
+
+func (*DraftEvent_Diagnostic) isDraftEvent_Event() {}
+
+func (*DraftEvent_Proposal) isDraftEvent_Event() {}
+
+func (*DraftEvent_NoProposal) isDraftEvent_Event() {}
+
+// A proposed rule: the key it answers and a condition over the allowed
+// features. It carries no mode, envelope, cap or free value: the runtime sets
+// those.
+type PlaybookProposal struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	DiagnosisCode   string                 `protobuf:"bytes,1,opt,name=diagnosis_code,json=diagnosisCode,proto3" json:"diagnosis_code,omitempty"`
+	Intent          string                 `protobuf:"bytes,2,opt,name=intent,proto3" json:"intent,omitempty"`
+	Preset          string                 `protobuf:"bytes,3,opt,name=preset,proto3" json:"preset,omitempty"`
+	When            string                 `protobuf:"bytes,4,opt,name=when,proto3" json:"when,omitempty"`
+	CitedEpisodeIds []string               `protobuf:"bytes,5,rep,name=cited_episode_ids,json=citedEpisodeIds,proto3" json:"cited_episode_ids,omitempty"`
+	Rationale       string                 `protobuf:"bytes,6,opt,name=rationale,proto3" json:"rationale,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *PlaybookProposal) Reset() {
+	*x = PlaybookProposal{}
+	mi := &file_runtime_v1_proto_msgTypes[29]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PlaybookProposal) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PlaybookProposal) ProtoMessage() {}
+
+func (x *PlaybookProposal) ProtoReflect() protoreflect.Message {
+	mi := &file_runtime_v1_proto_msgTypes[29]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PlaybookProposal.ProtoReflect.Descriptor instead.
+func (*PlaybookProposal) Descriptor() ([]byte, []int) {
+	return file_runtime_v1_proto_rawDescGZIP(), []int{29}
+}
+
+func (x *PlaybookProposal) GetDiagnosisCode() string {
+	if x != nil {
+		return x.DiagnosisCode
+	}
+	return ""
+}
+
+func (x *PlaybookProposal) GetIntent() string {
+	if x != nil {
+		return x.Intent
+	}
+	return ""
+}
+
+func (x *PlaybookProposal) GetPreset() string {
+	if x != nil {
+		return x.Preset
+	}
+	return ""
+}
+
+func (x *PlaybookProposal) GetWhen() string {
+	if x != nil {
+		return x.When
+	}
+	return ""
+}
+
+func (x *PlaybookProposal) GetCitedEpisodeIds() []string {
+	if x != nil {
+		return x.CitedEpisodeIds
+	}
+	return nil
+}
+
+func (x *PlaybookProposal) GetRationale() string {
+	if x != nil {
+		return x.Rationale
+	}
+	return ""
+}
+
+type NoProposal struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Reason        string                 `protobuf:"bytes,1,opt,name=reason,proto3" json:"reason,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NoProposal) Reset() {
+	*x = NoProposal{}
+	mi := &file_runtime_v1_proto_msgTypes[30]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NoProposal) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NoProposal) ProtoMessage() {}
+
+func (x *NoProposal) ProtoReflect() protoreflect.Message {
+	mi := &file_runtime_v1_proto_msgTypes[30]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NoProposal.ProtoReflect.Descriptor instead.
+func (*NoProposal) Descriptor() ([]byte, []int) {
+	return file_runtime_v1_proto_rawDescGZIP(), []int{30}
+}
+
+func (x *NoProposal) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
 var File_runtime_v1_proto protoreflect.FileDescriptor
 
 const file_runtime_v1_proto_rawDesc = "" +
@@ -3108,7 +3754,64 @@ const file_runtime_v1_proto_rawDesc = "" +
 	"media_type\x18\x02 \x01(\tR\tmediaType\x12\x1d\n" +
 	"\n" +
 	"size_bytes\x18\x03 \x01(\x04R\tsizeBytes\x12\x16\n" +
-	"\x06sha256\x18\x04 \x01(\fR\x06sha256*c\n" +
+	"\x06sha256\x18\x04 \x01(\fR\x06sha256\"\x82\x01\n" +
+	"\bDraftKey\x12%\n" +
+	"\x0ediagnosis_code\x18\x01 \x01(\tR\rdiagnosisCode\x12\x1f\n" +
+	"\vkind_digest\x18\x02 \x01(\tR\n" +
+	"kindDigest\x12\x16\n" +
+	"\x06intent\x18\x03 \x01(\tR\x06intent\x12\x16\n" +
+	"\x06preset\x18\x04 \x01(\tR\x06preset\"\xda\x01\n" +
+	"\tDraftCase\x12\x1d\n" +
+	"\n" +
+	"episode_id\x18\x01 \x01(\tR\tepisodeId\x12%\n" +
+	"\x0ediagnosis_code\x18\x02 \x01(\tR\rdiagnosisCode\x12\x16\n" +
+	"\x06intent\x18\x03 \x01(\tR\x06intent\x12\x16\n" +
+	"\x06preset\x18\x04 \x01(\tR\x06preset\x12\x18\n" +
+	"\averdict\x18\x05 \x01(\tR\averdict\x12#\n" +
+	"\rfeatures_json\x18\x06 \x01(\fR\ffeaturesJson\x12\x18\n" +
+	"\asummary\x18\a \x01(\tR\asummary\"f\n" +
+	"\tDraftRule\x12\x17\n" +
+	"\arule_id\x18\x01 \x01(\tR\x06ruleId\x12\x18\n" +
+	"\aversion\x18\x02 \x01(\x03R\aversion\x12\x12\n" +
+	"\x04when\x18\x03 \x01(\tR\x04when\x12\x12\n" +
+	"\x04mode\x18\x04 \x01(\tR\x04mode\"\xae\x01\n" +
+	"\vDraftBudget\x126\n" +
+	"\twall_time\x18\x01 \x01(\v2\x19.google.protobuf.DurationR\bwallTime\x12\x1f\n" +
+	"\vmodel_calls\x18\x02 \x01(\x03R\n" +
+	"modelCalls\x12!\n" +
+	"\finput_tokens\x18\x03 \x01(\x04R\vinputTokens\x12#\n" +
+	"\routput_tokens\x18\x04 \x01(\x04R\foutputTokens\"\xb7\x03\n" +
+	"\fDraftRequest\x12)\n" +
+	"\x10protocol_version\x18\x01 \x01(\tR\x0fprotocolVersion\x12\x19\n" +
+	"\bdraft_id\x18\x02 \x01(\tR\adraftId\x12\x1b\n" +
+	"\ttenant_id\x18\x03 \x01(\tR\btenantId\x124\n" +
+	"\x03key\x18\x04 \x01(\v2\".agenticstream.runtime.v1.DraftKeyR\x03key\x129\n" +
+	"\x05cases\x18\x05 \x03(\v2#.agenticstream.runtime.v1.DraftCaseR\x05cases\x12H\n" +
+	"\rcurrent_rules\x18\x06 \x03(\v2#.agenticstream.runtime.v1.DraftRuleR\fcurrentRules\x12)\n" +
+	"\x10allowed_features\x18\a \x03(\tR\x0fallowedFeatures\x12=\n" +
+	"\x06budget\x18\b \x01(\v2%.agenticstream.runtime.v1.DraftBudgetR\x06budget\x12\x1f\n" +
+	"\vspec_sha256\x18\t \x01(\fR\n" +
+	"specSha256\"\xa7\x02\n" +
+	"\n" +
+	"DraftEvent\x12F\n" +
+	"\n" +
+	"diagnostic\x18\x01 \x01(\v2$.agenticstream.runtime.v1.DiagnosticH\x00R\n" +
+	"diagnostic\x12H\n" +
+	"\bproposal\x18\x02 \x01(\v2*.agenticstream.runtime.v1.PlaybookProposalH\x00R\bproposal\x12G\n" +
+	"\vno_proposal\x18\x03 \x01(\v2$.agenticstream.runtime.v1.NoProposalH\x00R\n" +
+	"noProposal\x125\n" +
+	"\x05usage\x18\x04 \x01(\v2\x1f.agenticstream.runtime.v1.UsageR\x05usageB\a\n" +
+	"\x05event\"\xc7\x01\n" +
+	"\x10PlaybookProposal\x12%\n" +
+	"\x0ediagnosis_code\x18\x01 \x01(\tR\rdiagnosisCode\x12\x16\n" +
+	"\x06intent\x18\x02 \x01(\tR\x06intent\x12\x16\n" +
+	"\x06preset\x18\x03 \x01(\tR\x06preset\x12\x12\n" +
+	"\x04when\x18\x04 \x01(\tR\x04when\x12*\n" +
+	"\x11cited_episode_ids\x18\x05 \x03(\tR\x0fcitedEpisodeIds\x12\x1c\n" +
+	"\trationale\x18\x06 \x01(\tR\trationale\"$\n" +
+	"\n" +
+	"NoProposal\x12\x16\n" +
+	"\x06reason\x18\x01 \x01(\tR\x06reason*c\n" +
 	"\vEpisodeKind\x12\x1c\n" +
 	"\x18EPISODE_KIND_UNSPECIFIED\x10\x00\x12\x19\n" +
 	"\x15EPISODE_KIND_DIAGNOSE\x10\x01\x12\x1b\n" +
@@ -3146,10 +3849,11 @@ const file_runtime_v1_proto_rawDesc = "" +
 	"\x19TERMINAL_STATUS_CANCELLED\x10\x03\x12\x1a\n" +
 	"\x16TERMINAL_STATUS_FAILED\x10\x04\x12\x1d\n" +
 	"\x19TERMINAL_STATUS_TIMED_OUT\x10\x05\x12$\n" +
-	" TERMINAL_STATUS_BUDGET_EXHAUSTED\x10\x062\xd4\x01\n" +
+	" TERMINAL_STATUS_BUDGET_EXHAUSTED\x10\x062\xb9\x02\n" +
 	"\rEpisodeWorker\x12d\n" +
 	"\tHandshake\x12*.agenticstream.runtime.v1.HandshakeRequest\x1a+.agenticstream.runtime.v1.HandshakeResponse\x12]\n" +
-	"\aExecute\x12(.agenticstream.runtime.v1.EpisodeRequest\x1a&.agenticstream.runtime.v1.EpisodeEvent0\x012q\n" +
+	"\aExecute\x12(.agenticstream.runtime.v1.EpisodeRequest\x1a&.agenticstream.runtime.v1.EpisodeEvent0\x01\x12c\n" +
+	"\x11DraftPlaybookRule\x12&.agenticstream.runtime.v1.DraftRequest\x1a$.agenticstream.runtime.v1.DraftEvent0\x012q\n" +
 	"\rEvidenceTools\x12`\n" +
 	"\x04Call\x12*.agenticstream.runtime.v1.EvidenceToolCall\x1a,.agenticstream.runtime.v1.EvidenceToolResultBXZVgithub.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1;runtimev1b\x06proto3"
 
@@ -3166,7 +3870,7 @@ func file_runtime_v1_proto_rawDescGZIP() []byte {
 }
 
 var file_runtime_v1_proto_enumTypes = make([]protoimpl.EnumInfo, 7)
-var file_runtime_v1_proto_msgTypes = make([]protoimpl.MessageInfo, 23)
+var file_runtime_v1_proto_msgTypes = make([]protoimpl.MessageInfo, 31)
 var file_runtime_v1_proto_goTypes = []any{
 	(EpisodeKind)(0),              // 0: agenticstream.runtime.v1.EpisodeKind
 	(EpisodeLane)(0),              // 1: agenticstream.runtime.v1.EpisodeLane
@@ -3198,23 +3902,31 @@ var file_runtime_v1_proto_goTypes = []any{
 	(*EvidenceToolCall)(nil),      // 27: agenticstream.runtime.v1.EvidenceToolCall
 	(*EvidenceToolResult)(nil),    // 28: agenticstream.runtime.v1.EvidenceToolResult
 	(*ArtifactRef)(nil),           // 29: agenticstream.runtime.v1.ArtifactRef
-	(*timestamppb.Timestamp)(nil), // 30: google.protobuf.Timestamp
-	(*durationpb.Duration)(nil),   // 31: google.protobuf.Duration
+	(*DraftKey)(nil),              // 30: agenticstream.runtime.v1.DraftKey
+	(*DraftCase)(nil),             // 31: agenticstream.runtime.v1.DraftCase
+	(*DraftRule)(nil),             // 32: agenticstream.runtime.v1.DraftRule
+	(*DraftBudget)(nil),           // 33: agenticstream.runtime.v1.DraftBudget
+	(*DraftRequest)(nil),          // 34: agenticstream.runtime.v1.DraftRequest
+	(*DraftEvent)(nil),            // 35: agenticstream.runtime.v1.DraftEvent
+	(*PlaybookProposal)(nil),      // 36: agenticstream.runtime.v1.PlaybookProposal
+	(*NoProposal)(nil),            // 37: agenticstream.runtime.v1.NoProposal
+	(*timestamppb.Timestamp)(nil), // 38: google.protobuf.Timestamp
+	(*durationpb.Duration)(nil),   // 39: google.protobuf.Duration
 }
 var file_runtime_v1_proto_depIdxs = []int32{
 	0,  // 0: agenticstream.runtime.v1.HandshakeRequest.supports_kinds:type_name -> agenticstream.runtime.v1.EpisodeKind
 	12, // 1: agenticstream.runtime.v1.EpisodeRequest.budget:type_name -> agenticstream.runtime.v1.EpisodeBudget
-	30, // 2: agenticstream.runtime.v1.EpisodeRequest.deadline:type_name -> google.protobuf.Timestamp
+	38, // 2: agenticstream.runtime.v1.EpisodeRequest.deadline:type_name -> google.protobuf.Timestamp
 	0,  // 3: agenticstream.runtime.v1.EpisodeRequest.kind:type_name -> agenticstream.runtime.v1.EpisodeKind
 	1,  // 4: agenticstream.runtime.v1.EpisodeRequest.lane:type_name -> agenticstream.runtime.v1.EpisodeLane
 	3,  // 5: agenticstream.runtime.v1.EpisodeRequest.risk_ceiling:type_name -> agenticstream.runtime.v1.RiskClass
 	10, // 6: agenticstream.runtime.v1.EpisodeRequest.evidence_time_range:type_name -> agenticstream.runtime.v1.EvidenceTimeRange
 	11, // 7: agenticstream.runtime.v1.EpisodeRequest.reconsideration:type_name -> agenticstream.runtime.v1.Reconsideration
 	2,  // 8: agenticstream.runtime.v1.EpisodeRequest.dispatch_policy:type_name -> agenticstream.runtime.v1.DispatchPolicy
-	30, // 9: agenticstream.runtime.v1.EvidenceTimeRange.from:type_name -> google.protobuf.Timestamp
-	30, // 10: agenticstream.runtime.v1.EvidenceTimeRange.until:type_name -> google.protobuf.Timestamp
-	31, // 11: agenticstream.runtime.v1.EpisodeBudget.wall_time:type_name -> google.protobuf.Duration
-	30, // 12: agenticstream.runtime.v1.EpisodeEvent.occurred_at:type_name -> google.protobuf.Timestamp
+	38, // 9: agenticstream.runtime.v1.EvidenceTimeRange.from:type_name -> google.protobuf.Timestamp
+	38, // 10: agenticstream.runtime.v1.EvidenceTimeRange.until:type_name -> google.protobuf.Timestamp
+	39, // 11: agenticstream.runtime.v1.EpisodeBudget.wall_time:type_name -> google.protobuf.Duration
+	38, // 12: agenticstream.runtime.v1.EpisodeEvent.occurred_at:type_name -> google.protobuf.Timestamp
 	14, // 13: agenticstream.runtime.v1.EpisodeEvent.started:type_name -> agenticstream.runtime.v1.EpisodeStarted
 	15, // 14: agenticstream.runtime.v1.EpisodeEvent.model_started:type_name -> agenticstream.runtime.v1.ModelStarted
 	16, // 15: agenticstream.runtime.v1.EpisodeEvent.model_delta:type_name -> agenticstream.runtime.v1.ModelDelta
@@ -3231,25 +3943,36 @@ var file_runtime_v1_proto_depIdxs = []int32{
 	5,  // 26: agenticstream.runtime.v1.ToolLifecycle.state:type_name -> agenticstream.runtime.v1.ToolState
 	12, // 27: agenticstream.runtime.v1.BudgetUpdated.remaining:type_name -> agenticstream.runtime.v1.EpisodeBudget
 	20, // 28: agenticstream.runtime.v1.BudgetUpdated.cumulative_usage:type_name -> agenticstream.runtime.v1.Usage
-	30, // 29: agenticstream.runtime.v1.EpisodeCancelling.deadline:type_name -> google.protobuf.Timestamp
+	38, // 29: agenticstream.runtime.v1.EpisodeCancelling.deadline:type_name -> google.protobuf.Timestamp
 	6,  // 30: agenticstream.runtime.v1.Terminal.status:type_name -> agenticstream.runtime.v1.TerminalStatus
 	20, // 31: agenticstream.runtime.v1.Terminal.usage:type_name -> agenticstream.runtime.v1.Usage
 	26, // 32: agenticstream.runtime.v1.Terminal.artifact_manifest:type_name -> agenticstream.runtime.v1.ArtifactManifest
-	30, // 33: agenticstream.runtime.v1.EvidenceToolCall.deadline:type_name -> google.protobuf.Timestamp
-	30, // 34: agenticstream.runtime.v1.EvidenceToolCall.time_from:type_name -> google.protobuf.Timestamp
-	30, // 35: agenticstream.runtime.v1.EvidenceToolCall.time_until:type_name -> google.protobuf.Timestamp
+	38, // 33: agenticstream.runtime.v1.EvidenceToolCall.deadline:type_name -> google.protobuf.Timestamp
+	38, // 34: agenticstream.runtime.v1.EvidenceToolCall.time_from:type_name -> google.protobuf.Timestamp
+	38, // 35: agenticstream.runtime.v1.EvidenceToolCall.time_until:type_name -> google.protobuf.Timestamp
 	29, // 36: agenticstream.runtime.v1.EvidenceToolResult.artifact:type_name -> agenticstream.runtime.v1.ArtifactRef
-	7,  // 37: agenticstream.runtime.v1.EpisodeWorker.Handshake:input_type -> agenticstream.runtime.v1.HandshakeRequest
-	9,  // 38: agenticstream.runtime.v1.EpisodeWorker.Execute:input_type -> agenticstream.runtime.v1.EpisodeRequest
-	27, // 39: agenticstream.runtime.v1.EvidenceTools.Call:input_type -> agenticstream.runtime.v1.EvidenceToolCall
-	8,  // 40: agenticstream.runtime.v1.EpisodeWorker.Handshake:output_type -> agenticstream.runtime.v1.HandshakeResponse
-	13, // 41: agenticstream.runtime.v1.EpisodeWorker.Execute:output_type -> agenticstream.runtime.v1.EpisodeEvent
-	28, // 42: agenticstream.runtime.v1.EvidenceTools.Call:output_type -> agenticstream.runtime.v1.EvidenceToolResult
-	40, // [40:43] is the sub-list for method output_type
-	37, // [37:40] is the sub-list for method input_type
-	37, // [37:37] is the sub-list for extension type_name
-	37, // [37:37] is the sub-list for extension extendee
-	0,  // [0:37] is the sub-list for field type_name
+	39, // 37: agenticstream.runtime.v1.DraftBudget.wall_time:type_name -> google.protobuf.Duration
+	30, // 38: agenticstream.runtime.v1.DraftRequest.key:type_name -> agenticstream.runtime.v1.DraftKey
+	31, // 39: agenticstream.runtime.v1.DraftRequest.cases:type_name -> agenticstream.runtime.v1.DraftCase
+	32, // 40: agenticstream.runtime.v1.DraftRequest.current_rules:type_name -> agenticstream.runtime.v1.DraftRule
+	33, // 41: agenticstream.runtime.v1.DraftRequest.budget:type_name -> agenticstream.runtime.v1.DraftBudget
+	24, // 42: agenticstream.runtime.v1.DraftEvent.diagnostic:type_name -> agenticstream.runtime.v1.Diagnostic
+	36, // 43: agenticstream.runtime.v1.DraftEvent.proposal:type_name -> agenticstream.runtime.v1.PlaybookProposal
+	37, // 44: agenticstream.runtime.v1.DraftEvent.no_proposal:type_name -> agenticstream.runtime.v1.NoProposal
+	20, // 45: agenticstream.runtime.v1.DraftEvent.usage:type_name -> agenticstream.runtime.v1.Usage
+	7,  // 46: agenticstream.runtime.v1.EpisodeWorker.Handshake:input_type -> agenticstream.runtime.v1.HandshakeRequest
+	9,  // 47: agenticstream.runtime.v1.EpisodeWorker.Execute:input_type -> agenticstream.runtime.v1.EpisodeRequest
+	34, // 48: agenticstream.runtime.v1.EpisodeWorker.DraftPlaybookRule:input_type -> agenticstream.runtime.v1.DraftRequest
+	27, // 49: agenticstream.runtime.v1.EvidenceTools.Call:input_type -> agenticstream.runtime.v1.EvidenceToolCall
+	8,  // 50: agenticstream.runtime.v1.EpisodeWorker.Handshake:output_type -> agenticstream.runtime.v1.HandshakeResponse
+	13, // 51: agenticstream.runtime.v1.EpisodeWorker.Execute:output_type -> agenticstream.runtime.v1.EpisodeEvent
+	35, // 52: agenticstream.runtime.v1.EpisodeWorker.DraftPlaybookRule:output_type -> agenticstream.runtime.v1.DraftEvent
+	28, // 53: agenticstream.runtime.v1.EvidenceTools.Call:output_type -> agenticstream.runtime.v1.EvidenceToolResult
+	50, // [50:54] is the sub-list for method output_type
+	46, // [46:50] is the sub-list for method input_type
+	46, // [46:46] is the sub-list for extension type_name
+	46, // [46:46] is the sub-list for extension extendee
+	0,  // [0:46] is the sub-list for field type_name
 }
 
 func init() { file_runtime_v1_proto_init() }
@@ -3271,13 +3994,18 @@ func file_runtime_v1_proto_init() {
 		(*EpisodeEvent_Terminal)(nil),
 		(*EpisodeEvent_Cancelling)(nil),
 	}
+	file_runtime_v1_proto_msgTypes[28].OneofWrappers = []any{
+		(*DraftEvent_Diagnostic)(nil),
+		(*DraftEvent_Proposal)(nil),
+		(*DraftEvent_NoProposal)(nil),
+	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_runtime_v1_proto_rawDesc), len(file_runtime_v1_proto_rawDesc)),
 			NumEnums:      7,
-			NumMessages:   23,
+			NumMessages:   31,
 			NumExtensions: 0,
 			NumServices:   2,
 		},

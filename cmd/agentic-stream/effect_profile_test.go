@@ -56,6 +56,21 @@ func TestEffectProfileOptionsValidate(t *testing.T) {
 			wantValid: true,
 		},
 		{
+			name:       "a plant wire socket without a catalog commands nothing",
+			options:    effectProfileOptions{Profile: device.EffectProfileEmulator, PlantWireSocket: "/tmp/plantwire/host.sock"},
+			wantReason: "emulator effect profile with --plant-wire-socket requires --device-catalog",
+		},
+		{
+			name:       "a physical plant wire socket without a catalog commands nothing",
+			options:    effectProfileOptions{Profile: device.EffectProfilePhysical, PlantWireSocket: "/tmp/plantwire/host.sock", LiveActuation: true, OwnerAuthorized: true},
+			wantReason: "physical effect profile with --plant-wire-socket requires --device-catalog",
+		},
+		{
+			name:      "a plant wire socket with its catalog",
+			options:   effectProfileOptions{Profile: device.EffectProfileEmulator, PlantWireSocket: "/tmp/plantwire/host.sock", DeviceCatalog: "catalog.json"},
+			wantValid: true,
+		},
+		{
 			name: "physical requires live actuation",
 			options: effectProfileOptions{
 				Profile: device.EffectProfilePhysical, DeviceSocket: "/tmp/device.sock", DeviceCatalog: "catalog.json",

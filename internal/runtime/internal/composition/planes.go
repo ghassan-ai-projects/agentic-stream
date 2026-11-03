@@ -12,6 +12,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/fixture"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/rule"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy"
 	app "github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/app"
 	store "github.com/ghassan-ai-projects/agentic-stream/internal/runtime/internal/store"
@@ -75,8 +76,7 @@ func composePipeline(cfg PipelineConfig, log *eventlog.EventLog, stream *engine.
 	if err != nil {
 		return nil, err
 	}
-	transactions := &store.PipelineStore{DB: cfg.DB, Policy: policyGateway, RuntimeOwner: runtimeOwnershipCheck(cfg), OwnerEpoch: cfg.OwnerEpoch, Episodes: episodeService, TenantID: cfg.TenantID}
-	admitter, err := composeAdmission(cfg, transactions)
+	transactions, admitter, err := composeAdmissionPlane(cfg, policyGateway, episodeService)
 	if err != nil {
 		return nil, err
 	}
@@ -92,8 +92,6 @@ func pipelineDependencies(cfg PipelineConfig, log *eventlog.EventLog, stream *en
 	}
 }
 
-// composeGovernance builds the policy plane and the action plane that executes
-// what policy approves.
 func composeGovernance(cfg PipelineConfig) (*policy.Service, *actions.Service, error) {
 	policyGateway, err := composePolicy(cfg)
 	if err != nil {
@@ -115,7 +113,7 @@ func composeAdmission(cfg PipelineConfig, transactions *store.PipelineStore) (*a
 }
 
 func composeEpisodes(cfg PipelineConfig) (*episodes.Service, error) {
-	service, err := episodes.New(episodes.Config{Spec: cfg.Spec, IDGenerator: cfg.IDGenerator, CostControl: &runtimecontrol.CostLedger{}, Execution: &episodes.ExecutionConfig{DB: cfg.DB, Executor: cfg.Executor, Clock: cfg.Clock, OwnerEpoch: cfg.OwnerEpoch, RuntimeOwner: runtimeOwnershipCheck(cfg), DecisionEpoch: policyEpochCheck(cfg), Telemetry: cfg.Telemetry}})
+	service, err := episodes.New(episodes.Config{Spec: cfg.Spec, IDGenerator: cfg.IDGenerator, CostControl: &runtimecontrol.CostLedger{}, Execution: &episodes.ExecutionConfig{DB: cfg.DB, Executor: rule.New(cfg.Executor, cfg.Clock), Clock: cfg.Clock, OwnerEpoch: cfg.OwnerEpoch, RuntimeOwner: runtimeOwnershipCheck(cfg), DecisionEpoch: policyEpochCheck(cfg), Telemetry: cfg.Telemetry}})
 	if err != nil {
 		return nil, fmt.Errorf("compose episodes: %w", err)
 	}

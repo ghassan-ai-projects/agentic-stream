@@ -9,6 +9,7 @@ import (
 
 	"google.golang.org/grpc"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/draftport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/evidence"
 	nativeexecutor "github.com/ghassan-ai-projects/agentic-stream/internal/executor/native"
@@ -219,4 +220,11 @@ func (r *WorkerBackend) closeEvidenceServer(errs []error) []error {
 		r.evidenceListener = nil
 	}
 	return errs
+}
+
+func (r *WorkerBackend) Drafter() draftport.Drafter {
+	if r.workerConn == nil {
+		return nil
+	}
+	return remoteexecutor.NewDrafter(runtimev1.NewEpisodeWorkerClient(r.workerConn), r.cfg.WorkerName, r.cfg.RuntimeEpoch)
 }

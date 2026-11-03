@@ -1,0 +1,11 @@
+{
+  "diagnoses": [
+    {"rises": "axial", "above": 1.15, "diagnosis_code": "misalignment", "intent": {"type": "schedule_maintenance", "risk": "R1", "parameters": {"work_order": "misalignment"}}},
+    {"rises": "vibration", "above": 1.15, "diagnosis_code": "bearing_wear", "intent": {"type": "schedule_maintenance", "risk": "R1", "parameters": {"work_order": "bearing_wear"}}},
+    {"rises": "current", "above": 1.2, "diagnosis_code": "overload", "intent": {"type": "reduce_load", "risk": "R2", "parameters": {"level": "relieve"}}}
+  ],
+  "drafts": {
+    "bearing_wear": "features.vibration_mean_24h > 0.0 && features.axial_mean_24h > 0.0 && features.vibration_mean_15m / features.vibration_mean_24h > 1.15 && features.axial_mean_15m / features.axial_mean_24h <= 1.15",
+    "misalignment": "features.axial_mean_24h > 0.0 && features.axial_mean_15m / features.axial_mean_24h > 1.15"
+  }
+}

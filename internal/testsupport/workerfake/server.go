@@ -32,6 +32,7 @@ type Server struct {
 	MaxStreamBytes    uint64
 	Now               func() time.Time
 	ExecuteFunc       ExecuteFunc
+	DraftFunc         DraftFunc
 }
 
 func (s *Server) limits() Limits {

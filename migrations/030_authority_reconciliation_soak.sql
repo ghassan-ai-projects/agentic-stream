@@ -26,7 +26,8 @@ CREATE TABLE device_command_bindings (
     owner_epoch     TEXT NOT NULL,
     owner_instance  TEXT NOT NULL,
     command_sha256  BLOB,
-    bound_at        TEXT NOT NULL
+    bound_at        TEXT NOT NULL,
+    no_readback     INTEGER NOT NULL DEFAULT 0 CHECK (no_readback IN (0, 1))
 ) STRICT;
 
 CREATE INDEX device_command_bindings_device_boot

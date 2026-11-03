@@ -80,27 +80,29 @@ func TestACommandIsPublishedToTheOutboxOnce(t *testing.T) {
 func TestTheHourlyDispatchBudgetIsPerTenantTypeAndHour(t *testing.T) {
 	t.Parallel()
 	db, intentID := openPolicyFixture(t, "R1", 1, 1, fixtureNow.Add(time.Hour))
+	var firstHour string
 	inJoined(t, db, func(tx *Tx) error {
 		row, err := tx.LoadIntent(t.Context(), intentID)
 		if err != nil {
 			return err
 		}
-		row.RateLimitPerHour = 2
+		row.RateLimitPerHour, firstHour = 2, row.EventHorizon.UTC().Format("2006-01-02T15:00")
 		for attempt, wantLimited := range []bool{false, false, true, true} {
-			if limited, err := tx.DispatchWithinLimit(t.Context(), row, fixtureNow); err != nil || limited != wantLimited {
+			if limited, err := tx.DispatchWithinLimit(t.Context(), row); err != nil || limited != wantLimited {
 				t.Fatalf("dispatch %d at the limit of 2: limited=%t, %v; want limited=%t", attempt+1, limited, err, wantLimited)
 			}
 		}
-		if limited, err := tx.DispatchWithinLimit(t.Context(), row, fixtureNow.Add(time.Hour)); err != nil || limited {
-			t.Fatalf("the next hour is limited=%t, %v; want a fresh budget", limited, err)
+		row.EventHorizon = row.EventHorizon.Add(time.Hour)
+		if limited, err := tx.DispatchWithinLimit(t.Context(), row); err != nil || limited {
+			t.Fatalf("the next hour of event time is limited=%t, %v; want a fresh budget", limited, err)
 		}
 		row.IntentType = "page"
-		if limited, err := tx.DispatchWithinLimit(t.Context(), row, fixtureNow); err != nil || limited {
+		if limited, err := tx.DispatchWithinLimit(t.Context(), row); err != nil || limited {
 			t.Fatalf("another intent type is limited=%t, %v; want its own budget", limited, err)
 		}
 		return nil
 	})
-	if counted := scalar[int](t, db, "SELECT count FROM intent_dispatch_counts WHERE intent_type = 'create_ticket' AND bucket = ?", fixtureNow.Format("2006-01-02T15:00")); counted != 2 {
+	if counted := scalar[int](t, db, "SELECT count FROM intent_dispatch_counts WHERE intent_type = 'create_ticket' AND bucket = ?", firstHour); counted != 2 {
 		t.Fatalf("recorded dispatches = %d, want the budget of 2 and no more", counted)
 	}
 }

@@ -19,7 +19,10 @@ The runtime validates these embedded schemas under
 
 The `decision-v1.json` contract binds the Decision to `decision_id`,
 `episode_id`, `attempt_id`, `fence`, and `snapshot_digest`, and bounds confidence
-and Intent count. The `intent-v1.json` contract binds each Intent to its
+and Intent count. An optional `diagnosis_code` names the diagnosis; when the
+spec declares a diagnosis catalog, a code outside it is refused. Rule promotion
+keys verified cases by this code (shared with the worker, which carries a copy
+of the schema). The `intent-v1.json` contract binds each Intent to its
 Decision, tenant, Situation version, risk class, parameters, and expiry.
 
 ## Validation order

@@ -117,7 +117,7 @@ func TestATrippedInterlockRefusesBothInstallingAndFiring(t *testing.T) {
 	if _, err := service.Dispatch(t.Context(), installable("cmd-2")); err == nil || !strings.Contains(err.Error(), "interlock") {
 		t.Fatalf("install err = %v, want an interlock refusal", err)
 	}
-	if _, err := service.FireEvent(t.Context(), "evt-1", "motor-1", map[string]any{"temperature": 95}); err == nil || !strings.Contains(err.Error(), "interlock") {
+	if _, err := service.FireEvent(t.Context(), "evt-1", "motor-1", featuresOf(map[string]any{"temperature": 95})); err == nil || !strings.Contains(err.Error(), "interlock") {
 		t.Fatalf("fire err = %v, want an interlock refusal", err)
 	}
 	if n, state := countWatches(t, db), readWatch(t, db, "cmd-1"); n != 1 || state.Fires != 0 || state.Remaining != 2 {

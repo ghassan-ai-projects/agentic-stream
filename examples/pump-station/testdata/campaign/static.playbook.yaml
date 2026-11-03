@@ -1,0 +1,43 @@
+apiVersion: agentic-stream/v1
+kind: Playbook
+metadata:
+  name: site-a-static
+  spec: pump_station
+rules:
+  - id: bearing-wear
+    version: 1
+    diagnosisCode: bearing_wear
+    when: >
+      features.vibration_mean_24h > 0.0 && features.axial_mean_24h > 0.0 &&
+      features.vibration_mean_15m / features.vibration_mean_24h > 1.15 &&
+      features.axial_mean_15m / features.axial_mean_24h <= 1.15
+    recommend:
+      intent: schedule_maintenance
+      preset: bearing_wear
+    envelope: {}
+    cap: {}
+    pinnedKind:
+      name: pump
+      digest: sha256:17f5e82f53bc294d167f8543598ba2d49f5c60373985b78aa9ebe17288e79f19
+    mode: active
+    rateCapPerHour: 4
+    provenance:
+      sourceEpisodes: [hand-written]
+  - id: misalignment
+    version: 1
+    diagnosisCode: misalignment
+    when: >
+      features.axial_mean_24h > 0.0 &&
+      features.axial_mean_15m / features.axial_mean_24h > 1.15
+    recommend:
+      intent: schedule_maintenance
+      preset: misalignment
+    envelope: {}
+    cap: {}
+    pinnedKind:
+      name: pump
+      digest: sha256:17f5e82f53bc294d167f8543598ba2d49f5c60373985b78aa9ebe17288e79f19
+    mode: active
+    rateCapPerHour: 4
+    provenance:
+      sourceEpisodes: [hand-written]

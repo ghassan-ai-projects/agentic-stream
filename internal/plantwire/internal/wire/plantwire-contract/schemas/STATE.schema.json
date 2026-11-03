@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:plant-wire:v1:STATE",
   "title": "STATE",
-  "description": "Host state and heartbeat; with online false and a refusal, the host refuses the session. online false is otherwise a graceful goodbye.",
+  "description": "Host state and heartbeat, sent every heartbeat_interval_ms of wall time and also while the host holds an HSYNC; with online false and a refusal, the host refuses the session. online false is otherwise a graceful goodbye.",
   "type": "object",
   "required": [
     "type",

@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/draftport"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/executor/fixture"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
@@ -36,6 +37,8 @@ func (p *workerProbe) ConnectWorker(_ context.Context, secret []byte) (episodes.
 	p.secret = secret
 	return p.executor, p.step("worker")
 }
+func (p *workerProbe) Drafter() draftport.Drafter { return nil }
+
 func (p *workerProbe) Errors() <-chan error { return p.errors }
 func (p *workerProbe) Close() error         { return p.step("close") }
 

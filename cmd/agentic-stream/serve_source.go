@@ -25,7 +25,7 @@ func startContinuousPipeline(ctx context.Context, stop context.CancelFunc, core 
 }
 
 func (core *runtimeCore) openContinuousPipeline(ctx context.Context, stop context.CancelFunc, flags serveFlags, opened effects, metrics *telemetry.Runtime, failures chan error, cleanup *cleanups) (*runtime.Pipeline, error) {
-	compiled, err := loadSpec(ctx, flags)
+	compiled, err := core.loadDeployment(ctx, flags)
 	if err != nil {
 		return nil, err
 	}
@@ -47,6 +47,29 @@ func loadSpec(ctx context.Context, flags serveFlags) (*spec.CompiledSpec, error)
 		return nil, fmt.Errorf("compile spec: %w", err)
 	}
 	return compiled, logLoadedSpec(slog.Default(), compiled, flags.specPath)
+}
+
+func (core *runtimeCore) loadDeployment(ctx context.Context, flags serveFlags) (*spec.CompiledSpec, error) {
+	compiled, err := loadSpec(ctx, flags)
+	if err != nil {
+		return nil, err
+	}
+	core.playbook, err = loadPlaybook(compiled, flags.playbookPath)
+	core.playbookPath, core.draftAfter = flags.playbookPath, flags.draftAfter
+	return compiled, err
+}
+
+func loadPlaybook(compiled *spec.CompiledSpec, path string) (*spec.CompiledPlaybook, error) {
+	if path == "" {
+		return nil, nil
+	}
+	playbook, err := spec.CompilePlaybookFile(compiled, path)
+	if err != nil {
+		return nil, fmt.Errorf("compile playbook: %w", err)
+	}
+	slog.Info("playbook loaded", "playbook", playbook.Metadata.Name, "rules", len(playbook.Rules), "digest", playbook.Digest,
+		"spec_digest", compiled.Digest, "path", path)
+	return playbook, nil
 }
 
 func logLoadedSpec(logger *slog.Logger, compiled *spec.CompiledSpec, path string) error {

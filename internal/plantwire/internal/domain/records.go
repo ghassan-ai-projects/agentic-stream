@@ -34,7 +34,7 @@ func goodbyeRecord(epoch int64, heartbeat uint64) Record {
 }
 
 func syncRecord(through uint64) Record {
-	return Record{Type: "HSYNC", Fields: map[string]any{"through_seq": through}}
+	return Record{Type: TypeHostSync, Fields: map[string]any{"through_seq": through}}
 }
 
 func rebirthRecord() Record {

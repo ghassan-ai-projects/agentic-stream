@@ -1,0 +1,29 @@
+# Approval governance for the rule-promotion campaign driver. The approver's
+# key is the well-known all-zero-seed test key; never use it for a real
+# approval.
+tenant: default
+principals:
+  - id: campaign-relay
+  - id: campaign-approver
+    public_key: O2onvM62pC1io6jQKm8Nc2UyFXcd4kOmOsBIoYtZ2ik=
+roles:
+  - id: pump-station-approver
+    name: Pump station approver
+    members: [campaign-approver]
+    authorities:
+      - entity: site-a:pump-1
+        risks: [R1, R2]
+      - entity: site-a:pump-2
+        risks: [R1, R2]
+      - entity: site-a:pump-3
+        risks: [R1, R2]
+      - entity: site-a:pump-4
+        risks: [R1, R2]
+      - entity: site-a:pump-5
+        risks: [R1, R2]
+      - entity: site-a:pump-6
+        risks: [R1, R2]
+      - entity: site-a:pump-7
+        risks: [R1, R2]
+      - entity: site-a:pump-8
+        risks: [R1, R2]

@@ -18,6 +18,10 @@ func (h *Host) VerifyDeviceCommand(ctx context.Context, command actionport.Comma
 	if !sent {
 		return "", nil, nil
 	}
+	if t.unknownWithoutReadback() {
+		t.window.Stop()
+		return unreadBy(t.order)
+	}
 	verification := t.awaitReadings(ctx)
 	if !verification.Verified {
 		slog.InfoContext(ctx, "plant wire command not verified: no matching reading of its outputs", "command_id", t.order.CommandID,
@@ -32,6 +36,7 @@ func (h *Host) expectVerification(t target, effect actionport.Effect, err error)
 		return
 	}
 	t.window = h.clock.NewTimer(VerificationWindow)
+	t.unknown = actionport.IsUnknownOutcome(err)
 	h.sentMu.Lock()
 	defer h.sentMu.Unlock()
 	h.sent[t.order.CommandID] = t
@@ -43,6 +48,10 @@ func (h *Host) takeSent(commandID string) (target, bool) {
 	t, sent := h.sent[commandID]
 	delete(h.sent, commandID)
 	return t, sent
+}
+
+func (t target) unknownWithoutReadback() bool {
+	return t.unknown && !t.view.ReadsBack(t.order.Args)
 }
 
 func (t target) awaitReadings(ctx context.Context) domain.Verification {
@@ -58,12 +67,20 @@ func (t target) awaitReadings(ctx context.Context) domain.Verification {
 }
 
 func verifiedBy(order domain.CommandOrder, verification domain.Verification) (string, map[string]any, error) {
+	return sealedAs(actionport.CommandSucceeded, order, verification)
+}
+
+func unreadBy(order domain.CommandOrder) (string, map[string]any, error) {
+	return sealedAs(actionport.CommandManualReview, order, domain.Verification{CommandID: order.CommandID, Device: order.Device, BootID: order.ExpectedBootID})
+}
+
+func sealedAs(status string, order domain.CommandOrder, verification domain.Verification) (string, map[string]any, error) {
 	device := authority.DeviceBoot{DeviceID: order.Device, BootID: order.ExpectedBootID}
 	sealed, err := authority.SealReconciliationEvidence(readingSource, order.Device, deviceState(device), verification.Feedback())
 	if err != nil {
-		return "", nil, fmt.Errorf("plantwire: seal the readings that verify %s: %w", order.CommandID, err)
+		return "", nil, fmt.Errorf("plantwire: seal the readings of %s: %w", order.CommandID, err)
 	}
-	return actionport.CommandSucceeded, sealed.Document(), nil
+	return status, sealed.Document(), nil
 }
 
 func (s *session) unwatch(ctx context.Context, commandID string, verified <-chan domain.Verification) domain.Verification {

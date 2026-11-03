@@ -35,6 +35,8 @@ type target struct {
 	view     domain.DeviceView
 	verified chan domain.Verification
 	window   timer
+	answerBy time.Time
+	unknown  bool
 }
 
 func (h *Host) DispatchAuthorized(ctx context.Context, command actionport.Command, authorization actionport.Authorization) (actionport.Effect, error) {
@@ -68,8 +70,9 @@ func (h *Host) prepare(ctx context.Context, command actionport.Command, authoriz
 	if err := authorize(ctx, authorization); err != nil {
 		return target{}, err
 	}
-	order.ExpectedBootID = view.BootID
-	return target{order: order, named: command.NormalizedTarget, live: live, view: view, verified: make(chan domain.Verification, 1)}, nil
+	order.ExpectedBootID, order.DeadlineNS = view.BootID, view.NodeNowNS+order.Expiry.Nanoseconds()
+	return target{order: order, named: command.NormalizedTarget, live: live, view: view, verified: make(chan domain.Verification, 1),
+		answerBy: h.clock.Now().Add(order.Expiry)}, nil
 }
 
 func (h *Host) checkOrigin(t target) (actionport.Effect, error) {
@@ -88,9 +91,9 @@ func (h *Host) orderFor(command actionport.Command) (domain.CommandOrder, error)
 	if !named {
 		return domain.CommandOrder{}, fmt.Errorf("%w: command %s for %s", ErrDeviceNotInSite, command.CommandID, bounded.Target)
 	}
-	deadline := h.clock.Now().Add(time.Duration(bounded.ExpiresAfterMs) * time.Millisecond)
 	return domain.CommandOrder{CommandID: command.CommandID, IdempotencyKey: command.IdempotencyKey, PolicyDigest: command.PolicyDigest,
-		Device: device, Command: bounded.Operation, Args: bounded.Parameters, DeadlineNS: deadline.UnixNano()}, nil
+		Device: device, Command: bounded.Operation, Args: bounded.Parameters,
+		Expiry: time.Duration(bounded.ExpiresAfterMs) * time.Millisecond}, nil
 }
 
 func authorize(ctx context.Context, authorization actionport.Authorization) error {
@@ -105,7 +108,7 @@ func authorize(ctx context.Context, authorization actionport.Authorization) erro
 
 func (h *Host) command(ctx context.Context, t target, claim authority.TargetClaim) (actionport.Effect, error) {
 	answers := make(chan domain.Settlement, mailboxSize)
-	deadline := h.clock.NewTimer(time.Unix(0, t.order.DeadlineNS).Sub(h.clock.Now()) + AnswerGrace)
+	deadline := h.clock.NewTimer(t.answerBy.Sub(h.clock.Now()) + AnswerGrace)
 	defer deadline.Stop()
 	wait := &waiting{host: h, live: t.live, order: t.order, answers: answers, deadline: deadline, claim: claim}
 	wait.startRenewal()

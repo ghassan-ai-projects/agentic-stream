@@ -76,13 +76,14 @@ func TestReconciliationMovesFromFirstStateThroughManualReviewToAReboot(t *testin
 	}
 }
 
-func TestBoundCommandsAreScopedToTheDeviceBoot(t *testing.T) {
+func TestReadBackCommandsAreScopedToTheDeviceBootAndLeaveOutNoReadbackOnes(t *testing.T) {
 	t.Parallel()
 	s, _ := openStore(t)
 	bootB := domain.DeviceBoot{DeviceID: bootA.DeviceID, BootID: "boot-B"}
-	for commandID, device := range map[string]domain.DeviceBoot{"cmd-2": bootA, "cmd-1": bootA, "cmd-other-boot": bootB} {
+	for commandID, device := range map[string]domain.DeviceBoot{"cmd-2": bootA, "cmd-1": bootA, "cmd-other-boot": bootB, "cmd-booking": bootA} {
 		work(t, s, func(tx *Tx) error {
-			return tx.InsertBinding(t.Context(), domain.CommandBinding{CommandID: commandID, Target: "fan-01", Device: device, Owner: owner}, testNow)
+			binding := domain.CommandBinding{CommandID: commandID, Target: "fan-01", Device: device, Owner: owner, NoReadback: commandID == "cmd-booking"}
+			return tx.InsertBinding(t.Context(), binding, testNow)
 		})
 	}
 	var asked []string
@@ -94,7 +95,7 @@ func TestBoundCommandsAreScopedToTheDeviceBoot(t *testing.T) {
 		return int64(len(commandIDs)), nil
 	}
 	work(t, s, func(tx *Tx) error {
-		commandIDs, err := tx.BoundCommands(t.Context(), bootA)
+		commandIDs, err := tx.ReadBackCommands(t.Context(), bootA)
 		if err != nil {
 			return err
 		}

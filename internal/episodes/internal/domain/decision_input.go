@@ -8,6 +8,7 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/canonicaljson"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/decisions"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodeledger"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
 type decisionRequestAuthority struct {
@@ -17,10 +18,10 @@ type decisionRequestAuthority struct {
 	Executor           struct {
 		IntentCatalog       []map[string]any `json:"intent_catalog"`
 		IntentCatalogSHA256 string           `json:"intent_catalog_sha256"`
+		DiagnosisCatalog    string           `json:"diagnosis_catalog"`
 	} `json:"executor"`
 }
 
-// DecisionInput verifies request authority and binds the attempt validation input.
 func DecisionInput(req *Request, identity episodeledger.Identity, now time.Time) (decisions.Input, error) {
 	var payload decisionRequestAuthority
 	if err := json.Unmarshal(req.RequestJSON, &payload); err != nil {
@@ -41,7 +42,24 @@ func (payload decisionRequestAuthority) validationInput(req *Request, identity e
 	if err != nil {
 		return decisions.Input{}, err
 	}
-	return payload.boundValidationInput(req, identity, now, allowed, compiled), nil
+	input := payload.boundValidationInput(req, identity, now, allowed, compiled)
+	input.DiagnosisCodes, err = payload.diagnosisCodes()
+	return input, err
+}
+
+func (payload decisionRequestAuthority) diagnosisCodes() (map[string]struct{}, error) {
+	if payload.Executor.DiagnosisCatalog == "" {
+		return nil, nil
+	}
+	entries, err := spec.ParseDiagnosisCodes(payload.Executor.DiagnosisCatalog)
+	if err != nil {
+		return nil, fmt.Errorf("read diagnosis catalog of the request: %w", err)
+	}
+	codes := make(map[string]struct{}, len(entries))
+	for _, code := range entries {
+		codes[code] = struct{}{}
+	}
+	return codes, nil
 }
 
 func (payload decisionRequestAuthority) verifiedIntentCatalog() (*decisions.IntentCatalog, error) {

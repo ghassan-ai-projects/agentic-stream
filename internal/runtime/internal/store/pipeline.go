@@ -7,23 +7,21 @@ import (
 	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/episodes"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/playbook"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/policy"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/storage"
 )
 
-// PipelineStore joins governance and owner checks to the caller-owned database.
 type PipelineStore struct {
 	DB           *storage.DB
 	Policy       *policy.Service
 	RuntimeOwner storage.OwnerCheck
 	OwnerEpoch   string
-	// Episodes and TenantID serve admission: the episode assembler and the
-	// tenant whose scheduler items are admitted.
-	Episodes *episodes.Service
-	TenantID string
+	Episodes     *episodes.Service
+	Playbook     *playbook.Service
+	TenantID     string
 }
 
-// AssertOwner checks the bound owner epoch in the original transaction scope.
 func (p *PipelineStore) AssertOwner(ctx context.Context) error {
 	if err := p.DB.WithTx(ctx, func(tx *sql.Tx) error {
 		return assertRuntimeOwner(ctx, tx, p.RuntimeOwner, p.OwnerEpoch)
@@ -33,12 +31,10 @@ func (p *PipelineStore) AssertOwner(ctx context.Context) error {
 	return nil
 }
 
-// NextPendingIntent delegates the policy-owned queue projection.
 func (p *PipelineStore) NextPendingIntent(ctx context.Context, tenant string) (string, bool, error) {
 	return policy.NextPendingIntent(ctx, p.DB.DB, tenant) //nolint:wrapcheck // Policy names the failed read; preserve the existing batch error text.
 }
 
-// EvaluateIntent commits one policy evaluation on the original transaction.
 func (p *PipelineStore) EvaluateIntent(ctx context.Context, intentID string, now time.Time) error {
 	if err := p.DB.WithTx(ctx, func(tx *sql.Tx) error {
 		if _, err := p.Policy.EvaluateIntent(ctx, tx, policy.EvaluationRequest{IntentID: intentID, Now: now}); err != nil {
