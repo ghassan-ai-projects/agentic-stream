@@ -61,3 +61,13 @@ export async function evaluate(cdp, expression) {
   if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description ?? r.exceptionDetails.text);
   return r.result.value;
 }
+
+export function captureConsole(cdp, { network = false } = {}) {
+  const logs = [];
+  cdp.on((m) => {
+    if (m.method === 'Runtime.exceptionThrown') logs.push('EXC ' + (m.params.exceptionDetails.exception?.description ?? m.params.exceptionDetails.text).slice(0, 400));
+    if (m.method === 'Runtime.consoleAPICalled' && ['error', 'warning'].includes(m.params.type)) logs.push(m.params.type.toUpperCase() + ' ' + m.params.args.map((a) => a.value ?? a.description).join(' ').slice(0, 300));
+    if (network && m.method === 'Network.loadingFailed') logs.push('NETFAIL ' + m.params.errorText + (m.params.canceled ? ' canceled' : ''));
+  });
+  return logs;
+}

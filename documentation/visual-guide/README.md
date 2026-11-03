@@ -26,11 +26,24 @@ fresh clone the 3D world and the film player stay empty until you build them.
 ## Where the numbers come from
 
 Nothing is typed into a page by hand. `tools/extract-run-data.mjs` reads the
-recorded run (its SQLite database and its exported artifact) and writes
-`src/data/run-data.json`. Pages and the film read that file. Illustrative
+recorded run (its SQLite database and the artifact exported by
+`internal/runartifact`) and writes `src/data/run-data.json`, including the
+spec's thresholds, holds, window and lateness. It fails if the verdict, the
+zero-tolerance counters or the run id are missing. The run id comes from the
+manifest, or from the artifact directory name when the manifest leaves it empty
+(`run.idFrom` records which). `node tools/check-fresh.mjs` flags a stale film:
+it compares the narration script with the rendered sentences in
+`timeline.generated.js` and the counts the narration speaks with the run data.
+Pages and the film read that file. Illustrative
 moments (a quarantined malformed input, a late reading, an intent outside the
 catalog) are labelled as illustrative in the picture, and the R2 fan path with
 human approval is labelled as designed, not part of this run.
+
+Limits of the evidence, also stated on the home page: "verified effect" means the
+device emulator that executed the command also answered the state query; the
+run's spec and policy digests come from the run's own spec copy and cannot be
+recomputed from `examples/`; and no playbook rule (`internal/playbook`,
+`internal/executor/rule`) answered the case, the model worker did.
 
 ## Rebuild
 

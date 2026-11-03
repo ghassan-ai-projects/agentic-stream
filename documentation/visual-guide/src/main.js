@@ -125,7 +125,7 @@ function ringLabels(T) {
   overview.forEach((id) => {
     const s = STATIONS[id];
     const p = stationPoint(id);
-    p.y = 8.2 + (id === 'tamoz' ? 1 : 0);
+    p.y = 8.2;
     tags.put(`ov-${id}`, p, s.name, Math.min(1, v) * 0.92, `name mini ${s.plane}`);
   });
 }

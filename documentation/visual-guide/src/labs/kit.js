@@ -1,3 +1,5 @@
+import { clamp } from '../util.js';
+
 export const $ = (sel, root = document) => root.querySelector(sel);
 export const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 const NS = 'http://www.w3.org/2000/svg';
@@ -16,10 +18,23 @@ export function h(tag, attrs = {}, children = []) {
   return e;
 }
 
-export const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
-export const lerp = (a, b, t) => a + (b - a) * t;
-export const ease = (t) => { const x = clamp(t); return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; };
-export const fmt = (n, d = 1) => Number(n).toFixed(d);
+export const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+export function wrap(text, n) {
+  const lines = [];
+  let cur = '';
+  for (const w of text.split(' ')) { if ((cur + ' ' + w).trim().length > n) { lines.push(cur); cur = w; } else cur = (cur + ' ' + w).trim(); }
+  if (cur) lines.push(cur);
+  return lines;
+}
+
+export function keepFocus(root, rebuild) {
+  const id = document.activeElement?.closest?.('[data-focus]')?.dataset.focus;
+  rebuild();
+  if (id) root.querySelector(`[data-focus="${id}"]`)?.focus({ preventScroll: true });
+}
+
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 export class Clock {
   constructor({ duration, onFrame, speed = 1 }) {
@@ -37,7 +52,10 @@ export class Clock {
     this.last = now;
     requestAnimationFrame(this.loop);
   }
-  play() { if (this.t >= this.duration) this.t = 0; this.playing = true; this.last = performance.now(); this.onFrame(this.t, this); }
+  play() {
+    if (reducedMotion) { this.seek(this.duration); return; }
+    if (this.t >= this.duration) this.t = 0;
+    this.playing = true; this.last = performance.now(); this.onFrame(this.t, this); }
   pause() { this.playing = false; this.onFrame(this.t, this); }
   seek(t) { this.t = clamp(t, 0, this.duration); this.onFrame(this.t, this); }
 }

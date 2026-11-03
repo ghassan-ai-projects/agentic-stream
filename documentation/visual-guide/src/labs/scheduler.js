@@ -1,8 +1,16 @@
 import { RUN, COUNTS } from '../story.js';
-import { $, s, h, clamp, fmt, Clock, transport, control, select, toggle } from './kit.js';
+import { fmt } from '../util.js';
+import { $, s, h, plural, Clock, transport, control, select, toggle } from './kit.js';
 
 const W = 1080, H = 530;
-const state = { pace: 'recorded', threshold: 35, debounce: 5, cooldown: 20, material: true };
+const RECORDED = { threshold: RUN.spec.trigger.threshold, debounce: RUN.spec.trigger.debounceSeconds, cooldown: RUN.spec.trigger.cooldownSeconds };
+const state = { pace: 'recorded', ...RECORDED, material: true };
+const N = RUN.triggers.length;
+const [queuedFirst, queuedLast] = RUN.scheduler;
+const lastLive = Math.max(...RUN.versions.map((v) => v.t));
+const recordedSpan = Math.ceil(RUN.episode.acceptedMs / 1000) + 3;
+const wallSpan = Math.max(...RUN.triggers.map((t) => t.wallMs)) / 1000;
+const isRecorded = () => state.pace === 'recorded' && state.threshold === RECORDED.threshold && state.debounce === RECORDED.debounce && state.cooldown === RECORDED.cooldown && state.material;
 const SLIDE = { x: 60, w: 960 };
 const COL = { condition: '#4a5a86', nothing: '#6b86c9', queued: '#f5b94a', episode: '#34d399', replaced: '#ff7a59' };
 
@@ -42,20 +50,20 @@ function simulate() {
   return { rows, items, episodes };
 }
 
-const svg = s('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'Evaluations of 22 versions, queued work and episodes started' });
+const svg = s('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': `Evaluations of ${N} versions, queued work and episodes started` });
 $('#stage').append(svg);
 const chips = $('#chips');
 
 function render(f) {
   const sim = simulate();
-  const tMax = Math.max(state.pace === 'recorded' ? 25 : 380, ...sim.items.map((i) => i.notBefore + 3));
+  const tMax = Math.max(state.pace === 'recorded' ? recordedSpan : lastLive + 50, ...sim.items.map((i) => i.notBefore + 3));
   const T = f * tMax;
   const X = (t) => SLIDE.x + (t / tMax) * SLIDE.w;
   svg.replaceChildren();
   const add = (n) => svg.append(n);
   add(s('text', { x: 60, y: 28, class: 'big' }, 'Every new version is scored'));
-  add(s('text', { x: 60, y: 46, class: 'small mute' }, `bar height is the score; the line is the threshold (${state.threshold}). Columns are versions 1 to 22.`));
-  const colX = (i) => SLIDE.x + 20 + (i / 21) * (SLIDE.w - 40);
+  add(s('text', { x: 60, y: 46, class: 'small mute' }, `bar height is the score; the line is the threshold (${state.threshold}). Columns are versions 1 to ${N}.`));
+  const colX = (i) => SLIDE.x + 20 + (i / (N - 1)) * (SLIDE.w - 40);
   const scoreY = (sc) => 190 - (sc / 70) * 110;
   add(s('line', { x1: 60, x2: 1020, y1: 190, y2: 190, stroke: '#2a3a63' }));
   add(s('line', { x1: 60, x2: 1020, y1: scoreY(state.threshold), y2: scoreY(state.threshold), stroke: '#f5b94a', 'stroke-dasharray': '6 5' }));
@@ -75,7 +83,7 @@ function render(f) {
   add(s('line', { x1: SLIDE.x, x2: SLIDE.x + SLIDE.w, y1: axisY, y2: axisY, stroke: '#3a4c80', 'stroke-width': 2 }));
   const step = tMax > 100 ? 60 : 5;
   for (let t = 0; t <= tMax; t += step) { add(s('line', { x1: X(t), x2: X(t), y1: axisY - 4, y2: axisY + 4, stroke: '#3a4c80' })); add(s('text', { x: X(t), y: axisY + 20, class: 'small mute', 'text-anchor': 'middle' }, `${t} s`)); }
-  add(s('text', { x: SLIDE.x + SLIDE.w, y: axisY + 40, class: 'small mute', 'text-anchor': 'end' }, state.pace === 'recorded' ? 'wall-clock seconds in the recorded run (versions arrived within 1.6 s)' : 'wall-clock seconds for a live sensor (a slide every 30 s)'));
+  add(s('text', { x: SLIDE.x + SLIDE.w, y: axisY + 40, class: 'small mute', 'text-anchor': 'end' }, state.pace === 'recorded' ? `wall-clock seconds in the recorded run (all versions arrived within ${fmt(wallSpan, 1)} s)` : `wall-clock seconds for a live sensor (a slide every ${RUN.spec.slideSeconds} s)`));
   sim.items.forEach((it, k) => {
     const y = 345 + k * 44;
     if (y > 440) return;
@@ -90,7 +98,7 @@ function render(f) {
     if (it.status === 'admitted' && T >= it.notBefore) add(s('path', { d: `M ${X(it.notBefore)} ${y - 4} l 9 13 l -9 13 z`, fill: COL.episode }));
   });
   add(s('line', { x1: X(T), x2: X(T), y1: 318, y2: axisY + 6, stroke: '#fff', 'stroke-width': 2, opacity: 0.8 }));
-  if (state.pace === 'recorded' && state.threshold === 35 && state.debounce === 5 && state.cooldown === 20 && state.material) {
+  if (isRecorded()) {
     const rx = X(RUN.episode.acceptedMs / 1000);
     add(s('line', { x1: rx, x2: rx, y1: 322, y2: axisY, stroke: '#34d399', 'stroke-dasharray': '3 4', opacity: 0.8 }));
     add(s('text', { x: rx + 6, y: 456, class: 'small', style: 'fill:#34d399' }, `recorded: accepted at ${fmt(RUN.episode.acceptedMs / 1000, 1)} s`));
@@ -101,14 +109,14 @@ function render(f) {
   const queued = shown.filter((r) => r.outcome === 'queued').length;
   const replaced = sim.items.filter((i) => i.status === 'coalesced' && T >= i.endsAt).length;
   const eps = sim.episodes.filter((e) => T >= e.at).length;
-  const recorded = state.pace === 'recorded' && state.threshold === 35 && state.debounce === 5 && state.cooldown === 20 && state.material;
-  const match = recorded && sim.episodes.length === 1 && sim.episodes[0].v === 7 && sim.items[0].status === 'coalesced';
+  const recorded = isRecorded();
+  const match = recorded && sim.episodes.length === RUN.run.rows.episodes && sim.episodes[0].v === queuedLast.v && sim.items[0].status === 'coalesced';
   chips.replaceChildren(
     h('div', { class: 'chip' }, [h('b', {}, `${shown.length} of ${COUNTS.versions}`), h('small', {}, 'versions evaluated')]),
     h('div', { class: 'chip' }, [h('b', {}, `${ignored}`), h('small', {}, 'ignored (each with a recorded reason)')]),
     h('div', { class: 'chip warn' }, [h('b', {}, `${queued} queued · ${replaced} replaced`), h('small', {}, 'before any model runs')]),
-    h('div', { class: 'chip good' }, [h('b', {}, `${eps} of ${sim.episodes.length} episodes started`), h('small', {}, 'final count for these settings')]),
-    h('div', { class: `chip ${recorded ? (match ? 'good' : 'bad') : 'info'}` }, [h('b', {}, recorded ? (match ? 'matches the recorded run' : 'does NOT match the recorded run') : 'what-if'), h('small', {}, recorded ? 'recorded: 22 evaluations, v5 replaced by v7, 1 episode' : 'settings differ from the recorded run')]),
+    h('div', { class: 'chip good' }, [h('b', {}, `${eps} of ${plural(sim.episodes.length, 'episode')} started`), h('small', {}, 'final count for these settings')]),
+    h('div', { class: `chip ${recorded ? (match ? 'good' : 'bad') : 'info'}` }, [h('b', {}, recorded ? (match ? 'matches the recorded run' : 'does NOT match the recorded run') : 'what-if'), h('small', {}, recorded ? `recorded: ${N} evaluations, v${queuedFirst.v} replaced by v${queuedLast.v}, ${RUN.run.rows.episodes} episode` : 'settings differ from the recorded run')]),
   );
 }
 
@@ -116,8 +124,8 @@ const clock = new Clock({ duration: 18, speed: 1, onFrame: (t) => { render(t / 1
 const sync = transport($('#transport'), clock, { label: 'Replay' });
 const ctl = $('#ctl');
 select(ctl, { id: 'pace', label: 'Sensor pace', options: [['recorded', 'recorded replay (fast-forward)'], ['live', 'live sensor (30 s slides)']], value: 'recorded', onInput: (v) => { state.pace = v; render(clock.t / 18); } });
-control(ctl, { id: 'thr', label: 'Threshold', min: 0, max: 70, step: 1, value: 35, onInput: (v) => { state.threshold = v; render(clock.t / 18); } });
-control(ctl, { id: 'deb', label: 'Debounce', min: 0, max: 30, step: 1, value: 5, unit: ' s', onInput: (v) => { state.debounce = v; render(clock.t / 18); } });
-control(ctl, { id: 'cool', label: 'Cooldown', min: 0, max: 60, step: 1, value: 20, unit: ' s', onInput: (v) => { state.cooldown = v; render(clock.t / 18); } });
+control(ctl, { id: 'thr', label: 'Threshold', min: 0, max: 70, step: 1, value: state.threshold, onInput: (v) => { state.threshold = v; render(clock.t / 18); } });
+control(ctl, { id: 'deb', label: 'Debounce', min: 0, max: 30, step: 1, value: state.debounce, unit: ' s', onInput: (v) => { state.debounce = v; render(clock.t / 18); } });
+control(ctl, { id: 'cool', label: 'Cooldown', min: 0, max: 60, step: 1, value: state.cooldown, unit: ' s', onInput: (v) => { state.cooldown = v; render(clock.t / 18); } });
 toggle(ctl, { id: 'mat', label: 'Require a material change', value: true, onInput: (v) => { state.material = v; render(clock.t / 18); } });
 clock.seek(18);

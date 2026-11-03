@@ -1,11 +1,11 @@
 import * as THREE from 'three';
-import { COLORS, mat, box, cyl, edges, glowSprite, textPlane } from '../theme.js';
-import { stationGroup, setPlatformEnergy } from '../common.js';
-import { clamp, ramp, window01, decay, pulse, smooth, easeOut, easeInOut, lerp } from '../../util.js';
+import { COLORS, mat, box, edges, glowSprite } from '../theme.js';
+import { stationGroup, setPlatformEnergy, localPoint, nameTag } from '../common.js';
+import { clamp, ramp, window01, decay, easeOut, easeInOut, lerp } from '../../util.js';
 import { RUN } from '../../story.js';
 import { action, policy } from '../schedule.js';
 import { ch } from '../../timeline.js';
-import { angleOf, PORT, arcPoint, ringPoint, R, STEP } from '../layout.js';
+import { angleOf, PORT, ringPoint, R } from '../layout.js';
 
 const Y = 0.56;
 const GOLD = new THREE.Color(0xffd166);
@@ -69,7 +69,6 @@ export function createAction(bench, gateway, log) {
     if (T < action.atGateway) {
       const u = easeInOut((T - action.send) / (action.atGateway - action.send));
       const a = lerp(aAct + PORT, aGate - PORT * 0.4, u);
-      out.copy(ringPoint(a, 3.2 + Math.sin(Math.PI * u) * 4.5, lerp(R - 0.0, RR, Math.sin(Math.PI * Math.min(1, u * 1.0)))));
       out.copy(ringPoint(a, 3.0 + Math.sin(Math.PI * u) * 4.6, RR - (1 - Math.sin(Math.PI * u)) * 7.0));
       return true;
     }
@@ -110,9 +109,9 @@ export function createAction(bench, gateway, log) {
 
     const act = window01(T, policy.leave, ch.action.end + 1, 1.2);
     setPlatformEnergy(g, act * 0.9);
-    const P = (x, y, z) => g.localToWorld(new THREE.Vector3(x, y, z));
+    const P = localPoint(g);
     const near = window01(T, ch.action.start, action.outbox, 0.6);
-    tags.put('act-name', P(0, Y + 6.8, 5.2), 'Action dispatch<small>command · outbox · lease · outcome</small>', near * 0.95, 'name effect');
+    nameTag(tags, 'act-name', P(0, Y + 6.8, 5.2), 'Action dispatch<small>command · outbox · lease · outcome</small>', near, 'effect');
     tags.put('act-key', P(-2.6, Y + 4.0, 0), `idempotency key<small>${RUN.command.idempotencyKey}… · one logical request</small>`, window01(T, action.stamp - 0.1, action.lease, 0.4) * 0.95, 'note');
     tags.put('act-out', P(0, Y + 2.3, 4.0), 'outbox: written before sending<small>a crash cannot lose it</small>', window01(T, action.outbox, action.retry, 0.4) * 0.95, 'note');
     tags.put('act-retry', P(-6.2, Y + 2.6, 3.2), 'a repeat reuses the key<small>the provider can recognise it as the same request</small>', window01(T, action.retry - 0.1, action.lease, 0.4) * 0.95, 'note');

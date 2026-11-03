@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { COLORS, mat, box, cyl, edges, glowSprite } from '../theme.js';
-import { stationGroup, setPlatformEnergy } from '../common.js';
-import { clamp, ramp, window01, decay, pulse, smooth, easeOut, easeInOut, lerp } from '../../util.js';
+import { COLORS, mat, box, edges, glowSprite } from '../theme.js';
+import { stationGroup, localPoint, activate } from '../common.js';
+import { clamp, window01, decay, pulse, easeInOut, lerp } from '../../util.js';
 import { COUNTS, RUN } from '../../story.js';
 import { scheduler } from '../schedule.js';
 import { ch } from '../../timeline.js';
@@ -111,7 +111,7 @@ export function createScheduler() {
       if (it.v === 5 && T > scheduler.coalesce) s = Math.max(0.0001, 1 - clamp((T - scheduler.coalesce) / 0.9));
       o.position.copy(p); o.scale.setScalar(s); o.rotation.set(0, 0, 0); o.updateMatrix();
       tokens.setMatrixAt(i, o.matrix);
-      const h = Math.max(it.score, 1) * SC * (it.gate > T - 0.001 || it.verdict === 'queue' || true ? 1 : 1);
+      const h = Math.max(it.score, 1) * SC;
       const showCol = T < it.decided + 0.2 || it.verdict === 'queue';
       o.position.set(p.x, p.y + 0.11 + (h * s) / 2, p.z); o.scale.set(s, showCol ? h * s : 0.0001, s); o.updateMatrix();
       cols.setMatrixAt(i, o.matrix);
@@ -136,10 +136,9 @@ export function createScheduler() {
     spark.position.set(X_Q + 0.5, Y + 1.0, 0);
     spark.material.opacity = pulse(T, scheduler.coalesce + 0.15, 0.3) * 0.9;
 
-    const act = window01(T, ch.scheduler.start - 1, ch.scheduler.end, 1.2);
-    setPlatformEnergy(g, act * 0.9);
+    activate(g, T, ch.scheduler.start - 1, ch.scheduler.end, 1.2);
 
-    const P = (x, y, z) => g.localToWorld(new THREE.Vector3(x, y, z));
+    const P = localPoint(g);
     const near = window01(T, ch.scheduler.start, ch.scheduler.end - 0.4, 1.0);
     tags.put('sch-name', P(-3, 8.2, -2), `Cognitive scheduler<small>${T < items[3].decided ? 'deterministic · no model call' : `${COUNTS.versions} versions → ${ign} ignored · ${coal} replaced · ${T >= scheduler.release ? 1 : 0} episode`}</small>`, near * 0.95, 'name cognition');
     const cur = items.filter((it) => T >= it.gate - 0.25 && T < it.gate + (it.v >= 8 ? 0.4 : 1.1)).at(-1);

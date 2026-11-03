@@ -45,7 +45,7 @@ export const COUNTS = { events: run.events.total, versions: run.versions.length,
 export const STATIONS = {
   bench: {
     name: 'Sensor bench', plane: 'evidence', ring: 0,
-    owner: 'Outside this repository: firmware, wiring, simulator',
+    owner: 'Outside this repository: firmware, wiring, simulator. Its link into the runtime is internal/plantwire',
     what: 'A temperature sensor, an Arduino board with firmware, an indicator LED and a fan driver. In the recorded run a simulator plays this bench over the same contract the board uses.',
     why: 'Hardware is the final proof. The simulator lets every software gate pass first, with nothing to damage.',
     real: [
@@ -58,7 +58,7 @@ export const STATIONS = {
   },
   gateway: {
     name: 'Gateway', plane: 'evidence', ring: 1,
-    owner: 'Gateway program (outside this repository); live ingress socket (internal/ingress); device-gateway link (internal/device)',
+    owner: 'Gateway program (outside this repository); plant wire session host (internal/plantwire); live ingress socket (internal/ingress); device-gateway link (internal/device)',
     what: 'On the bench, the gateway is the only program that opens the board\'s serial port. It validates frames, keeps device time and a quality flag, turns each reading into an event, and passes governed commands back down as typed device records.',
     why: 'A garbled or hostile value must never be able to reach a command. One careful pipe, no decisions.',
     real: [
@@ -122,8 +122,8 @@ export const STATIONS = {
   },
   episode: {
     name: 'Episode', plane: 'cognition', ring: 6,
-    owner: 'internal/episodes, internal/episodeledger',
-    what: 'One bounded reasoning session: an immutable snapshot, an objective, allowed read tools, an intent catalog, a deadline and a budget. Each attempt carries a fence number so stale output can be rejected.',
+    owner: 'internal/episodes, internal/episodeledger; internal/executor (model, fixture, rule); internal/playbook',
+    what: 'One bounded reasoning session: an immutable snapshot, an objective, allowed read tools, an intent catalog, a deadline and a budget. Each attempt carries a fence number so stale output can be rejected. An executor answers it: in this run the model worker, Tamoz. The design also lets an approved playbook rule answer a recurring case in an in-process rule executor, with no model call, through the same decision, policy and verification path (internal/playbook, internal/executor/rule, documentation/design/rule-promotion.md). No rule was used in this run.',
     why: 'Bounding the room bounds the risk. The reasoner cannot wander, spend without limit, or act on yesterday\'s world.',
     real: [
       `Admitted for version 7, rebound once to the newest snapshot (version ${run.episode.snapshotVersion}) before the attempt started`,
@@ -135,8 +135,8 @@ export const STATIONS = {
   },
   tamoz: {
     name: 'Tamoz, the reasoner', plane: 'cognition', ring: null,
-    owner: 'Separate worker process (worker protocol, internal/executor)',
-    what: 'The reasoner. It runs outside the deterministic core, in its own worker process, reached over a versioned protocol on a private socket. It reads evidence through scoped read-only tools and returns a typed Decision.',
+    owner: 'Separate worker process (worker protocol, internal/executor/remote)',
+    what: 'The reasoner for cases no playbook rule covers; in this run it answered the only case. It runs outside the deterministic core, in its own worker process, reached over a versioned protocol on a private socket. It reads evidence through scoped read-only tools and returns a typed Decision.',
     why: 'Judgment is the one part that is not deterministic. Keeping it in a separate process with no credentials keeps it advisory.',
     real: [
       `Answered: ${run.decision.hypothesis}, confidence ${run.decision.confidence}`,
@@ -180,14 +180,15 @@ export const STATIONS = {
       `Receipt accepted, result ${run.device.result} ("${run.device.detail}")`,
       `query_state: ${run.device.observed.target} energized, value ${run.device.observed.value}; verification ${run.device.reconciliation}`,
       `Run verdict ${run.run.verdict}; every zero-tolerance counter is 0`,
+      'Verified here means the emulator that executed the command also answered query_state; a physical board would be checked against its own readings',
     ],
     invariants: [7, 8],
     failsSafe: 'An unknown outcome is recorded as unknown and reconciled with evidence. It is never retried blindly.',
   },
   store: {
     name: 'Durable store', plane: 'stream', ring: null,
-    owner: 'internal/storage (SQLite in WAL mode)',
-    what: 'Every plane hands work to the next through records in one durable store: events, versions, evaluations, episodes, decisions, intents, commands, outcomes.',
+    owner: 'internal/storage (SQLite in WAL mode); internal/runartifact exports a run from it',
+    what: 'Every plane hands work to the next through records in one durable store: events, versions, evaluations, episodes, decisions, intents, commands, outcomes. A run can be exported as an independently verifiable artifact (internal/runartifact); the numbers in this guide come from such an export.',
     why: 'Records survive a restart, make every choice explainable, and let replay rebuild the same history without touching the world.',
     real: Object.entries(run.run.rows).map(([k, v]) => `${k}: ${v}`),
     invariants: [8, 9, 10],

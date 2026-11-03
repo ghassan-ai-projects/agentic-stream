@@ -1,6 +1,6 @@
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const [dbPath, artifactDir, outPath] = process.argv.slice(2);
@@ -14,6 +14,10 @@ const all = (sql) => db.prepare(sql).all();
 const one = (sql) => db.prepare(sql).get();
 const json = (name) => JSON.parse(readFileSync(join(artifactDir, name), 'utf8'));
 const jsonl = (name) => readFileSync(join(artifactDir, name), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+const fail = (message) => { throw new Error(`extract-run-data: ${message}`); };
+const required = (value, what) => (value === undefined || value === null || value === '' ? fail(`${what} is missing from the recorded run`) : value);
+const seconds = (text) => { const m = /^(\d+)(s|m|h)$/.exec(text); return m ? Number(m[1]) * { s: 1, m: 60, h: 3600 }[m[2]] : fail(`cannot read duration "${text}"`); };
+const threshold = (cel, op) => Number(required(new RegExp(`temp_mean_5m ${op} (\\d+(?:\\.\\d+)?)`).exec(cel)?.[1], `the ${op} threshold in "${cel.trim()}"`));
 const text = (blob) => JSON.parse(Buffer.from(blob).toString('utf8'));
 const short = (s, n = 12) => String(s).replace(/^sha256:/, '').slice(0, n);
 
@@ -33,7 +37,8 @@ const versions = all('select version, phase, severity, completeness, event_horiz
     evidenceCount: snap.evidence.length,
   };
 });
-const situation = text(one('select snapshot_json from situation_versions where version = 22').snapshot_json);
+const finalVersion = one('select max(version) v from situation_versions').v;
+const situation = text(one(`select snapshot_json from situation_versions where version = ${finalVersion}`).snapshot_json);
 const evalRows = all('select situation_version v, outcome, score, threshold, reasons_json, evaluated_at from trigger_evaluations order by situation_version');
 const w0 = Date.parse(evalRows[0].evaluated_at);
 const triggers = evalRows.map((r) => ({
@@ -52,6 +57,11 @@ const device = jsonl('device-results.jsonl')[0];
 const verdict = json('verdict.json');
 const metrics = json('metrics.json');
 const manifest = json('manifest.json');
+const spec = json('spec.canonical.json');
+const runId = required(manifest.run_id || basename(dirname(resolve(artifactDir))), 'the run id');
+const runIdFrom = manifest.run_id ? 'manifest' : 'artifact directory';
+const trigger = required(spec.cognition.triggers?.[0], 'the first trigger');
+const transitions = spec.situation.transitions.map((t) => ({ from: t.from, to: t.to, minDurationSeconds: t.minDuration ? seconds(t.minDuration) : 0 }));
 
 const first = one('select event_id, source, event_time, ingested_at, schema_version from event_log order by position limit 1');
 const clock = (iso) => iso.slice(11, 19);
@@ -61,14 +71,21 @@ const tables = ['event_log', 'situation_versions', 'trigger_evaluations', 'sched
 
 const data = {
   run: {
-    id: 'round-007-simulator-pass2',
+    id: runId, idFrom: runIdFrom, finalVersion,
     kind: 'simulator-fed joined run (Streams Simulator -> Agentic Stream -> Tamoz -> device emulator)',
     specDigest: short(manifest.spec_digest), policyDigest: short(manifest.policy_digest),
     capabilityDigest: short(manifest.device.capability_digest),
     rows: Object.fromEntries(tables.map((t) => [t, one(`select count(*) c from ${t}`).c])),
-    verdict: verdict.verdict ?? metrics.verdict ?? 'pass',
+    verdict: required(verdict.verdict, 'verdict.json verdict'),
     blindSpots: manifest.known_blind_spots,
-    zeroTolerance: metrics.zero_tolerance,
+    zeroTolerance: required(metrics.zero_tolerance, 'metrics.json zero_tolerance'),
+  },
+  spec: {
+    watermarkLagSeconds: seconds(spec.time.maxOutOfOrderness), allowedLatenessSeconds: seconds(spec.time.allowedLateness),
+    windowSeconds: seconds(spec.windows[0].size), slideSeconds: seconds(spec.windows[0].slide),
+    enterCelsius: threshold(spec.situation.occurrence.openWhen, '>'), exitCelsius: threshold(spec.situation.occurrence.closeWhen, '<='),
+    transitions,
+    trigger: { threshold: trigger.threshold, debounceSeconds: seconds(trigger.debounce), cooldownSeconds: seconds(trigger.cooldown) },
   },
   events: {
     total: events.length, byType: counts, spanSeconds: sec(new Date(events.at(-1).at).toISOString()),

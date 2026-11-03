@@ -1,7 +1,8 @@
 import * as THREE from 'three';
-import { COLORS, mat, box, cyl, edges, glowSprite } from '../theme.js';
-import { stationGroup, setPlatformEnergy } from '../common.js';
-import { clamp, ramp, window01, decay, pulse, smooth, easeOut } from '../../util.js';
+import { COLORS, mat, box, edges, glowSprite } from '../theme.js';
+import { stationGroup, setPlatformEnergy, nameTag } from '../common.js';
+import { RUN } from '../../story.js';
+import { clamp, window01, decay, pulse, smooth, easeOut } from '../../util.js';
 import { events, logBeats } from '../schedule.js';
 import { ch } from '../../timeline.js';
 
@@ -71,7 +72,7 @@ export function createLog() {
     });
     slabs.instanceMatrix.needsUpdate = true;
     head.position.set(X0 + landed * DX, Y + 2.2, 0);
-    head.material.opacity = landed > 0 && landed < 61 ? 0.55 : 0;
+    head.material.opacity = landed > 0 && landed < RUN.events.total ? 0.55 : 0;
 
     const u = clamp((T - badAt) / 2.4);
     if (u > 0 && u < 1.9) {
@@ -83,8 +84,8 @@ export function createLog() {
 
     setPlatformEnergy(g, window01(T, ch.log.start - 2, ch.log.end + 1, 1.5) * 0.8);
     const near = window01(T, ch.log.start, ch.log.end, 1.0);
-    tags.put('log-name', g.localToWorld(new THREE.Vector3(0, 7.4, 4)), 'Ingress + event log<small>append-only, in arrival order</small>', near * 0.95, 'name evidence');
-    tags.put('log-count', g.localToWorld(new THREE.Vector3(2.6, Y + 3.3, 0)), `<b>${landed}</b> appended · <b>0</b> quarantined<small>${landed >= 61 ? 'every one kept its event time' : 'validated against its schema first'}</small>`, window01(T, ch.log.start + 1.8, ch.log.end + 0.3, 0.6) * 0.95, 'note');
+    nameTag(tags, 'log-name', g.localToWorld(new THREE.Vector3(0, 7.4, 4)), 'Ingress + event log<small>append-only, in arrival order</small>', near, 'evidence');
+    tags.put('log-count', g.localToWorld(new THREE.Vector3(2.6, Y + 3.3, 0)), `<b>${landed}</b> appended · <b>0</b> quarantined<small>${landed >= RUN.events.total ? 'every one kept its event time' : 'validated against its schema first'}</small>`, window01(T, ch.log.start + 1.8, ch.log.end + 0.3, 0.6) * 0.95, 'note');
     tags.put('log-bad', g.localToWorld(new THREE.Vector3(3.6, Y + 2.6, 4.6)), 'illustrative: malformed input<small>quarantined and kept as data, never passed on</small>', window01(T, badAt + 1.0, ch.log.end - 0.2, 0.4) * 0.95, 'note warn');
     tags.put('log-scan', g.localToWorld(new THREE.Vector3(-4.6, Y + 5.0, 0)), 'schema check<small>identity and payload</small>', window01(T, Math.max(logBeats.scan - 0.4, ch.log.start + 1.8), logBeats.bad + 0.2, 0.5) * 0.9, 'note');
     tags.put('log-evidence', g.localToWorld(new THREE.Vector3(6.6, Y + 4.4, -1.5)), 'evidence, never an instruction<small>nothing in a payload can trigger an action</small>', window01(T, logBeats.evidence, ch.log.end + 0.3, 0.4) * 0.95, 'note gold');

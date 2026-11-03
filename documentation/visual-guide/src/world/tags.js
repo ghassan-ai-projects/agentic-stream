@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 
 const v = new THREE.Vector3();
-const OBSTACLES = ['.hud', '.chip', '.brand', '.legend'];
+const OBSTACLES = ['.hud', '.chip', '.brand', '.legend', '.hint.show'];
 
 export function auditTags(w, h) {
   const out = [];
@@ -29,11 +29,10 @@ export function auditTags(w, h) {
 
 const overlap = (a, b, m = 0) => a.x < b.x + b.w + m && a.x + a.w + m > b.x && a.y < b.y + b.h + m && a.y + a.h + m > b.y;
 
-export const fallbacks = { dropped: 0, snapped: 0 };
+export const fallbacks = { dropped: 0 };
 
 export function createTags(root) {
   const els = new Map();
-  const offsets = new Map();
   let frame = new Map();
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('class', 'leaders');
@@ -58,7 +57,7 @@ export function createTags(root) {
     begin() { frame = new Map(); },
     put(key, pos, html, vis = 1, kind = 'tag') { if (vis > 0.02) frame.set(key, { pos: pos.clone ? pos.clone() : pos, html, vis, kind }); },
     end(camera, w, h) {
-      for (const [key, el] of els) if (!frame.has(key)) { el.style.opacity = '0'; el.style.visibility = 'hidden'; offsets.delete(key); }
+      for (const [key, el] of els) if (!frame.has(key)) { el.style.opacity = '0'; el.style.visibility = 'hidden'; }
       const placed = [];
       const { list, bottom, top } = obstacles(w, h);
       const items = [];
@@ -92,14 +91,8 @@ export function createTags(root) {
             if (d < bestD) { bestD = d; best = r; }
           }
         }
-        if (!best) { el.style.visibility = 'hidden'; offsets.delete(it.key); fallbacks.dropped++; continue; }
-        const prev = offsets.get(it.key);
-        const target = { x: best.x, y: best.y };
-        const cur = prev ? { x: prev.x + (target.x - prev.x) * 0.45, y: prev.y + (target.y - prev.y) * 0.45 } : target;
-        if (prev && Math.hypot(target.x - prev.x, target.y - prev.y) < 0.6) { cur.x = target.x; cur.y = target.y; }
-        const curBox = { ...cur, w: bw, h: bh };
-        if (placed.some((p) => overlap(curBox, p, 2)) || list.some((o) => overlap(curBox, o, 2))) { cur.x = target.x; cur.y = target.y; fallbacks.snapped++; }
-        offsets.set(it.key, cur);
+        if (!best) { el.style.visibility = 'hidden'; fallbacks.dropped++; continue; }
+        const cur = best;
         placed.push({ x: cur.x, y: cur.y, w: bw, h: bh });
         el.style.visibility = 'visible';
         el.style.opacity = String(t.vis);

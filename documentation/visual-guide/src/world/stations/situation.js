@@ -1,11 +1,11 @@
 import * as THREE from 'three';
-import { COLORS, mat, box, edges, glowSprite } from '../theme.js';
-import { stationGroup, setPlatformEnergy } from '../common.js';
-import { clamp, ramp, window01, decay, pulse, smooth, easeOut, lerp } from '../../util.js';
-import { RUN, COUNTS } from '../../story.js';
+import { COLORS, mat, glowSprite } from '../theme.js';
+import { stationGroup, localPoint, activate, nameTag } from '../common.js';
+import { clamp, ramp, window01, decay, smooth, easeOut, lerp } from '../../util.js';
+import { RUN } from '../../story.js';
 import { versions, engine, situationBeats as SB } from '../schedule.js';
 import { ch } from '../../timeline.js';
-import { arcPoint, angleOf, PORT } from '../layout.js';
+import { angleOf } from '../layout.js';
 
 const Y = 0.56;
 const DY = 0.5;
@@ -83,8 +83,7 @@ export function createSituation(engineStation) {
     });
 
     const latest = versions.filter((v) => T >= v.land).at(-1);
-    const act = window01(T, engine.features - 1, ch.situation.end, 1.2);
-    setPlatformEnergy(g, act * 0.9);
+    activate(g, T, engine.features - 1, ch.situation.end, 1.2);
 
     const e = clamp((T - editAt) / 2.2);
     const hit = T > editAt + 0.9 ? decay(T, editAt + 0.9, 0.5) : 0;
@@ -95,9 +94,9 @@ export function createSituation(engineStation) {
     rejectFlash.position.copy(slabPos(2)).add(new THREE.Vector3(0, 0.3, 2.2));
     rejectFlash.material.opacity = hit * 0.9;
 
-    const P = (x, y, z) => g.localToWorld(new THREE.Vector3(x, y, z));
+    const P = localPoint(g);
     const near = window01(T, ch.situation.start, ch.situation.end - 0.4, 1.0);
-    tags.put('sit-name', P(0, Y + 14.2, 0), `Situation<small>${RUN.situation.type} · ${RUN.situation.entity.id}</small>`, near * 0.95, 'name stream');
+    nameTag(tags, 'sit-name', P(0, Y + 14.2, 0), `Situation<small>${RUN.situation.type} · ${RUN.situation.entity.id}</small>`, near, 'stream');
     tags.put('sit-latest', P(3.4, Y + 0.3 + (Math.max(count, 1) - 1) * DY + 0.9, 1.8), latest ? `<b>v${latest.v}</b> · ${latest.phase}<small>${latest.completeness.replace('_', '-')} · severity ${latest.severity}</small>` : '', window01(T, engine.features, ch.situation.end, 0.5) * (latest ? 0.95 : 0), 'note');
     const at = (i) => Y + 0.3 + i * DY;
     const lit = (on) => 0.6 + 0.35 * on;

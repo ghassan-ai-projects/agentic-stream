@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { RING_ORDER, PLANES } from '../story.js';
+import { RING_ORDER } from '../story.js';
 import { COLORS } from './theme.js';
-import { R, STEP, angleOf, half, ringPoint } from './layout.js';
+import { R, angleOf, half, ringPoint } from './layout.js';
 
 const railShader = (color) => new THREE.ShaderMaterial({
   transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,

@@ -1,10 +1,11 @@
 import { RUN } from '../story.js';
-import { $, s, h, clamp, lerp, ease, fmt, Clock, transport, control, select, toggle } from './kit.js';
+import { easeInOut as ease, fmt } from '../util.js';
+import { $, s, h, Clock, transport, control, select, toggle } from './kit.js';
 
 const temps = RUN.events.series.filter((e) => e.type === 'temp').map((e) => ({ e: e.t, v: e.value }));
-const WM_LAG = 15;
-const WIN_END = 300;
-const LATENESS = 30;
+const WM_LAG = RUN.spec.watermarkLagSeconds;
+const WIN_END = RUN.spec.windowSeconds;
+const LATENESS = RUN.spec.allowedLatenessSeconds;
 const MAXP = 420;
 const X = (t) => 60 + (t / MAXP) * 960;
 const Y_ARR = 130;
@@ -68,7 +69,7 @@ function render(p) {
 
   const winColor = closed ? '#9b8cff' : '#6b5fd0';
   add(s('rect', { x: X(0), y: Y_EVT - 62, width: X(WIN_END) - X(0), height: 124, rx: 10, fill: closed ? 'rgba(155,140,255,.16)' : 'rgba(155,140,255,.07)', stroke: winColor, 'stroke-width': closed ? 2.4 : 1.4, 'stroke-dasharray': closed ? '0' : '6 5' }));
-  add(s('text', { x: X(0) + 6, y: Y_EVT + 84, class: 'mid', 'text-anchor': 'start', style: 'fill:#c9c1ff' }, closed ? `window [0, 300 s) closed at ${fmt(A.closedAt, 0)} s` : 'window [0, 300 s) is open'));
+  add(s('text', { x: X(0) + 6, y: Y_EVT + 84, class: 'mid', 'text-anchor': 'start', style: 'fill:#c9c1ff' }, closed ? `window [0, ${WIN_END} s) closed at ${fmt(A.closedAt, 0)} s` : `window [0, ${WIN_END} s) is open`));
   add(s('rect', { x: X(WIN_END), y: Y_EVT - 62, width: X(WIN_END + LATENESS) - X(WIN_END), height: 124, fill: 'rgba(245,185,74,.10)', stroke: '#f5b94a', 'stroke-dasharray': '4 4' }));
   add(s('text', { x: X(WIN_END + LATENESS / 2), y: Y_EVT + 84, class: 'small', 'text-anchor': 'middle', fill: '#f5b94a' }, 'allowed lateness'));
 
@@ -107,15 +108,14 @@ function render(p) {
   const afterClose = p >= A.closedAt;
   const arrivedLate = A.late.length && p >= A.late[0].a;
   chips.replaceChildren(
-    h('div', { class: 'chip info' }, [h('b', {}, wm == null ? '–' : `${fmt(Math.max(wm, 0), 0)} s`), h('small', {}, 'watermark: newest event time minus 15 s (one source here; with several, the slowest sets it)')]),
-    h('div', { class: 'chip good' }, [h('b', {}, `${fmt(A.truth, 2)} °C`), h('small', {}, 'mean of window [0, 300 s) by event time, all readings')]),
+    h('div', { class: 'chip info' }, [h('b', {}, wm == null ? '–' : `${fmt(Math.max(wm, 0), 0)} s`), h('small', {}, `watermark: newest event time minus ${WM_LAG} s (one source here; with several, the slowest sets it)`)]),
+    h('div', { class: 'chip good' }, [h('b', {}, `${fmt(A.truth, 2)} °C`), h('small', {}, `mean of window [0, ${WIN_END} s) by event time, all readings`)]),
     h('div', { class: 'chip bad' }, [h('b', {}, `${fmt(A.naive, 2)} °C`), h('small', {}, `same window grouped by arrival time (wrong by ${fmt(Math.abs(A.naive - A.truth), 2)})`)]),
     h('div', { class: `chip ${afterClose ? cls : ''}` }, [h('b', {}, !afterClose ? 'window open' : arrivedLate ? `${A.outcome}` : `on_time · emitted ${fmt(A.emitted, 2)} °C`), h('small', {}, `policy: ${pol}${arrivedLate && A.outcome === 'corrected' ? ` · result now ${fmt(A.final, 2)} °C` : ''}`)]),
   );
 }
 
 const clock = new Clock({ duration: MAXP, speed: 1, onFrame: (t) => { render(t); sync(); } });
-clock.duration = MAXP;
 const tr = $('#transport');
 const sync = transport(tr, clock, { label: 'Play' });
 const ctl = $('#ctl');

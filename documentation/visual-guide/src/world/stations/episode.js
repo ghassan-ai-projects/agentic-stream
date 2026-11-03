@@ -1,11 +1,11 @@
 import * as THREE from 'three';
-import { COLORS, mat, box, cyl, edges, glowSprite, textPlane } from '../theme.js';
-import { stationGroup, setPlatformEnergy, tube } from '../common.js';
-import { clamp, ramp, window01, decay, pulse, smooth, easeOut, easeInOut, lerp } from '../../util.js';
+import { COLORS, mat, box, cyl, glowSprite, textPlane } from '../theme.js';
+import { stationGroup, tube, localPoint, activate, nameTag } from '../common.js';
+import { clamp, ramp, window01, pulse, easeInOut, lerp } from '../../util.js';
 import { RUN } from '../../story.js';
 import { episode, scheduler } from '../schedule.js';
 import { ch } from '../../timeline.js';
-import { angleOf, ringPoint, PORT, arcPoint } from '../layout.js';
+import { angleOf, PORT, arcPoint } from '../layout.js';
 
 const Y = 0.56;
 const RW = 7.2, RH = 5.2, RD = 7.2;
@@ -150,12 +150,11 @@ export function createEpisode(sched) {
     else if (T >= scheduler.arrive && T < episode.rebind + 0.5) { token.position.set(lerp(-8.2, 0, easeInOut((T - scheduler.arrive) / (episode.rebind - scheduler.arrive + 0.3))), Y + 2.2, 0); token.visible = true; }
     else token.visible = false;
 
-    const act = window01(T, scheduler.release, ch.episode.end, 1.0);
-    setPlatformEnergy(g, act * 0.9);
+    activate(g, T, scheduler.release, ch.episode.end, 1.0);
 
-    const P = (x, y, z) => g.localToWorld(new THREE.Vector3(x, y, z));
+    const P = localPoint(g);
     const near = window01(T, ch.episode.start, episode.decision - 0.3, 0.8);
-    tags.put('ep-name', P(0, Y + RH + 3.4, 5.0), 'Episode<small>one bounded reasoning session</small>', near * 0.95, 'name cognition');
+    nameTag(tags, 'ep-name', P(0, Y + RH + 3.4, 5.0), 'Episode<small>one bounded reasoning session</small>', near, 'cognition');
     tags.put('ep-admit', P(-5.2, Y + 6.4, 2.0), `admitted for v${RUN.scheduler.at(-1).v}<small>one episode, one trigger</small>`, window01(T, episode.admit - 0.3, episode.rebind, 0.4) * 0.95, 'note cognition');
     tags.put('ep-snap', P(0, Y + 5.2, 0), rebound ? `snapshot <b>v${RUN.episode.snapshotVersion}</b><small>immutable · rebound from v${RUN.scheduler.at(-1).v}</small>` : `snapshot <b>v${RUN.scheduler.at(-1).v}</b><small>the version it was admitted on</small>`, window01(T, episode.rebind - 0.6, episode.attempt + 0.4, 0.5) * 0.95, 'note');
     tags.put('ep-rebind', P(0, Y + 7.6, 0), `rebound to the newest snapshot<small>before the attempt starts · same identity and budget</small>`, window01(T, episode.rebind, episode.attempt, 0.4) * 0.95, 'note');

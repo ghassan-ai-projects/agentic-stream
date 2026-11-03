@@ -1,4 +1,4 @@
-import { launch, evaluate } from './chrome.mjs';
+import { launch, evaluate, captureConsole } from './chrome.mjs';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
@@ -6,11 +6,7 @@ const [page, times, outDir, size = '1600x900'] = process.argv.slice(2);
 const [w, h] = size.split('x').map(Number);
 mkdirSync(outDir, { recursive: true });
 const c = await launch({ width: w, height: h });
-const logs = [];
-c.cdp.on((m) => {
-  if (m.method === 'Runtime.exceptionThrown') logs.push('EXC ' + (m.params.exceptionDetails.exception?.description ?? m.params.exceptionDetails.text).slice(0, 400));
-  if (m.method === 'Runtime.consoleAPICalled' && ['error', 'warning'].includes(m.params.type)) logs.push(m.params.type.toUpperCase() + ' ' + m.params.args.map((a) => a.value ?? a.description).join(' ').slice(0, 300));
-});
+const logs = captureConsole(c.cdp);
 await c.cdp.send('Runtime.enable');
 await c.cdp.send('Page.enable');
 await c.cdp.send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: 1, mobile: false });

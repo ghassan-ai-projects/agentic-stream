@@ -1,9 +1,8 @@
 import * as THREE from 'three';
 import { glowSprite } from './theme.js';
 import { outroBeats } from './schedule.js';
-import { ringPoint, R, angleOf, STEP } from './layout.js';
-import { RING_ORDER } from '../story.js';
-import { clamp, easeInOut } from '../util.js';
+import { ringPoint, R, angleOf } from './layout.js';
+import { clamp } from '../util.js';
 
 const TRAIL = 9;
 

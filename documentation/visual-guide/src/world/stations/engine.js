@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { COLORS, mat, box, cyl, edges, glowSprite } from '../theme.js';
-import { stationGroup, setPlatformEnergy } from '../common.js';
-import { clamp, ramp, window01, decay, pulse, smooth, easeOut, fmt } from '../../util.js';
+import { COLORS, mat, box, edges, glowSprite } from '../theme.js';
+import { stationGroup, localPoint, activate, nameTag } from '../common.js';
+import { clamp, window01, decay, pulse, easeOut, fmt } from '../../util.js';
 import { RUN } from '../../story.js';
 import { events, engine, versions } from '../schedule.js';
 import { ch } from '../../timeline.js';
@@ -41,7 +41,7 @@ export function createEngine() {
 
   const wm = new THREE.Mesh(new THREE.PlaneGeometry(10.6, 3.2), mat.add(0xffd166, 0.22));
   wm.rotation.y = Math.PI / 2;
-  wm.position.set(XR - 15 * SC, Y + 1.7, 0);
+  wm.position.set(XR - RUN.spec.watermarkLagSeconds * SC, Y + 1.7, 0);
   g.add(wm);
   const head = new THREE.Mesh(new THREE.PlaneGeometry(10.6, 3.2), mat.add(0xffffff, 0.2));
   head.rotation.y = Math.PI / 2;
@@ -107,17 +107,16 @@ export function createEngine() {
       op.core.material.emissiveIntensity = 0.3 + (op.id === 'heartbeat' ? 0.5 : slidePulse * 2.4);
       feed[i].material.opacity = (op.id === 'heartbeat' ? 0.2 : slidePulse) * 0.9;
     });
-    const active = window01(T, engine.t0 - 0.5, engine.t1 + 1.5, 0.5);
-    setPlatformEnergy(g, active * 0.9);
+    activate(g, T, engine.t0 - 0.5, engine.t1 + 1.5, 0.5);
 
     const cur = versions.filter((v) => T >= v.emit).at(-1);
     const near = window01(T, ch.engine.start, engine.same, 1.0);
-    const P = (x, y, z) => g.localToWorld(new THREE.Vector3(x, y, z));
-    tags.put('engine-name', P(0, 8.2, 5), 'Stream engine<small>event time · windows · operators</small>', near * 0.95, 'name stream');
+    const P = localPoint(g);
+    nameTag(tags, 'engine-name', P(0, 8.2, 5), 'Stream engine<small>event time · windows · operators</small>', near, 'stream');
     tags.put('engine-clock', P(XR + 0.4, Y + 4.6, 4.6), `event time <b>${Math.round(e)} s</b><small>when each reading happened</small>`, window01(T, engine.t0 + 0.3, engine.watermark, 0.5) * 0.95, 'note');
-    tags.put('engine-wm', P(XR - 15 * SC - 0.2, Y + 3.6, -4.9), `watermark<small>newest reading − ${RUN.versions[0].watermarkLagSeconds} s</small>`, window01(T, engine.watermark - 0.2, engine.t1 + 1.5, 0.6) * 0.95, 'note gold');
+    tags.put('engine-wm', P(XR - RUN.spec.watermarkLagSeconds * SC - 0.2, Y + 3.6, -4.9), `watermark<small>newest reading − ${RUN.spec.watermarkLagSeconds} s</small>`, window01(T, engine.watermark - 0.2, engine.t1 + 1.5, 0.6) * 0.95, 'note gold');
     tags.put('engine-late', P(XR - (engine.clock(lateAt + 1) - lateE) * SC, Y + 2.8, 3.2), 'illustrative: a late reading<small>placed at its event time · the watermark never moves back</small>', window01(T, lateAt + 0.4, lateAt + 4.6, 0.5) * 0.95, 'note warn');
-    tags.put('engine-win', P(XR - WIN / 2, Y + 3.9, 0), `window · last 5 min<small>slides every 30 s · event time ${Math.round(e)} s</small>`, window01(T, engine.window - 0.2, engine.t1 + 2, 0.6) * 0.95, 'note');
+    tags.put('engine-win', P(XR - WIN / 2, Y + 3.9, 0), `window · last ${RUN.spec.windowSeconds / 60} min<small>slides every ${RUN.spec.slideSeconds} s · event time ${Math.round(e)} s</small>`, window01(T, engine.window - 0.2, engine.t1 + 2, 0.6) * 0.95, 'note');
     tags.put('engine-feat', P(0, Y + 4.4, -6.3), cur ? `mean <b>${fmt(cur.tempMean, 2)} °C</b> · slope <b>${fmt(cur.tempSlope, 1)} °C/h</b><small>features from the window</small>` : '', window01(T, engine.features - 0.2, ch.engine.end + 0.4, 0.5) * (cur ? 0.95 : 0), 'note');
     tags.put('engine-same', P(-5.5, Y + 3.2, 4.8), 'deterministic<small>same input, same features</small>', window01(T, engine.same, ch.engine.end + 0.2, 0.4) * 0.95, 'note ok');
   }

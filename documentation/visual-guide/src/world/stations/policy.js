@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { COLORS, mat, box, cyl, edges, glowSprite, textPlane } from '../theme.js';
-import { stationGroup, setPlatformEnergy, tube } from '../common.js';
-import { clamp, ramp, window01, decay, pulse, smooth, easeOut, easeInOut, lerp } from '../../util.js';
+import { COLORS, mat, box, cyl, glowSprite, textPlane } from '../theme.js';
+import { stationGroup, tube, localPoint, activate, nameTag } from '../common.js';
+import { clamp, ramp, window01, decay, pulse, easeInOut, lerp } from '../../util.js';
 import { RUN } from '../../story.js';
 import { policy, validator } from '../schedule.js';
 import { ch } from '../../timeline.js';
@@ -109,11 +109,10 @@ export function createPolicy() {
     seal.visible = seal.scale.x > 0.01;
     podium.visible = true;
 
-    const act = window01(T, validator.leave, ch.policy.end + 1, 1.0);
-    setPlatformEnergy(g, act * 0.9);
-    const P = (x, y, z) => g.localToWorld(new THREE.Vector3(x, y, z));
+    activate(g, T, validator.leave, ch.policy.end + 1, 1.0);
+    const P = localPoint(g);
     const near = window01(T, ch.policy.start, policy.r2 - 0.2, 0.6);
-    tags.put('pol-name', P(0, Y + 7.8, 5.2), 'Policy<small>checks against the state of the world right now</small>', near * 0.95, 'name governance');
+    nameTag(tags, 'pol-name', P(0, Y + 7.8, 5.2), 'Policy<small>checks against the state of the world right now</small>', near, 'governance');
     RINGS.forEach((r, i) => tags.put(`pol-r${i}`, P(r.x, Y + (i % 2 ? 6.3 : 4.9), 0), r.label, window01(T, policy.rings[i] - 0.3, policy.r2, 0.35) * 0.9, 'note'));
     tags.put('pol-ok', P(7.0, Y + 5.6, 0), `approved<small>${RUN.policy.reason} · v${RUN.policy.version}</small>`, window01(T, policy.approved - 0.2, ch.policy.end + 0.4, 0.4) * 0.97, 'note ok');
     tags.put('pol-r2', P(-1.0, Y + 6.4, -4.9), `${T >= policy.designed - 0.2 ? '<b>designed, not in this run</b>' : 'R2 · the fan'}<small>an R2 intent waits for a signed human approval</small>`, window01(T, policy.r2 + 0.4, ch.policy.end - 0.1, 0.4) * 0.95, 'note gold');

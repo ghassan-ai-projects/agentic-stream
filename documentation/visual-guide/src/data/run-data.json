@@ -1,6 +1,8 @@
 {
   "run": {
     "id": "round-007-simulator-pass2",
+    "idFrom": "artifact directory",
+    "finalVersion": 22,
     "kind": "simulator-fed joined run (Streams Simulator -> Agentic Stream -> Tamoz -> device emulator)",
     "specDigest": "67386ec414a7",
     "policyDigest": "ffc2ae438c9e",
@@ -32,6 +34,46 @@
       "stale_energizing_effect_count": 0,
       "unexplained_actuator_transition_count": 0,
       "unsafe_output_count": 0
+    }
+  },
+  "spec": {
+    "watermarkLagSeconds": 15,
+    "allowedLatenessSeconds": 30,
+    "windowSeconds": 300,
+    "slideSeconds": 30,
+    "enterCelsius": 30,
+    "exitCelsius": 28,
+    "transitions": [
+      {
+        "from": "candidate",
+        "to": "watch",
+        "minDurationSeconds": 60
+      },
+      {
+        "from": "watch",
+        "to": "cooling",
+        "minDurationSeconds": 30
+      },
+      {
+        "from": "cooling",
+        "to": "over_ceiling",
+        "minDurationSeconds": 15
+      },
+      {
+        "from": "cooling",
+        "to": "recovering",
+        "minDurationSeconds": 60
+      },
+      {
+        "from": "recovering",
+        "to": "resolved",
+        "minDurationSeconds": 120
+      }
+    ],
+    "trigger": {
+      "threshold": 35,
+      "debounceSeconds": 5,
+      "cooldownSeconds": 20
     }
   },
   "events": {

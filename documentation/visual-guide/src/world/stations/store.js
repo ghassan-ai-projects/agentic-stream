@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { COLORS, mat, box, cyl, glowSprite } from '../theme.js';
-import { clamp, window01, smooth, easeOut } from '../../util.js';
+import { COLORS, mat, cyl, glowSprite } from '../theme.js';
+import { clamp, window01, smooth } from '../../util.js';
 import { RUN } from '../../story.js';
 import { events, versions, scheduler, episode, validator, policy, action } from '../schedule.js';
 import { ch } from '../../timeline.js';

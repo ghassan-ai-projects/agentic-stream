@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { COLORS, mat, box, cyl, edges, glowSprite } from '../theme.js';
-import { stationGroup, setPlatformEnergy, tube, dot } from '../common.js';
+import { mat, box, cyl, edges, glowSprite } from '../theme.js';
+import { stationGroup, setPlatformEnergy, tube, nameTag } from '../common.js';
 import { clamp, lerp, ramp, smooth, window01 } from '../../util.js';
 import { events, action } from '../schedule.js';
 import { ch } from '../../timeline.js';
@@ -160,7 +160,7 @@ export function createBench() {
     setPlatformEnergy(g, window01(T, ch.gateway.start, ch.gateway.end, 1) * 0.7 + window01(T, action.led - 1, action.led + 5, 1) * 0.5);
 
     const near = window01(T, ch.gateway.start - 1, ch.gateway.end + 1, 1.5);
-    tags.put('bench-name', g.localToWorld(new THREE.Vector3(0, 8.4, 4)), 'Sensor bench<small>played by a simulator in this run</small>', near * 0.95, 'name evidence');
+    nameTag(tags, 'bench-name', g.localToWorld(new THREE.Vector3(0, 8.4, 4)), 'Sensor bench<small>played by a simulator in this run</small>', near, 'evidence');
     tags.put('bench-temp', port.therm, `${fmt(temp, 1)}<i> °C</i>`, window01(T, ch.gateway.start + 0.4, ch.gateway.end + 2, 1) , 'value hot');
     tags.put('bench-led', g.localToWorld(new THREE.Vector3(2.1, Y + 3.2, 0.2)), `LED <b>${on > 0.5 ? 'ON' : 'off'}</b><small>led-01</small>`, window01(T, action.led - 0.8, action.answers + 0.2, 0.3) * 0.95, on > 0.5 ? 'note on' : 'note');
   }

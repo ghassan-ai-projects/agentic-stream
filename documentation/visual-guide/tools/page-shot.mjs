@@ -1,16 +1,11 @@
-import { launch, evaluate } from './chrome.mjs';
+import { launch, evaluate, captureConsole } from './chrome.mjs';
 import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const [page, out, size = '1280x900', script = '', wait = '600'] = process.argv.slice(2);
 const [w, h] = size.split('x').map(Number);
 const c = await launch({ width: w, height: h });
-const logs = [];
-c.cdp.on((m) => {
-  if (m.method === 'Runtime.exceptionThrown') logs.push('EXC ' + (m.params.exceptionDetails.exception?.description ?? m.params.exceptionDetails.text).slice(0, 400));
-  if (m.method === 'Runtime.consoleAPICalled' && ['error', 'warning'].includes(m.params.type)) logs.push(m.params.type.toUpperCase() + ' ' + m.params.args.map((a) => a.value ?? a.description).join(' ').slice(0, 300));
-  if (m.method === 'Network.loadingFailed') logs.push('NETFAIL ' + m.params.errorText + ' ' + (m.params.canceled ? 'canceled' : ''));
-});
+const logs = captureConsole(c.cdp, { network: true });
 await c.cdp.send('Runtime.enable'); await c.cdp.send('Page.enable'); await c.cdp.send('Network.enable');
 await c.cdp.send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: 1, mobile: w < 600 });
 await c.cdp.send('Page.navigate', { url: page.startsWith('http') ? page : `file://${resolve(page)}` });

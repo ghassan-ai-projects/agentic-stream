@@ -6,7 +6,7 @@ export const HALF = 7.4;
 export const STEP = (Math.PI * 2) / RING_ORDER.length;
 export const TAMOZ_LOCAL = new THREE.Vector3(-13, 0, -21);
 
-export const angleOf = (id) => RING_ORDER.indexOf(id) * STEP;
+export const angleOf = (id) => RING_ORDER.indexOf(id === 'tamoz' ? 'episode' : id) * STEP;
 export const ringPoint = (a, y = 0, r = R) => new THREE.Vector3(r * Math.sin(a), y, r * Math.cos(a));
 export const outward = (a) => new THREE.Vector3(Math.sin(a), 0, Math.cos(a));
 export const tangent = (a) => new THREE.Vector3(Math.cos(a), 0, -Math.sin(a));

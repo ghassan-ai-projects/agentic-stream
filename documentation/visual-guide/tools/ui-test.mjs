@@ -1,5 +1,5 @@
-import { launch, evaluate } from './chrome.mjs';
-import { join, resolve } from 'node:path';
+import { launch, evaluate, captureConsole } from './chrome.mjs';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = join(fileURLToPath(new URL('.', import.meta.url)), '..');
@@ -8,11 +8,7 @@ const check = (name, ok, extra = '') => { console.log(`${ok ? 'PASS' : 'FAIL'}  
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const c = await launch({ width: 1440, height: 900 });
-const logs = [];
-c.cdp.on((m) => {
-  if (m.method === 'Runtime.exceptionThrown') logs.push('EXC ' + (m.params.exceptionDetails.exception?.description ?? '').slice(0, 200));
-  if (m.method === 'Runtime.consoleAPICalled' && ['error', 'warning'].includes(m.params.type)) logs.push(m.params.type + ' ' + m.params.args.map((a) => a.value ?? a.description).join(' ').slice(0, 200));
-});
+const logs = captureConsole(c.cdp);
 await c.cdp.send('Runtime.enable'); await c.cdp.send('Page.enable'); await c.cdp.send('Input.enable').catch(() => {});
 await c.cdp.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
 const key = (k, code = k) => c.cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key: k, code, text: k.length === 1 ? k : undefined }).then(() => c.cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: k, code }));
@@ -20,6 +16,8 @@ const key = (k, code = k) => c.cdp.send('Input.dispatchKeyEvent', { type: 'keyDo
 await c.cdp.send('Page.navigate', { url: `file://${join(root, 'world.html')}` });
 await sleep(1800);
 check('start card is shown', await evaluate(c.cdp, "!document.querySelector('.start').classList.contains('gone')"));
+check('start card takes focus', await evaluate(c.cdp, "document.activeElement?.id === 'go'"));
+check('controls and closed panel are inert behind the start card', await evaluate(c.cdp, "document.querySelector('.controls').inert && document.querySelector('.panel').inert"));
 await evaluate(c.cdp, "document.querySelector('#go').click()");
 await sleep(2600);
 const t1 = await evaluate(c.cdp, 'window.__T');
@@ -43,9 +41,13 @@ check('E enters free camera', (await evaluate(c.cdp, "[...document.querySelector
 await key('e', 'KeyE');
 await sleep(300);
 check('E again resumes the tour camera', (await evaluate(c.cdp, "[...document.querySelectorAll('.controls .btn')].some(b => b.textContent.includes('Explore'))")));
+check('closed panel is not reachable by keyboard', await evaluate(c.cdp, "document.querySelector('.panel').inert && getComputedStyle(document.querySelector('.panel')).visibility === 'hidden'"));
+check('timeline slider exposes its range and value', await evaluate(c.cdp, "(() => { const t = document.querySelector('.track'); return t.getAttribute('aria-valuemin') === '0' && Number(t.getAttribute('aria-valuemax')) > 200 && /chapter/.test(t.getAttribute('aria-valuetext')); })()"));
+check('toggles expose aria-pressed', await evaluate(c.cdp, "[...document.querySelectorAll('.controls .btn[aria-pressed]')].length === 4"));
 check('guide panel open at 1440 wide? (closed under 1500)', await evaluate(c.cdp, "document.querySelector('.panel').classList.contains('closed')"));
 await key('g', 'KeyG');
 await sleep(400);
+check('G makes the panel reachable again', await evaluate(c.cdp, "!document.querySelector('.panel').inert && document.querySelector('[aria-controls=guide-panel]').getAttribute('aria-expanded') === 'true'"));
 check('G opens the guide panel with the chapter text', (await evaluate(c.cdp, "document.querySelector('.panel .narr')?.textContent.length")) > 40);
 
 await c.cdp.send('Page.navigate', { url: `file://${join(root, 'world.html')}?station=policy` });

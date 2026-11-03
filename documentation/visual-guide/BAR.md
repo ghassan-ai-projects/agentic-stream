@@ -73,8 +73,8 @@ Checked on the final build with the tools in `tools/`.
 | V5 console | No errors or warnings on the world, home and four labs (only cancelled media preloads when the headless browser closes) |
 | B1 deterministic | `determinism.mjs`: SAME at 5, 30, 60, 90.5, 110, 119, 150, 175.5, 200, 230, 247.5 and 268 s |
 | B2 offline | Every page loads from `file://` with no network request |
-| B3 controls | `ui-test.mjs`: 13 of 13 checks pass (play, pause, chapter jump, explore, panel, deep link) |
-| B4 responsive | Labs and home have no horizontal overflow at 390 px; the lab pictures scroll inside their card |
+| B3 controls | `ui-test.mjs`: 19 of 19 checks pass (play, pause, chapter jump, explore, panel, deep link, focus and ARIA state of the start card, panel, slider and toggles). With `prefers-reduced-motion` the tour steps one chapter per press and the labs jump to their end state instead of animating |
+| B4 responsive | Labs and home have no horizontal overflow at 375 px; the lab pictures scroll inside their card, with a scroll cue; the world counter strip fits the width |
 | Performance | `perf.mjs`: 4 to 12 ms per frame at 1440x900 @2x |
 | F1 film | `film/agentic-stream-explained.mp4`: 270.3 s (4 min 30 s), 1920x1080, 30 fps, H.264 + AAC, 58 MB |
 | F2 narration locked | 45 sentence cues measured one by one; every beat, label and camera move is placed on a cue |

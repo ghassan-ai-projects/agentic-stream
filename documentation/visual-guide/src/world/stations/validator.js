@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { COLORS, mat, box, edges, glowSprite, textPlane } from '../theme.js';
-import { stationGroup, setPlatformEnergy } from '../common.js';
-import { clamp, ramp, window01, decay, pulse, smooth, easeOut, easeInOut, lerp } from '../../util.js';
+import { COLORS, mat, box, glowSprite, textPlane } from '../theme.js';
+import { stationGroup, localPoint, activate, nameTag } from '../common.js';
+import { clamp, ramp, window01, decay, pulse, easeOut, easeInOut, lerp } from '../../util.js';
 import { RUN } from '../../story.js';
 import { validator, episode } from '../schedule.js';
 import { ch } from '../../timeline.js';
@@ -111,11 +111,10 @@ export function createValidator() {
       en.tp.scale.setScalar(1 + lit * 0.08);
     });
 
-    const act = window01(T, episode.leave, ch.validator.end, 1.0);
-    setPlatformEnergy(g, act * 0.9);
-    const P = (x, y, z) => g.localToWorld(new THREE.Vector3(x, y, z));
+    activate(g, T, episode.leave, ch.validator.end, 1.0);
+    const P = localPoint(g);
     const near = window01(T, ch.validator.start, validator.decisionCard + 0.3, 0.6) + window01(T, validator.reject + 3.0, ch.validator.end - 0.4, 0.6);
-    tags.put('val-name', P(0, Y + 7.6, 5.0), 'Decision validator<small>pure check · no side effects</small>', near * 0.95, 'name governance');
+    nameTag(tags, 'val-name', P(0, Y + 7.6, 5.0), 'Decision validator<small>pure check · no side effects</small>', near, 'governance');
     CHECKS.forEach((c, i) => {
       tags.put(`val-c${i}`, P(c.x, Y + 5.6 + c.dy, 0), `${T >= validator.checks[i] ? '✓ ' : ''}${c.label}`, window01(T, validator.reject + 3.0, validator.leave + 0.6, 0.4) * (T >= validator.checks[i] ? 0.97 : 0.7), T >= validator.checks[i] ? 'note ok' : 'note');
     });

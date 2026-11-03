@@ -1,10 +1,12 @@
 import * as THREE from 'three';
 import { chapters, chapterAt, captionAt, TOTAL } from './timeline.js';
-import { STATIONS, PLANES, INVARIANTS, EVENT_TYPES, RUN, COUNTS } from './story.js';
+import { STATIONS, PLANES, INVARIANTS, EVENT_TYPES, COUNTS } from './story.js';
 import { counters } from './world/schedule.js';
 import { clamp } from './util.js';
 
+const setOn = (btn, on) => { btn.classList.toggle('on', on); btn.setAttribute('aria-pressed', String(on)); };
 const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; };
+const mmssWords = (s) => { const t = Math.round(s); return `${Math.floor(t / 60)} min ${t % 60} s`; };
 const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 const ICON = {
   play: '<svg viewBox="0 0 24 24" width="22" height="22"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>',
@@ -36,14 +38,16 @@ export function createOverlay(root, ccOn = () => true) {
   const cap = el('div', 'caption');
   const legend = el('div', 'legend', Object.entries(EVENT_TYPES).map(([k, v]) => `<i style="--c:${v.color}"></i>${v.label}`).join(''));
   root.append(brand, chip, hud, legend, cap);
+  let chipChapter = null;
   function sync(T) {
     const c = chapterAt(T);
-    chip.innerHTML = `<b>${c.index + 1}</b><span>${c.title}</span>`;
+    if (chipChapter !== c.id) { chipChapter = c.id; chip.innerHTML = `<b>${c.index + 1}</b><span>${c.title}</span>`; }
     const k = counters(T);
     hudCells.forEach((h) => { const v = Math.min(k[h.k], h.max); if (h.b.textContent !== String(v)) h.b.textContent = v; h.c.classList.toggle('done', v >= h.max); h.c.classList.toggle('live', v > 0 && v < h.max); });
     const cp = captionAt(T);
     const on = Boolean(ccOn() && cp);
-    cap.textContent = on ? cp.text : '';
+    const text = on ? cp.text : '';
+    if (cap.textContent !== text) cap.textContent = text;
     cap.classList.toggle('on', on);
   }
   return { cap, sync };
@@ -51,7 +55,8 @@ export function createOverlay(root, ccOn = () => true) {
 
 export function createUI({ stations, hits, canvas, camera, seek, onFree }) {
   const root = document.getElementById('ui');
-  const state = { T: 0, playing: false, speed: 1, cc: true, voice: false, free: false, panel: innerWidth >= 1500, picked: null, last: 0, ended: false };
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const state = { T: 0, playing: false, speed: 1, cc: true, voice: false, free: false, picked: null, last: 0, ended: false };
 
   const overlayParts = createOverlay(root, () => state.cc);
   const { cap } = overlayParts;
@@ -61,27 +66,57 @@ export function createUI({ stations, hits, canvas, camera, seek, onFree }) {
   const bPrev = el('button', 'btn', ICON.prev); bPrev.title = 'Previous chapter (←)'; bPrev.setAttribute('aria-label', 'Previous chapter');
   const bNext = el('button', 'btn', ICON.next); bNext.title = 'Next chapter (→)'; bNext.setAttribute('aria-label', 'Next chapter');
   const time = el('div', 'time', '0:00 / ' + mmss(TOTAL));
-  const track = el('div', 'track'); track.setAttribute('role', 'slider'); track.setAttribute('aria-label', 'Timeline'); track.tabIndex = 0;
+  const track = el('div', 'track'); track.setAttribute('role', 'slider'); track.setAttribute('aria-label', 'Timeline'); track.setAttribute('aria-valuemin', '0'); track.setAttribute('aria-valuemax', String(Math.round(TOTAL))); track.tabIndex = 0;
   const segs = chapters.map((c) => { const s = el('div', 'seg'); s.style.flex = String(c.dur); s.title = `${c.index + 1}. ${c.title}`; s.appendChild(el('i')); track.appendChild(s); return s; });
   const playhead = el('div', 'playhead'); track.appendChild(playhead);
   const bSpeed = el('button', 'btn txt', '1×'); bSpeed.title = 'Speed (S)';
-  const bCC = el('button', 'btn on', ICON.cc); bCC.title = 'Captions (C)'; bCC.setAttribute('aria-label', 'Captions');
+  const bCC = el('button', 'btn', ICON.cc); bCC.title = 'Captions (C)'; bCC.setAttribute('aria-label', 'Captions');
   const bVoice = el('button', 'btn', ICON.sound); bVoice.title = 'Narration (V)'; bVoice.setAttribute('aria-label', 'Narration');
   const bFree = el('button', 'btn txt', 'Explore'); bFree.title = 'Free camera (E)';
   const bPanel = el('button', 'btn', ICON.info); bPanel.title = 'Guide panel (G)'; bPanel.setAttribute('aria-label', 'Guide panel');
+  bSpeed.setAttribute('aria-label', 'Speed');
+  bFree.setAttribute('aria-label', 'Free camera');
+  [bCC, bVoice, bFree, bPanel].forEach((b) => setOn(b, false));
+  setOn(bCC, true);
   bar.append(bPlay, bPrev, bNext, time, track, bSpeed, bCC, bVoice, bFree, bPanel);
 
   const panel = el('aside', 'panel');
+  panel.id = 'guide-panel';
+  panel.setAttribute('aria-label', 'Guide panel');
+  bPanel.setAttribute('aria-controls', panel.id);
+  if (reduced) { bPlay.title = 'Next chapter step (space)'; bPlay.setAttribute('aria-label', 'Next chapter step'); }
   const panelBody = el('div', 'pbody');
   panel.appendChild(panelBody);
   const hint = el('div', 'hint', 'Space play · ← → chapter · E explore · drag to orbit · click a station');
-  const overlay = el('div', 'start', `<div class="card"><h1>Agentic Stream, end to end</h1><p>One real recorded run, from a warming sensor to a verified effect, in ${Math.floor(TOTAL / 60)} min ${Math.round(TOTAL % 60)} s. Press play for the narrated tour, or explore the 3D world yourself.</p><div class="row"><button class="big" id="go">▶ Play the tour</button><button class="big ghost" id="explore">Explore freely</button></div><small>${COUNTS.events} events · ${COUNTS.versions} Situation versions · 1 episode · 1 verified effect. Every number comes from the recorded run.</small></div>`);
+  const overlay = el('div', 'start', `<div class="card" role="dialog" aria-modal="true" aria-labelledby="start-title"><h1 id="start-title">Agentic Stream, end to end</h1><p>One real recorded run, from a warming sensor to a verified effect, in ${mmssWords(TOTAL)}. ${reduced ? 'Reduced motion is on, so the tour steps one chapter at a time instead of playing.' : 'Press play for the narrated tour, or explore the 3D world yourself.'}</p><p class="missing" hidden>The narration track is not built in this checkout (it is large and git-ignored), so the tour runs silently with captions. See the README to render it.</p><div class="row"><button class="big" id="go">${reduced ? '▶ Start the tour' : '▶ Play the tour'}</button><button class="big ghost" id="explore">Explore freely</button></div><small>${COUNTS.events} events · ${COUNTS.versions} Situation versions · 1 episode · 1 verified effect. Every number comes from the recorded run.</small></div>`);
   root.append(bar, panel, hint, overlay);
 
   const audio = new Audio('film/narration.m4a');
   audio.preload = 'auto';
-  audio.addEventListener('error', () => { bVoice.style.display = 'none'; });
-  if (innerWidth < 1500) panel.classList.add('closed');
+  audio.addEventListener('error', () => { bVoice.style.display = 'none'; state.voice = false; setOn(bVoice, false); overlay.querySelector('.missing').hidden = false; });
+
+  function setPanel(open) {
+    panel.classList.toggle('closed', !open);
+    panel.inert = !open;
+    setOn(bPanel, open);
+    bPanel.setAttribute('aria-expanded', String(open));
+  }
+  setPanel(innerWidth >= 1500);
+
+  function setStart(open) {
+    overlay.classList.toggle('gone', !open);
+    overlay.inert = !open;
+    bar.inert = open;
+    if (!open) return;
+    panel.inert = true;
+    overlay.querySelector('#go').focus();
+  }
+  function closeStart() {
+    if (overlay.classList.contains('gone')) return;
+    setStart(false);
+    panel.inert = panel.classList.contains('closed');
+    bPlay.focus();
+  }
 
   function renderPanel(T) {
     const c = chapterAt(T);
@@ -115,13 +150,13 @@ export function createUI({ stations, hits, canvas, camera, seek, onFree }) {
     setFree(true, id);
     pause();
     panelBody.__key = null;
-    panel.classList.remove('closed');
+    setPanel(true);
     renderPanel(state.T);
   }
 
   function setFree(on, id) {
     state.free = on;
-    bFree.classList.toggle('on', on);
+    setOn(bFree, on);
     bFree.textContent = on ? 'Resume tour' : 'Explore';
     onFree(on, id);
     hint.classList.toggle('show', on);
@@ -131,32 +166,38 @@ export function createUI({ stations, hits, canvas, camera, seek, onFree }) {
   function play() {
     if (state.T >= TOTAL - 0.05) { state.T = 0; }
     if (state.free) { state.picked = null; setFree(false); }
+    closeStart();
+    if (reduced) { stepChapter(1); return; }
     state.playing = true; state.ended = false; bPlay.innerHTML = ICON.pause; state.last = performance.now();
     if (state.voice) { audio.currentTime = state.T; audio.play().catch(() => {}); }
-    overlay.classList.add('gone');
   }
   function jump(T) {
     state.T = clamp(T, 0, TOTAL - 0.001); state.ended = false;
     if (state.voice) audio.currentTime = state.T;
     seek(state.T);
   }
+  const settled = (c) => c.start + c.dur * 0.92;
   function chapterJump(dir) {
     const c = chapterAt(state.T);
     const target = dir > 0 ? chapters[Math.min(chapters.length - 1, c.index + 1)] : (state.T - c.start > 2 ? c : chapters[Math.max(0, c.index - 1)]);
     if (state.free) { state.picked = null; setFree(false); }
-    jump(target.start + 0.01);
+    jump(reduced ? settled(target) : target.start + 0.01);
+  }
+  function stepChapter(dir) {
+    const c = chapterAt(state.T);
+    if (dir > 0 && state.T < settled(c) - 0.05) { if (state.free) { state.picked = null; setFree(false); } jump(settled(c)); } else chapterJump(dir);
   }
 
   bPlay.onclick = () => (state.playing ? pause() : play());
   bPrev.onclick = () => chapterJump(-1);
   bNext.onclick = () => chapterJump(1);
   bSpeed.onclick = () => { state.speed = state.speed === 1 ? 1.5 : state.speed === 1.5 ? 0.5 : 1; bSpeed.textContent = state.speed + '×'; audio.playbackRate = state.speed; };
-  bCC.onclick = () => { state.cc = !state.cc; bCC.classList.toggle('on', state.cc); };
-  bVoice.onclick = () => { state.voice = !state.voice; bVoice.classList.toggle('on', state.voice); if (state.voice && state.playing) { audio.currentTime = state.T; audio.play().catch(() => {}); } else audio.pause(); };
+  bCC.onclick = () => { state.cc = !state.cc; setOn(bCC, state.cc); };
+  bVoice.onclick = () => { state.voice = !state.voice; setOn(bVoice, state.voice); if (state.voice && state.playing) { audio.currentTime = state.T; audio.play().catch(() => {}); } else audio.pause(); };
   bFree.onclick = () => { if (state.free) { state.picked = null; setFree(false); panelBody.__key = null; } else { setFree(true); pause(); } };
-  bPanel.onclick = () => { panel.classList.toggle('closed'); seek(state.T); };
-  overlay.querySelector('#go').onclick = () => { state.voice = true; bVoice.classList.add('on'); play(); };
-  overlay.querySelector('#explore').onclick = () => { overlay.classList.add('gone'); jump(chapters.find((c) => c.id === 'outro').start + 3); setFree(true); };
+  bPanel.onclick = () => { setPanel(panel.classList.contains('closed')); seek(state.T); };
+  overlay.querySelector('#go').onclick = () => { if (!reduced && bVoice.style.display !== 'none') { state.voice = true; setOn(bVoice, true); } play(); };
+  overlay.querySelector('#explore').onclick = () => { closeStart(); jump(chapters.find((c) => c.id === 'outro').start + 3); setFree(true); };
 
   const scrub = (ev) => { const r = track.getBoundingClientRect(); jump(clamp((ev.clientX - r.left) / r.width) * TOTAL); };
   track.addEventListener('pointerdown', (ev) => { track.setPointerCapture(ev.pointerId); scrub(ev); track.onpointermove = scrub; });
@@ -218,15 +259,17 @@ export function createUI({ stations, hits, canvas, camera, seek, onFree }) {
     playhead.style.left = (T / TOTAL * 100).toFixed(3) + '%';
     segs.forEach((s, i) => { const cc = chapters[i]; s.style.setProperty('--p', String(clamp((T - cc.start) / cc.dur))); s.classList.toggle('now', i === c.index); });
     overlayParts.sync(T);
-    if (!state.free) renderPanel(T); else if (!state.picked) renderPanel(T);
+    if (!state.free || !state.picked) renderPanel(T);
     track.setAttribute('aria-valuenow', String(Math.round(T)));
+    track.setAttribute('aria-valuetext', `${mmss(T)} of ${mmss(TOTAL)}, chapter ${c.index + 1}: ${c.title}`);
   }
 
   function start() {
     requestAnimationFrame(frame);
     renderPanel(0);
+    setStart(true);
     const want = new URLSearchParams(location.search).get('station');
-    if (want && STATIONS[want]) { overlay.classList.add('gone'); const c = chapters.find((x) => x.stations.includes(want)); if (c) jump(c.start + Math.min(c.dur - 1, 7)); pick(want); }
+    if (want && STATIONS[want]) { closeStart(); const c = chapters.find((x) => x.stations.includes(want)); if (c) jump(c.start + Math.min(c.dur - 1, 7)); pick(want); }
   }
   return { start, sync };
 }

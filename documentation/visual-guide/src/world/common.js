@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { COLORS, mat, roundedSlab, glowSprite, box } from './theme.js';
 import { placeStation } from './layout.js';
+import { window01 } from '../util.js';
 
 export function platform(planeKey, w = 14, d = 15, { glow = 0.5 } = {}) {
   const g = new THREE.Group();
@@ -73,3 +74,13 @@ export function dot(color, r = 0.2, intensity = 2) {
 }
 
 export { glowSprite };
+
+export const localPoint = (g) => (x, y, z) => g.localToWorld(new THREE.Vector3(x, y, z));
+
+export function activate(g, T, from, to, fade) {
+  setPlatformEnergy(g, window01(T, from, to, fade) * 0.9);
+}
+
+export function nameTag(tags, key, pos, html, near, plane) {
+  tags.put(key, pos, html, near * 0.95, `name ${plane}`);
+}

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { COLORS, mat, box, cyl, edges, glowSprite } from '../theme.js';
-import { stationGroup, setPlatformEnergy } from '../common.js';
-import { clamp, window01, pulse, ramp, rng } from '../../util.js';
+import { COLORS, mat, glowSprite } from '../theme.js';
+import { stationGroup, setPlatformEnergy, localPoint, nameTag } from '../common.js';
+import { window01, ramp, rng } from '../../util.js';
 import { episode } from '../schedule.js';
 import { ch } from '../../timeline.js';
 
@@ -52,8 +52,8 @@ export function createTamoz() {
     const act = window01(T, episode.request - 0.5, episode.answer + 1.5, 0.8);
     setPlatformEnergy(g, 0.25 + act * 0.8);
     const near = window01(T, episode.request - 0.6, ch.episode.end - 0.4, 0.8);
-    const P = (x, y, z) => g.localToWorld(new THREE.Vector3(x, y, z));
-    tags.put('tamoz-name', P(0, Y + 10.2, 0), 'Tamoz · the reasoner<small>separate worker process · private socket</small>', near * 0.95, 'name cognition');
+    const P = localPoint(g);
+    nameTag(tags, 'tamoz-name', P(0, Y + 10.2, 0), 'Tamoz · the reasoner<small>separate worker process · private socket</small>', near, 'cognition');
     tags.put('tamoz-lock', P(0, Y + 0.5, 5.6), 'no effectors · no credentials<small>reads evidence, proposes, nothing else</small>', window01(T, episode.evidence[0] + 0.6, ch.episode.end - 0.2, 0.6) * 0.95, 'note warn');
   }
   return { id: 'tamoz', group: g, update };

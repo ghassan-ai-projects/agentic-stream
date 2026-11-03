@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { COLORS, glowSprite } from './theme.js';
-import { events, TRAVEL } from './schedule.js';
-import { angleOf, ringPoint, PORT, arcPoint } from './layout.js';
-import { clamp, smooth, easeInOut } from '../util.js';
+import { events } from './schedule.js';
+import { angleOf, PORT, arcPoint } from './layout.js';
+import { smooth, easeInOut } from '../util.js';
 
 const geo = new THREE.OctahedronGeometry(0.6, 0);
 

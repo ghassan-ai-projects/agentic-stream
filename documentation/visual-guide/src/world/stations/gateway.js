@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { COLORS, mat, box, cyl, glowSprite } from '../theme.js';
-import { stationGroup, setPlatformEnergy } from '../common.js';
-import { clamp, window01, decay, pulse } from '../../util.js';
+import { stationGroup, setPlatformEnergy, nameTag } from '../common.js';
+import { window01, decay, pulse } from '../../util.js';
 import { events, action, gatewayBeats } from '../schedule.js';
 import { RUN } from '../../story.js';
 import { ch } from '../../timeline.js';
@@ -64,7 +64,7 @@ export function createGateway() {
 
     const count = events.filter((e) => T >= e.atGateway).length;
     const near = window01(T, ch.gateway.start, ch.gateway.end - 0.2, 1.0);
-    tags.put('gateway-name', g.localToWorld(new THREE.Vector3(0, 6.2, 3)), `Gateway<small>the edge · emulated in this run · ${count} events</small>`, near * 0.95, 'name evidence');
+    nameTag(tags, 'gateway-name', g.localToWorld(new THREE.Vector3(0, 6.2, 3)), `Gateway<small>the edge · emulated in this run · ${count} events</small>`, near, 'evidence');
     tags.put('gateway-env', g.localToWorld(new THREE.Vector3(0, Y + 9.5, -1)), ENVELOPE, window01(T, gatewayBeats.envelope, gatewayBeats.envelopeEnd, 0.5), 'card evidence');
     tags.put('gateway-cmd', g.localToWorld(new THREE.Vector3(0, Y + 7.2, 0)), 'command to the device<small>a typed record, bound to its policy</small>', window01(T, action.atGateway - 0.2, action.atBench + 0.6, 0.4) * 0.95, 'note cmd');
   }
