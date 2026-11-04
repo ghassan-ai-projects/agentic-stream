@@ -1,0 +1,11 @@
+import { launch, evaluate } from './chrome.mjs';
+import { resolve } from 'node:path';
+const [page, w = 1440, h = 900, dpr = 2] = process.argv.slice(2);
+const c = await launch({ width: Number(w), height: Number(h) });
+await c.cdp.send('Runtime.enable'); await c.cdp.send('Page.enable');
+await c.cdp.send('Emulation.setDeviceMetricsOverride', { width: Number(w), height: Number(h), deviceScaleFactor: Number(dpr), mobile: false });
+await c.cdp.send('Page.navigate', { url: `file://${resolve(page)}` });
+await new Promise((r) => setTimeout(r, 2000));
+const r = await evaluate(c.cdp, `(() => { const gl = document.getElementById('stage').getContext('webgl2'); const out = {}; for (const T of [5, 24, 40, 62, 90, 108]) { window.__seek(T); gl.finish(); const t0 = performance.now(); for (let i = 0; i < 20; i++) { window.__seek(T + i * 0.03); gl.finish(); } out[T] = +((performance.now() - t0) / 20).toFixed(1); } return JSON.stringify(out); })()`);
+console.log(`${w}x${h} @${dpr}x ms/frame`, r);
+await c.close();

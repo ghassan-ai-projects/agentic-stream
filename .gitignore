@@ -59,3 +59,6 @@ Thumbs.db
 
 # --- Local-only working archive (kept on disk, not in git) ---
 /docs/
+
+# --- Local environment ---
+.env
