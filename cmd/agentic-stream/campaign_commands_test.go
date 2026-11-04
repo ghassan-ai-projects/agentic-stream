@@ -15,8 +15,13 @@ const pumpUnderTest = "site-a:pump-3"
 
 var pumpMetricAliases = map[string]int{"vibration": 1, "axial_vibration": 2, "temperature": 3, "motor_current": 4}
 
-var pumpFastEdits = map[string]string{"maxOutOfOrderness: 2m": "maxOutOfOrderness: 100ms", "size: 15m": "size: 20s", "slide: 1m": "slide: 5s",
-	"size: 24h": "size: 1m", "slide: 30m": "slide: 5s", "minDuration: 20m": "minDuration: 100ms", "debounce: 1m": "debounce: 100ms",
+const (
+	wearingHistory = 40 * time.Second
+	wearingCadence = 5 * time.Second
+)
+
+var pumpFastEdits = map[string]string{"maxOutOfOrderness: 2m": "maxOutOfOrderness: 100ms", "size: 15m": "size: 10s", "slide: 1m": "slide: 5s",
+	"size: 24h": "size: 30s", "slide: 30m": "slide: 5s", "minDuration: 20m": "minDuration: 100ms", "debounce: 1m": "debounce: 100ms",
 	"cooldown: 5m": "cooldown: 100ms"}
 
 func TestTheCampaignsServeFlagsLetAScheduledMaintenanceReachThePlant(t *testing.T) {
@@ -72,14 +77,14 @@ func bornPumpNode(t *testing.T, socket string) *plantwirefake.Node {
 	for name, alias := range pumpMetricAliases {
 		metrics = append(metrics, birthMetric(name, alias, nil, "warming_up"))
 	}
-	node.Send(deviceBirth(pumpUnderTest, "pump", time.Now().Add(-backdatedHistory).UnixNano(), metrics...))
+	node.Send(deviceBirth(pumpUnderTest, "pump", time.Now().Add(-wearingHistory).UnixNano(), metrics...))
 	return node
 }
 
 func sendWearingPump(node *plantwirefake.Node) {
-	start := time.Now().Add(-backdatedHistory)
-	for at := start; at.Before(time.Now()); at = at.Add(readingCadence) {
-		wear := at.After(start.Add(backdatedHistory / 2))
+	start := time.Now().Add(-wearingHistory)
+	for at := start; at.Before(time.Now()); at = at.Add(wearingCadence) {
+		wear := at.After(start.Add(wearingHistory / 2))
 		node.Send(map[string]any{"type": "DDATA", "lane": "data", "device": pumpUnderTest, "boot_id": benchBoot, "historical": false,
 			"metrics": []any{benchSample(1, map[bool]float64{false: 2, true: 5}[wear], at.UnixNano()), benchSample(2, 1, at.UnixNano()),
 				benchSample(3, 60, at.UnixNano()), benchSample(4, 10, at.UnixNano())}})
