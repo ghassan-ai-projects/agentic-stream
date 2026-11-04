@@ -24,15 +24,17 @@ func TestExecuteNeverCallsTheProviderOnACanceledContext(t *testing.T) {
 
 func TestExecuteSettlesALateProviderResponseAfterTheWallTime(t *testing.T) {
 	t.Parallel()
+	wallTime := newManualWallTime(t.Context())
 	provider := providerRespondingWith(func(_ int, ctx context.Context, req native.ModelRequest) (native.ModelResponse, error) {
+		wallTime.expire()
 		<-ctx.Done()
 		response, err := validDecision(ctx, req)
 		response.Usage = native.Usage{CostMicrounits: 42}
 		return response, err
 	})
-	req := requestWithBudget(map[string]any{"wall_time": "1ms"})
+	req := requestWithBudget(map[string]any{"wall_time": "1h"})
 
-	outcome, err := newExecutor(t, provider).Execute(t.Context(), req)
+	outcome, err := newExecutor(t, provider).Execute(wallTime, req)
 
 	if err != nil || outcome.CostMicrounits != 42 {
 		t.Fatalf("Execute() = %+v, %v; want the late response's cost settled", outcome, err)
