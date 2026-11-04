@@ -18,6 +18,11 @@ For the authoritative release status, read [`governance/release-status.json`](go
   conformance tests.
 - Replay/shadow library modes, loopback HTTP, metrics, authenticated SSE,
   runtime ownership, recovery, and telemetry.
+- Plant wire host for simulated and hardware nodes behind the ingress and
+  effect ports.
+- Rule promotion: a playbook of human-approved rules, drafted by the worker
+  from verified cases, that answers recurring cases without a model call.
+- Verifiable run artifacts (`export-run`, `verify-run`) with a soak verdict.
 
 ## Hardening next
 

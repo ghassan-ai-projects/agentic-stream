@@ -1,7 +1,7 @@
 # Migration reference
 
 The runtime applies numbered SQLite migrations from
-[`migrations/`](../../migrations/). The current tree contains 37 migrations.
+[`migrations/`](../../migrations/). The current tree contains 43 migrations.
 
 ## Migration families
 
@@ -13,10 +13,29 @@ episode rebinding, paired shadow comparisons, device authority,
 reconciliation, and soak evidence, the device-reconciliation column names,
 each Situation's latest material version, the removal of unused tables, and
 indexes for the per-event hot path, event-time dispositions with per-source
-partition clocks, durable state for unopened Situations, and set-aside apply failures.
+partition clocks, durable state for unopened Situations, set-aside apply
+failures, the normalized target of a command binding, and the playbook's
+rule-promotion evidence.
 
 The current head is
-[`037_apply_failures.sql`](../../migrations/037_apply_failures.sql), which
+[`043_event_log_tenant_time.sql`](../../migrations/043_event_log_tenant_time.sql),
+an index on the tenant's event time so rule case verification reads the log's
+latest event time without scanning the log;
+[`042_rule_proposals.sql`](../../migrations/042_rule_proposals.sql) adds
+`rule_drafts` and `rule_proposals` (draft calls to the worker and the proposals
+a human approves; nothing in them authorizes an action);
+[`041_rule_evaluation_cap.sql`](../../migrations/041_rule_evaluation_cap.sql)
+records whether a rule's match fell inside its approved cap (`in_cap`);
+[`040_case_verifications.sql`](../../migrations/040_case_verifications.sql)
+adds `case_verifications`, one record per case whose decision dispatched an
+action, the only evidence rule proposals count;
+[`039_playbook.sql`](../../migrations/039_playbook.sql) adds `rule_fires`,
+`rule_evaluations` and `rule_circuits`, which record what playbook rules did and
+authorize nothing;
+[`038_command_binding_normalized_target.sql`](../../migrations/038_command_binding_normalized_target.sql)
+records the target a command named when the effector bound it to a different
+device output, so reconciliation evidence is compared like with like;
+[`037_apply_failures.sql`](../../migrations/037_apply_failures.sql)
 records events set aside because applying them fails every time;
 [`036_unopened_situations.sql`](../../migrations/036_unopened_situations.sql)
 keeps the runtime state of Situations that have not opened yet;

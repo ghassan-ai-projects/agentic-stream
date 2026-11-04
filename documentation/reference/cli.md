@@ -55,11 +55,12 @@ version.
 
 ## `validate <spec.yaml>`
 
-Compiles and validates one SituationSpec.
+Compiles and validates one SituationSpec and, with `--playbook`, its playbook.
 
 | Flag | Default | Meaning |
 | --- | --- | --- |
 | `--json` | `false` | Emit canonical JSON instead of the summary |
+| `--playbook` | empty | playbook YAML compiled against the spec; the output adds the playbook's own digest, which is separate from the spec digest ([playbook design](../design/playbook.md)) |
 
 ## `run --spec <spec.yaml> --trace <trace.jsonl>`
 
@@ -153,6 +154,8 @@ Starts the live runtime with HTTP health checks and notifications.
 | `--plant-wire-site` | empty | site file kept outside the repository: checked against its schema and the commissioned kinds, its digest logged at start; without it no reading becomes an event, and with `--device-catalog` it is required (the site's devices are the ones the node must announce, and every route target must be one of them) |
 | `--plant-wire-epoch` | `0` | authority epoch the host announces; `0` means Unix seconds at start |
 | `--hardware-boards` | empty | repeatable hardware boards the plant wire host may command; needs a hardware or mixed host |
+| `--playbook` | empty | playbook YAML compiled against `--spec` at start; its active rules answer the cases they cover without a model call, and approved rule proposals are written to it ([playbook design](../design/playbook.md)) |
+| `--draft-after` | `3` | verified, uncontradicted cases of one key that ask the worker to draft a playbook rule |
 
 For continuous ingestion, supply `--spec` with `--trace`, or with
 `--live-socket`, `--plant-wire-socket` or both. The live socket accepts normalized JSONL from reconnecting
@@ -302,6 +305,39 @@ last reasoned or last material version), and lineage sets no version cites.
 The event log, decisions, intents, commands, outcomes and every admitted,
 deferred, coalesced, rejected or expired evaluation are kept. `--vacuum`
 reclaims the freed space afterwards.
+
+## Run artifacts
+
+### `export-run --db <runtime.db> --output <directory> [provenance flags]`
+
+Writes an immutable, independently verifiable evidence artifact for one run.
+It reads one snapshot of the database in a single read-only transaction, takes
+no lease and never overwrites: `--output` must be a new directory. The
+directory holds the manifest (`manifest.json`), the canonical spec and policy
+the run executed under, nine JSON Lines ledgers (observations, situations,
+decisions, commands, device results, feedback, device command bindings,
+authority events, safety events), `metrics.json`, `verdict.json` and a
+checksum index (`checksums.sha256`). The verdict (`pass` or `fail`, with the reasons) comes from
+durable evidence only: zero-tolerance counters for unsafe or unexplained
+effects, and evidence completeness; telemetry is excluded.
+
+`--db`, `--output` and `--tenant` are required. Every other
+flag is provenance the operator supplies for the manifest and is never
+replaced by a physical claim when left empty: run and scenario identity
+(`--run-id`, `--scenario-seed`, `--start`, `--end`, `--monotonic-start-us`,
+`--monotonic-end-us`, `--operator`, `--declared-result`,
+`--safety-review-reference`), source and definitions (`--git-commit`,
+`--git-dirty`, `--spec-digest`, `--policy-digest`, `--capability-digest`,
+`--manifest-schema-version`), worker (`--provider`, `--model`,
+`--prompt-version`, `--prompt-digest`, `--decision-schema`,
+`--sampling-parameters`) and device (`--device-id`, `--board`, `--boot-id`,
+`--firmware-digest`, `--calibration-revision`, `--wiring-revision`).
+
+### `verify-run <directory>`
+
+Re-reads an exported artifact and checks its checksums, expected files, JSON
+syntax, manifest bindings, ledger digests and the verdict against the files. It
+needs no database.
 
 ## Not registered yet
 
