@@ -24,7 +24,10 @@ environment; the table is not deployment approval.
 | Operator commands: interlock, approval principals, quarantine redrive, notification retention, command reconciliation | `cmd/agentic-stream/`, [CLI reference](../reference/cli.md) |
 | Read-only explainability: Situations, field derivations, trigger decisions, episodes and intents through to verification | `situation`, `explain`, `episode` and `intent` commands |
 | Loopback HTTP, readiness, metrics, durable SSE notifications, drain/kill control | `internal/api/`, `internal/notify/`, `internal/telemetry/` |
-| Predictive-maintenance fixtures and stream-plane path | `internal/runtime/pipeline_test.go`, `examples/` |
+| Plant wire host: sessions, site-file event mapping, effector, origin checks and verification from the device's own readings (`serve --plant-wire-socket`) | `internal/plantwire/`, [plant wire adapter](../design/plant-wire-adapter.md) |
+| Rule promotion: a playbook of human-approved rules answers recurring verified cases without a model call; shadow, audit, envelope, circuits, recovery check and worker-drafted proposals | `internal/playbook/`, `internal/executor/rule/`, `internal/draftport/`, [playbook](../design/playbook.md), [rule promotion](../design/rule-promotion.md) |
+| Verifiable run artifacts with a soak verdict (`export-run`, `verify-run`) | `internal/runartifact/`, [CLI reference](../reference/cli.md) |
+| Predictive-maintenance and pump-station fixtures and stream-plane path | `internal/runtime/pipeline_test.go`, `examples/` |
 
 ## Partial or operationally restricted
 

@@ -34,10 +34,11 @@ Its first diagram has four stages. The pages below add one boundary at a time;
   and explainability.
 - [Deployment model](deployment-model.md) — single-node runtime, worker
   process, and explicit scale-out deferrals.
-- [Plant wire adapter](plant-wire-adapter.md) — the planned host for plant
-  wire sessions behind the ingress and effect ports, beside device-wire.
-- [Rule promotion](rule-promotion.md) — planned: a playbook of human-approved
-  rules drafted by Tamoz from verified cases, and the rounds that build it.
+- [Plant wire adapter](plant-wire-adapter.md) — the host for plant wire
+  sessions behind the ingress and effect ports, beside device-wire.
+- [Rule promotion](rule-promotion.md) — a playbook of human-approved rules
+  drafted by the worker from verified cases, the rounds that built it and
+  their status.
 - [Playbook](playbook.md) — the module that routes episodes to approved rules,
   audits them and keeps their circuits, fires and verified cases.
 

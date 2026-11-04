@@ -1,6 +1,6 @@
 # Rule promotion: the agentic-stream plan
 
-- **Status**: planned, built in rounds (nothing below is running yet)
+- **Status**: built (rounds AS-0 to AS-9 done, see section 10); the plan below is kept as the decision record
 - **Date**: 2026-10-27
 - **Repository**: agentic-stream, branch `rule-promotion` (cut from main `d9f87164`)
 - **Session order**: the repositories are worked one at a time, never in parallel:

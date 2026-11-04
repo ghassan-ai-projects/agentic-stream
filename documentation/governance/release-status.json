@@ -2,7 +2,7 @@
   "schema_version": 1,
   "channel": "development",
   "version": "unreleased",
-  "as_of": "2026-10-08",
+  "as_of": "2026-11-04",
   "stable_release": false,
   "implemented": [
     "deterministic, recorded and shadow replay from the CLI",
@@ -16,7 +16,10 @@
     "live normalized JSONL ingress over a Unix domain socket",
     "typed device-gateway boundary with authority and reconciliation records",
     "operator commands for interlock, approval principals, quarantine redrive, notification retention and command reconciliation",
-    "read-only explainability of Situations, triggers, episodes and intents"
+    "read-only explainability of Situations, triggers, episodes and intents",
+    "plant wire host for simulated and hardware nodes",
+    "playbook rule promotion: approved rules, shadow, audit, circuits and worker-drafted proposals",
+    "verifiable run artifacts with a soak verdict"
   ],
   "partial": [
     "environment-level production qualification",
