@@ -1,37 +1,14 @@
 # Go Style Context
 
+The rules every Go edit needs, errors and comments among them, are in
+[AGENTS.md](../../AGENTS.md). This file holds the rest.
+
 ## Core Rules
 
-- Use `context.Context` as the first parameter for I/O, blocking, or cancellable work.
 - Return `error` last.
-- Use `log/slog` instead of `fmt.Println` for logging.
-- Prefer standard library packages like `cmp`, `maps`, and `slices` over new helper dependencies.
 - Keep packages small, lowercase, and singular.
 - Prefer direct code over indirection when both are maintainable.
 - Add new abstractions only after a real second use, repeated logic, or a clear testing need appears.
-- Keep handlers thin; business logic lives in the owning module, not in API handlers.
-- Use table-driven tests with `t.Run()` and `t.Parallel()` where safe, and `t.Context()` in tests.
-
-## Errors
-
-Wrap every error you return from another function with `%w` and context the callee
-lacks (the operation, an identifier, the layer). Do not silence `wrapcheck` with
-`//nolint` or return a callee's error bare because "it already names the step";
-that is only true until someone changes the callee. A bare return is allowed in
-exactly two cases, and the directive must say which: a facade operation that an
-architecture gate requires to be a single delegating return, or an error that must
-reach a protocol unchanged (a gRPC `status` error). Check `rows.Err()` and `Close()`
-like any other call.
-
-## Comments
-
-Comment only a module's public interface: the doc comment on each exported symbol
-of its facade package, and one package comment per package (an architecture gate
-requires it). Inside a module (`internal/<module>/internal/**`, `cmd/`) write no
-comments: a name, a function boundary or a test says what a comment would. If code
-needs a comment to be understood, rename or split it. The only comments allowed
-inside are tool directives (`//go:embed`, `//nolint:<linter> // <reason>`), and a
-`//nolint` reason must be true of the code, not a convenience.
 
 ## Module Path and Imports
 

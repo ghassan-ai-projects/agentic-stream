@@ -105,29 +105,49 @@ themselves: open the row that matches the work.
 - A module with tables and rules has a thin facade, use cases in `internal/app`, pure rules in
   `internal/domain` and all SQL in `internal/store`; `internal/authority` is the reference. Only
   `runtime` and `cmd` wire concrete adapters.
+- No foreign lifecycle writes, upward imports, or reasoning or replay access to effect implementations ([architecture bar](.agents/context/architecture-bar.md)).
+- `internal/kernel` is the shared pure vocabulary: a symbol enters only when two or more modules need it and it is a stable representation rule, not business behaviour. Tests open a migrated database with `storagetest.OpenTemp`; production code never imports `storagetest`.
 - Repository-wide rules are tests in `internal/architecture`, indexed in its
   [README](internal/architecture/README.md); its failure message states the rule. Fix the code.
   Thresholds are never loosened to get a diff green; extending an allowlist or moving a pin is a
   deliberate change named in the handoff.
 
-## Code Rules
+## Go Standards
 
-- A function name states its intent, its body is at most 15 lines at one level of abstraction, and
-  callees sit below their first caller; exported entry points read as short sequences of domain
-  steps. Linters enforce only the mechanical floor (rule Q7 in the quality bar).
-- Comment only a module's public interface: exported facade symbols and one package comment per
-  package. Inside `internal/<module>/internal/**` and `cmd/`, only tool directives.
-- Wrap every returned error with `%w` and context the callee lacks. A bare return is allowed only
-  for a gated facade delegation or a gRPC `status` error, and its `//nolint` says which.
-- Edit Go with syntax-aware tools (`gopls`, `gofmt -r`, `goimports`, a throwaway `go/ast` program),
-  never `sed` or regex.
-- Duplicated code is a defect to fix in the change that finds it. Before adding a helper, search for
-  one that does the job ([scan](.agents/context/duplication.md)).
+- Use `context.Context` as the first parameter for cancellable or I/O work, and `log/slog` for logging.
+- Keep handlers thin; business logic lives in the owning module, not in API handlers.
+- Prefer standard library helpers such as `cmp`, `maps` and `slices`, and existing package boundaries and local helpers over new abstractions.
+- Wrap every error you return from another function with `%w` and context the callee lacks (the operation, an identifier, the layer). Do not silence `wrapcheck` with `//nolint` or return a callee's error bare because "it already names the step"; that is only true until someone changes the callee. A bare return is allowed in exactly two cases, and the directive must say which: a facade operation that an architecture gate requires to be a single delegating return, or an error that must reach a protocol unchanged (a gRPC `status` error). Check `rows.Err()` and `Close()` like any other call.
+- Comment only a module's public interface: the doc comment on each exported symbol of its facade package, and one package comment per package. Inside a module (`internal/<module>/internal/**`, `cmd/`) write no comments: a name, a function boundary or a test says what a comment would. If code needs a comment to be understood, rename or split it. The only comments allowed inside are tool directives (`//go:embed`, `//nolint:<linter> // <reason>`), and a `//nolint` reason must be true of the code, not a convenience.
+- Use table-driven tests with `t.Run()` and `t.Parallel()` where safe, and `t.Context()` in tests.
+- Change Go with tools that understand syntax, never `sed`, `awk`, regex or find-and-replace: `gopls rename`, `references` and `implementation`; `gofmt -r 'old -> new'`; `goimports -w`; for anything else a throwaway `go/parser` + `go/ast` + `go/format` program kept outside the repo. Then run `gofmt -l`, `go build ./...` and `go vet ./...` before the tests, and read the diff ([go-style.md](.agents/context/go-style.md)).
+- Duplicated code is a defect to fix in the change that finds it. Before adding a helper, search for the job it does and use what exists: `storage.QueryAll`, `storage.CollectRows` (read rows), `storage.NullIfEmpty` (empty string to NULL), `storage.QueryOptional` (one value or none), `storage.RowsAffected`, `storage.BoolInt`, `contractsv1.DocumentString`, `contractsv1.DocumentInt` (decoded JSON fields), `sources.OrLease` (default lease), `sources.OrPhysical`, `sources.OrRandom` (default clock and identities), `interlock.Assert` (the interlock check), `newOperatorCommand`, `newDatabaseCommand`, `newByIDCommand` (operator CLI). If two modules need the same helper, put one in the module that owns the concept and call it.
+- Keep a wrapper only when an architecture gate requires it (a facade delegating to `app`, an opaque `store.Tx` method) or it adds something: a fence, a transaction, context for the error. One `SELECT` of a row belongs in one place. Before handoff, run the [duplication scan](.agents/context/duplication.md) on the files you changed.
+
+## Code Quality Expectations
+
+Code is written to be read top-down by the next reviewer. Every function in production code follows these rules as it is written, not only at review (rule Q7; examples in the [quality bar](.agents/context/quality-bar.md)):
+
+- A function name states its intent.
+- A function is short (at most 15 body lines) and does one thing.
+- A function stays at one level of abstraction.
+- Public, top-level functions read like a small domain-specific language: a short sequence of domain verbs over domain nouns.
+- Each function calls functions one level below it, and the code keeps stepping down until the remaining operations are small and concrete (the stepdown rule): entry point first, its steps below it.
+
+The linters enforce the mechanical floor (cognitive complexity ≤ 15, ≤ 15 body lines and 15 statements, nested-`if` ≤ 3, files under 300 lines); review enforces the rest. A refactor toward these rules never changes behavior, and it never adds abstraction layers without a current need. Do not use `//nolint` for `gocognit`, `gocyclo`, `nestif` or `funlen`, and do not delete or weaken tests or exclude packages to meet coverage: fix the code.
+
+Before accepting a refactoring round:
+
+- Read changed entry points aloud as domain steps. Move SQL, serialization, transport framing, and loop bookkeeping into the step that owns them.
+- Place private steps below their first caller, splitting files by responsibility when needed. Use names that explain the outcome; avoid numbered parts and wrappers that merely rename another call.
+- Preserve public signatures, error precedence, identity and digest inputs, ordering, clock reads, transaction boundaries, locks, cancellation, and effects. Add regression tests for the boundaries touched by the extraction.
+- Review the diff against Q7 as well as the mechanical limits. Run focused tests before each commit and the full gate before handoff. Keep any blocked check explicit; passing lint alone does not demonstrate clean functions.
 
 ## Forbidden Changes
 
 - Secrets, credentials or machine-specific private data, in files or in commits.
 - Model access to effectors or production credentials.
+- Untrusted content becoming instructions or executable parameters (invariant 1).
 - Network calls in unit tests.
 - Anything executable (Go, tests, Makefile) reading `docs/`; inputs live in `examples/` or a module's `testdata/`.
 - Domain data re-authored in Go. Event schemas live in
@@ -135,11 +155,11 @@ themselves: open the row that matches the work.
   which may add schemas, not change built-ins), simulator channels in
   `internal/ingress/internal/domain/simulator_data.json`, and the aquaculture intent catalog in
   `internal/episodes/testdata/aquaculture_intents.json`. Their digest pins
-  (`TestAllBuiltinsLoadFromData`, `TestAquacultureIntentCatalogDigestParity`) move only as reviewed data changes.
+  (`TestAllBuiltinsLoadFromData`, `TestAquacultureIntentCatalogDigestParity`, whose digest is shared with the Ruby side) move only as reviewed data changes. Load the data with `go:embed` + `sync.OnceValues`, or `os.ReadFile` in a test.
 - Per-domain code branches; domains are data, through the SituationSpec.
 - A graph engine, broker, LangChain/LangGraph, web UI, vector retrieval, multi-agent mesh or LLM call per event in the v1 core.
 - New top-level dependencies without clear justification (the stack is SQLite WAL via `modernc.org/sqlite`, `cel-go`, gRPC), or abstraction layers without a current need.
-- New string literals of the module path; `go.mod` owns it (`go list -m`).
+- New string literals of the module path; `go.mod` owns it (`go list -m`). Import statements name it in full because Go requires it.
 - Another canonical instruction file. A bridge file only points here.
 - Unrelated refactors.
 
@@ -159,7 +179,8 @@ themselves: open the row that matches the work.
 ## Changing This File
 
 Keep a line only if an agent could not work it out from the repository and would err without it.
-A procedure or a one-area rule goes in `.agents/context/` with a row above; a rule with no
-exceptions becomes a gate. Project rules go here, personal preferences in `CLAUDE.local.md`.
+A rule an agent needs while writing code stays here, even when a gate or review also enforces it, so
+the code is right before review. A procedure or a one-area rule goes in `.agents/context/` with a row
+above; a rule with no exceptions also becomes a gate. Project rules go here, personal preferences in `CLAUDE.local.md`.
 `TestAgentInstructionsStayShortAndCurrent` caps this file and fails on a dead link, test name, file
 path or make target in the instruction files.

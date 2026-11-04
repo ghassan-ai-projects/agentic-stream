@@ -12,9 +12,9 @@ import (
 )
 
 // agentInstructionsLineBudget caps AGENTS.md, which every agent loads on every
-// task. Anthropic's guidance is under 200 lines; this budget sits below that
-// because the file only grows. Detail belongs in .agents/context/.
-const agentInstructionsLineBudget = 170
+// task, at Anthropic's guidance of under 200 lines. Rules needed while writing
+// code stay in the file; procedures belong in .agents/context/.
+const agentInstructionsLineBudget = 199
 
 var (
 	instructionLink       = regexp.MustCompile(`\]\(([^)#\s]+)(?:#[^)]*)?\)`)

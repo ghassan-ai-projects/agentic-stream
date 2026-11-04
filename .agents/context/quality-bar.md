@@ -62,26 +62,12 @@ introducing a type is warranted only when several steps share state.
 - Do not use `//nolint` for `gocognit`, `gocyclo`, `nestif`, or `funlen`. Fix
   the code instead. Any other `//nolint` names its linter and gives a reason
   that is true of the code. `//nolint:wrapcheck` is allowed only for a gated
-  facade delegation or a protocol error ([go-style.md](go-style.md), Errors);
-  otherwise wrap the error.
+  facade delegation or a protocol error ([AGENTS.md](../../AGENTS.md), Go
+  Standards); otherwise wrap the error.
 - Do not delete or weaken tests, and do not exclude packages, to meet Q4.
 - A new package edge must follow the data flow in
   [architecture.md](architecture.md). Add it to the allowlist in
   `internal/architecture/import_rules_test.go` in the same change, with the reason in review.
-
-## Accepting a refactoring round
-
-- Read changed entry points aloud as domain steps. Move SQL, serialization,
-  transport framing, and loop bookkeeping into the step that owns them.
-- Place private steps below their first caller, splitting files by responsibility
-  when needed. Use names that explain the outcome; avoid numbered parts and
-  wrappers that merely rename another call.
-- Preserve public signatures, error precedence, identity and digest inputs,
-  ordering, clock reads, transaction boundaries, locks, cancellation, and effects.
-  Add regression tests for the boundaries touched by the extraction.
-- Review the diff against Q7 as well as the mechanical limits. Run focused tests
-  before each commit and the full gate before handoff. Keep any blocked check
-  explicit; passing lint alone does not demonstrate clean functions.
 
 ## Architecture ownership and directed flow
 

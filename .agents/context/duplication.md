@@ -13,16 +13,8 @@ review checklist (Q8) has stopped finding duplicates.
    you touched.
 2. **Same job, different code.** Before adding a helper, search the repo for the
    job it does (`grep -rn` for the verb and for `func` names such as `nullable`,
-   `orPhysical`, `collect`, `format`). Use what exists:
-   `storage.QueryAll` and `storage.CollectRows` (read rows),
-   `storage.NullIfEmpty` (empty string to NULL), `storage.QueryOptional` (one
-   value or none), `storage.RowsAffected` and `storage.BoolInt`,
-   `contractsv1.DocumentString` and `DocumentInt` (decoded JSON fields),
-   `sources.OrLease` (default lease),
-   `sources.OrPhysical` and `sources.OrRandom` (default clock and identities),
-   `interlock.Assert` (the interlock check), and `newOperatorCommand`,
-   `newDatabaseCommand`, `newByIDCommand` (operator CLI). If two modules need
-   the same helper, put one in the module that owns the concept and call it.
+   `orPhysical`, `collect`, `format`), and use what exists; the known helpers
+   are listed under Go Standards in [AGENTS.md](../../AGENTS.md).
 3. **Wrappers.** For every new function whose body is one call into another
    module, ask whether the caller can call the target directly. Keep a wrapper
    only when an architecture gate requires it (a facade delegating to `app`, an
