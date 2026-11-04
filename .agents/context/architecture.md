@@ -1,24 +1,21 @@
 # Architecture Context
 
-## Repository Architecture
+What the code cannot tell you on its own. The maintained package list is
+[repository-map.md](../../documentation/architecture/repository-map.md) (kept
+complete by `TestModuleMapListsEveryPackage`); business ownership is
+[modules.md](../../documentation/architecture/modules.md); the enforced criteria
+are [architecture-bar.md](architecture-bar.md).
 
-The architecture is summarized in [documentation/architecture/](../../documentation/architecture/README.md). This file is the concise version agents should load before editing.
+## Where Authority Lives
 
-## Current Structure
-
-- `AGENTS.md` is the canonical agent entrypoint.
-- `README.md` introduces the project.
-- `Makefile` defines the authoritative local commands.
-- `.github/workflows/ci.yml` defines CI parity for core checks.
+- `Makefile` defines the local commands; `.github/workflows/ci.yml` and
+  `.github/workflows/proto.yml` run them in CI.
 - `.golangci.yml` and `.pre-commit-config.yaml` enforce code quality and hygiene.
-- `documentation/` holds the curated public documentation. Code, tests, embedded schemas, migrations, and the worker proto are the authority for implemented behavior.
-
-## Target Structure (per design §23)
-
-- `cmd/agentic-stream/`: entrypoint, flags, wiring, shutdown
-- `internal/contractsv1` · `internal/spec` · `internal/ingress` · `internal/eventlog` · `internal/engine` · `internal/operators` · `internal/situations` · `internal/cognition` · `internal/episodes` · `internal/evidence` · `internal/decisions` · `internal/policy` · `internal/actions` · `internal/replay` · `internal/api` · `internal/telemetry` · `internal/storage` (and `internal/storage/storagetest`, migrated temporary databases for tests only) · `internal/kernel` (pure shared vocabulary) · `internal/notify` · `internal/runtime` · `internal/watch` · `internal/device` · `internal/plantwire` · `internal/actionport` · `internal/authority` · `internal/control` · `internal/episodeledger` · `internal/approvalledger` · `internal/interlock` · `internal/playbook` · `internal/draftport` · `internal/runartifact` · `internal/executor/{fixture,native,remote,rule}` · `internal/sources` · `internal/canonicaljson` (the event-schema registry lives in `internal/spec`)
-- `proto/agenticstream/runtime/v1/`: worker protocol (Protobuf/gRPC over UDS)
-- `internal/spec/internal/domain/schema.json` · `internal/contractsv1/internal/domain/schemas/v1/` · `migrations/` · `examples/predictive-maintenance/`
+- Runtime contracts are `proto/agenticstream/runtime/v1/runtime-v1.proto`,
+  `internal/contractsv1/`, `internal/spec/internal/domain/schema.json` and `migrations/`.
+- `documentation/governance/release-status.json` records the release posture.
+- `examples/` holds fixtures shared by several modules; data private to one module
+  lives in its `testdata/`.
 
 ## Data Flow
 
@@ -27,27 +24,18 @@ ingress -> eventlog -> engine/operators -> situations -> cognition
    -> episodes -> evidence/decisions -> policy -> actions
 ```
 
-- Raw events are evidence, never executable instructions.
-- Event time, watermark, completeness, and late-data status are explicit.
-- A Situation version is immutable after publication.
-- Deterministic state changes are serial per virtual partition.
-- Every episode is bound to one immutable Situation snapshot and a finite budget.
-- A model can read evidence and propose typed intents; it cannot execute effects.
-- Policy revalidates every intent against current state immediately before dispatch.
-- Replay never performs external effects unless an explicit, separate simulation mode is selected.
-
 ## Deliberate Placements
 
 - **No graph engine in the event hot path** — determinism and throughput come from the operator pipeline, not a graph executor.
 - **No LLM invocation per event** — the cognitive scheduler decides when reasoning is useful; episodes are bounded and cheap to skip.
 - **Policy/action plane separated from cognition** — models propose, policy disposes; effectors are only reachable through the action plane.
 - **SQLite WAL via `modernc.org/sqlite`** — single-node first; scale-out is deferred until profiles show a hard node boundary.
+- **Most Go packages stay under `internal`** until their contracts survive a release; public SDK packages hold client and authoring types only.
 
 ## Dependency Direction
 
-- `cmd` -> `runtime`/`api`/`ingress`/`replay` -> stream/cognition/episode/policy/action planes -> `eventlog`/`storage`/`clock`/`contractsv1`
+- `cmd` -> `runtime`/`api`/`ingress`/`replay` -> stream/cognition/episode/policy/action planes -> `eventlog`/`storage`/`sources`/`contractsv1`
 - Dependencies flow downward only.
-- Most Go packages stay under `internal` until their contracts survive a release.
 
 Avoid:
 
@@ -57,26 +45,36 @@ Avoid:
 - untrusted input reaching policy/actions without validation
 - per-domain code branches (domains are data via SituationSpec)
 
-## Business ownership refinement (ADR-017)
+## Shared Packages With Special Rules
 
-Additional current modules: `actionport`, `device`, `episodeledger`
-(scheduler queue and episode lifecycle), `approvalledger`, `control`, `authority`,
-and `executor/remote` (the streamed worker adapter behind the episode
-`Executor` port; `episodes` never imports worker transport, rule A8).
-Their contracts are in [architecture-bar.md](architecture-bar.md); the full
-maintainer map is [business modules](../../documentation/architecture/modules.md).
-`storage` is SQLite infrastructure. `internal/kernel` is the shared pure
-vocabulary (durable time text, digest text): standard library only, importable
-by any production package without a declared edge, kept pure by
-`TestKernelStaysPure`; clocks and ids stay in `sources`, SQL in `storage`.
-`internal/storage/storagetest` is test support that opens migrated temporary
-databases; production code never imports it. `runtime` and `cmd` alone wire concrete
-adapters; dispatch and device implementations meet through `actionport`.
+- `internal/kernel` is the shared pure vocabulary: durable time text and digest
+  text. Standard library only: no database, file, network, random source or clock
+  read. Any production package may import it without an `allowedImports` edge
+  (`TestKernelStaysPure`). A symbol is admitted only when two or more modules need
+  it and it is a stable representation rule, not business behaviour. Clocks and
+  identities stay in `internal/sources`, SQL in `internal/storage`.
+- `internal/storage` is SQLite infrastructure with no business rules.
+  `internal/storage/storagetest` is test support; production code never imports it.
+- `internal/architecture` holds the repository-wide gates: tests only, no production
+  code. It is the only place for tests that span modules; the repository root holds none.
+- `runtime` and `cmd` alone wire concrete adapters; dispatch and device
+  implementations meet through `actionport`. `episodes` never imports worker
+  transport (rule A8).
+
+## Adding a Module or Table
+
+The gates fail on each step you miss; doing them up front is cheaper.
+
+- A table: a migration in `migrations/` (edit the one that introduced the table when it already exists), its writer in `durableOwners` (`internal/architecture/ownership_test.go`), its SQL only in the owning `internal/store`.
+- A module: the shape in [reference-module-refactor.md](../prompts/reference-module-refactor.md), its edges in `allowedImports` (`internal/architecture/import_rules_test.go`) and its layers in `facadeSpecs`, `opaqueStoreModules` and `applicationLayerSpecs`, a package comment in `doc.go`, a row in the repository map, and its `UBIQUITOUS_LANGUAGE.md`.
+
+## Business Ownership (ADR-017)
 
 Every production import is allowlisted and points to a strictly lower reviewed
-level (`internal/architecture/imports_test.go`, tables in `package_layers_test.go`). Logical feedback reenters through durable
-records/evidence; it does not create reverse service dependencies. Control and
-cognition call ledger APIs using the original transaction.
+level (`internal/architecture/imports_test.go`, tables in
+`internal/architecture/package_layers_test.go`). Logical feedback reenters through
+durable records/evidence; it does not create reverse service dependencies. Control
+and cognition call ledger APIs using the original transaction.
 
 `internal/architecture/ownership_test.go` pins all current production SQL mutation
 owners. Shared handoffs are restricted by phase and update columns: episodes

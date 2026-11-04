@@ -99,7 +99,7 @@ level of abstraction).
    store and app layers to `opaqueStoreModules` and `applicationLayerSpecs`). Update every caller and test. When
    ownership gates would see two writers, land store and app in one commit.
 5. **Gates and docs.** Add or extend the gates in `internal/architecture`, prove each new gate by
-   injecting a violation and watching it fail, then update `AGENTS.md`,
+   injecting a violation and watching it fail, then update
    `.agents/context/architecture-bar.md` and the module maps.
 6. **Polish rounds**, one commit each:
    - typed records instead of `map[string]any`, parsed once at the boundary

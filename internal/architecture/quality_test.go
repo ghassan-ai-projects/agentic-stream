@@ -26,7 +26,7 @@ func TestProductionFileSize(t *testing.T) {
 }
 
 // TestProductionFunctionLengthBar prevents the lint gate from drifting away
-// from the clean-function bar recorded in AGENTS.md.
+// from the clean-function bar recorded in .agents/context/quality-bar.md.
 func TestProductionFunctionLengthBar(t *testing.T) {
 	t.Parallel()
 	data, err := os.ReadFile(filepath.Join(loadRepository(t).root, ".golangci.yml"))
