@@ -2,6 +2,5 @@
 
 ## Claude Code Notes
 
-- Treat `AGENTS.md` as the canonical project instructions.
-- Keep durable project rules in `AGENTS.md`; keep personal preferences in `CLAUDE.local.md` and do not commit them.
-- For narrow, repeatable workflows, prefer path-scoped rules or skills instead of adding more always-loaded text here.
+- `.claude/rules/` holds thin path-scoped pointers to `.agents/context/`, so the matching rules arrive when you open a matching file. Keep the content in `.agents/context/`, where every agent can read it.
+- Personal preferences go in `CLAUDE.local.md` (git-ignored).

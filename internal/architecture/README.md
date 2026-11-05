@@ -10,7 +10,7 @@ one module's behavior live in that module.
 
 Rules are cited by ID: Q = [quality bar](../../.agents/context/quality-bar.md),
 A = [architecture bar](../../.agents/context/architecture-bar.md), T = test bar,
-AGENTS = [AGENTS.md](../../AGENTS.md).
+AGENTS = [AGENTS.md](../../AGENTS.md) and the context files it routes to.
 
 ```bash
 go test ./internal/architecture/...
@@ -115,10 +115,10 @@ A new module adds itself to `allowedImports`, `packageLayers`, `durableOwners`
 
 | Test | Rule | Protects |
 | --- | --- | --- |
-| `TestKernelStaysPure` | AGENTS (kernel) | `internal/kernel` imports only the standard library, no database, file, network or random source, and never reads the clock or host time zone. |
-| `TestKernelPurityCheckCatchesEveryBypass` | AGENTS (kernel) | Self-test: aliased, dot and blank imports and every clock selector are caught. |
-| `TestKernelHasNoSubpackages` | AGENTS (kernel) | The kernel stays one package. |
-| `TestDigestTextHasOneOwner` | AGENTS (kernel) | No production package spells the `sha256:` prefix; digests go through `kernel.EncodeDigest` and `DecodeDigest`. |
+| `TestKernelStaysPure` | architecture.md (kernel) | `internal/kernel` imports only the standard library, no database, file, network or random source, and never reads the clock or host time zone. |
+| `TestKernelPurityCheckCatchesEveryBypass` | architecture.md (kernel) | Self-test: aliased, dot and blank imports and every clock selector are caught. |
+| `TestKernelHasNoSubpackages` | architecture.md (kernel) | The kernel stays one package. |
+| `TestDigestTextHasOneOwner` | architecture.md (kernel) | No production package spells the `sha256:` prefix; digests go through `kernel.EncodeDigest` and `DecodeDigest`. |
 
 ### `test_hygiene_test.go`
 
@@ -169,10 +169,12 @@ What the gate does not see, by design of a literal scan (review covers these):
 
 | File | Test | Rule | Protects |
 | --- | --- | --- | --- |
-| `timetext_test.go` | `TestTimestampTextHasOneOwner` | AGENTS (kernel) | No file, tests included, formats or parses an instant with `time.RFC3339Nano` or spells the stored layout. |
+| `timetext_test.go` | `TestTimestampTextHasOneOwner` | architecture.md (kernel) | No file, tests included, formats or parses an instant with `time.RFC3339Nano` or spells the stored layout. |
 | `language_test.go` | `TestEveryModuleHasItsUbiquitousLanguage` | A1 | Each module carries a `UBIQUITOUS_LANGUAGE.md`. |
 | `documentation_test.go` | `TestEveryPackageDocumentsItsResponsibility` | A9 | Each production package has a package comment. |
 | `documentation_test.go` | `TestModuleMapListsEveryPackage` | A9 | `documentation/architecture/repository-map.md` lists every production package. |
+| `agent_instructions_test.go` | `TestAgentInstructionsStayShortAndCurrent` | AGENTS (changing this file) | `AGENTS.md` stays within its line budget, and every link, `@` import, test name, make target and backticked file path in the instruction files (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.agents/context`, `.agents/prompts`, `.claude/rules`) still exists. |
+| `agent_instructions_test.go` | `TestStaleInstructionCheckCatchesEveryKindOfReference` | AGENTS (changing this file) | Self-test: each kind of dead reference is caught; external links and globs are skipped. |
 | `quality_test.go` | `TestProductionFileSize` | Q3 | Production files stay under 300 lines; generated files are exempt. |
 | `quality_test.go` | `TestProductionFunctionLengthBar` | Q2 | `.golangci.yml` keeps `funlen` at 15 lines and 15 statements. |
 | `quality_test.go` | `TestGeneratedProtocolImportsStayGeneratorOwned` | Q6 | The `goimports` hook leaves generated protocol files to the generator. |

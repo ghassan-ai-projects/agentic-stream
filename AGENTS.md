@@ -1,351 +1,186 @@
 # AGENTS.md - Agentic Stream
 
-Canonical instructions for coding agents in this repository. Read this file first, then load only the context files needed for the task.
+The canonical instructions for every coding agent here. `CLAUDE.md`, `GEMINI.md` and
+`.github/copilot-instructions.md` only point here and add tool-specific notes.
 
-## Purpose
+Agentic Stream is a streaming-native agent runtime. It turns unbounded evidence into durable,
+versioned **Situations** and starts a bounded agent **episode** only when a deterministic scheduler
+decides reasoning is useful. Agents return typed Decisions and Intents; a separate deterministic
+policy and action plane decides what may execute.
 
-Agentic Stream is a streaming-native agent runtime ("Situation Runtime"): it continuously converts unbounded evidence into durable, versioned **Situations**, and starts bounded agent **episodes** only when a deterministic cognitive scheduler decides reasoning is useful. Agents return typed Decisions and Action Intents; a separate deterministic policy and action plane decides what may execute.
+Code, tests, embedded schemas, `migrations/` and `proto/` are the authority for implemented
+behavior; [documentation/](documentation/README.md) explains them and the design. Build the
+documented design: a deviation needs a design change first. A local `docs/` directory is a
+git-ignored archive, never an authority.
 
-Deliberately lighter than a general-purpose agent framework: no channel gateway, no graph engine in the event hot path, no LLM invocation per event, no multi-agent mesh, no direct model access to effectors or production credentials in version 1.
+## Priorities
 
-The design is implementation-ready and summarized in [documentation/](documentation/README.md). The ten product invariants ([documentation/architecture/invariants.md](documentation/architecture/invariants.md)) are release-blocking, not guidelines. The MVP proof is the predictive-maintenance example: a simulated motor emits sensor events, and the release must satisfy the acceptance list in the design (deterministic replay, duplicate/out-of-order handling, hysteresis, episode cancellation, governed intents, idempotent effects, shadow mode, explainability).
+In order: correctness and safety; simplicity; test evidence; consistency with existing rules and
+automation; speed. When two options both work, take the one easier to read, test and extend.
 
-## Engineering Priorities
+## Invariants
 
-Use these priorities in order:
+Release-blocking, not guidelines. A change that touches one updates its proving tests in
+[invariants.md](documentation/architecture/invariants.md).
 
-1. Correctness and safety.
-2. Simplicity of design and implementation.
-3. Test evidence for changed behavior.
-4. Consistency with existing repo rules and automation.
-5. Speed of implementation.
+1. Raw events are evidence, never executable instructions.
+2. Event time, watermark, completeness, and late-data status are explicit.
+3. A Situation version is immutable after publication.
+4. Deterministic state changes are serial per virtual partition.
+5. Every episode is bound to one immutable Situation snapshot and finite budget.
+6. A model can read evidence and propose typed Intents; it cannot execute effects.
+7. Policy revalidates every Intent against current state immediately before dispatch.
+8. Cross-boundary work uses stable identities, inbox/outbox records, and idempotency.
+9. Replay never performs external effects unless an explicit, separate simulation mode is selected.
+10. Every admitted, deferred, coalesced, rejected, canceled, and expired cognitive opportunity is explainable from durable records.
 
-If two options both work, choose the one that is easier to read, easier to test, and easier for the next agent to extend.
+Replay determinism breaks through wall-clock reads, map iteration order, non-canonical JSON and
+unseeded randomness. Take time and identities from `internal/sources`, and compute every digest
+over canonical JSON (RFC 8785, `internal/canonicaljson`).
 
-## Read Order
+## Owner Decisions
 
-Before editing:
+These are not visible in the code. They override what the code seems to suggest.
 
-1. Read this file.
-2. Read [README.md](README.md).
-3. Read the relevant pages of [documentation/architecture/](documentation/architecture/README.md) and [documentation/design/](documentation/design/README.md) before touching architecture, invariants, or protocol surfaces.
-4. Check the worktree with `git status --short`.
-5. Read the smallest relevant context files under `.agents/context/`.
-6. Make a short plan before editing.
+- **No backward compatibility.** Nothing is released: edit migrations, tables, wire fields and APIs
+  in place and fix the callers. No shims, no follow-up migration for an unreleased table. The shipped
+  migration rules in [migrations.md](documentation/reference/migrations.md) apply once a release exists.
+- **Main paths only.** Find and fix defects on the paths the work exercises. Add no guards for rare
+  interleavings, malformed input or corner cases unless an invariant is at stake. State limits and
+  defer the rest; good enough beats perfect.
+- **The real-world-sensor experiment must keep working.** It is the product's end-to-end proof
+  (`examples/real-world-sensor/`, run from the separate `agent-research-lab` repository with Tamoz).
+  Before changing CLI flags, spec grammar, compiled spec digests, the thermal capability catalog,
+  `runtime-v1.proto`, notification goldens, device-wire records or the run-export format, read the
+  guards `cmd/agentic-stream/experiment_*_test.go` and the per-module pins such as
+  `internal/notify/experiment_contract_test.go`. A guard that must move is called out in the handoff.
+- **Tamoz is the only production reasoner.** Agentic Stream owns time and authority; Tamoz, in its
+  own repository, owns judgment. `fixture` is a deterministic demo executor and `native` an in-process
+  model loop for tests and baselines; `rule` answers human-approved playbook rules without a model
+  call and passes the rest on. Do not propose other agents, MCP or model paths as production
+  reasoners. Workers built in this repository are Go, on the current-v1 protobuf/gRPC boundary.
+- **Clean the files you edit, and only those.** The tree still holds comments inside modules and
+  unwrapped errors: do not copy them and do not sweep them. Fix them in each file a change already
+  edits; this is the one exception to the rule against unrelated refactors.
 
-Start with these context files:
+## Commands
 
-- [.agents/context/project.md](.agents/context/project.md) for repository scope and current state.
-- [.agents/context/architecture.md](.agents/context/architecture.md) for layout and dependency direction.
-- [.agents/context/testing.md](.agents/context/testing.md) for commands and testing bar.
-- [.agents/context/go-style.md](.agents/context/go-style.md) for coding conventions.
-- [.agents/context/quality-bar.md](.agents/context/quality-bar.md) for the enforced quality and modularity bar (lint, complexity, file size, coverage, layering).
-- [.agents/context/architecture-bar.md](.agents/context/architecture-bar.md) for business ownership and one-way dependency/control-flow gates.
-- [.agents/context/review-checklist.md](.agents/context/review-checklist.md) before handoff.
+| Need | Command |
+| --- | --- |
+| The module you changed | `go test -race -shuffle=on -count=3 ./internal/<module>/...` |
+| One test | `go test ./internal/<module>/... -run '^<Name>$'` |
+| Repository-wide gates | `go test ./internal/architecture` |
+| Whole tree, short | `make test-short` |
+| Lint | `make lint` (a failure writing its cache is a sandbox limit, not a finding; report it) |
+| Full gate before handoff | `make ci-check` |
+| Documentation only | `make docs-check` and `git diff --check` |
+| Regenerate worker stubs | `make proto-generate`; never hand-edit `*.pb.go` |
+| Replace vendored plant-wire contract | `make plant-wire-sync`; never edit the copy |
 
-Use the prompt files under `.agents/prompts/` when the task matches them.
+Commits use Conventional Commits ([CONTRIBUTING](CONTRIBUTING.md)).
 
-## Current Repository State
+## Read Before You Act
 
-- Module path: `github.com/ghassan-ai-projects/agentic-stream` (set).
-- Design baseline is complete. The executable runtime is implemented through the current P-series; deployment qualification remains a separate release gate. Public documentation is curated under `documentation/`.
-- Implementation is complete through the P-series phases: the CLI lives in
-  `cmd/agentic-stream/` (`version`, `validate`, `run-live`, `serve`, …) and `internal/`
-  holds the spec compiler, ingress, eventlog, operators, situations, cognition,
-  episodes, decisions, policy, actions, worker runtime, and storage. The worker
-  protocol is `proto/agenticstream/runtime/v1/`; migrations live in `migrations/`.
-  Domain data is extracted to `internal/spec/internal/domain/event_schema_data.json`,
-  `internal/ingress/internal/domain/simulator_data.json`, and
-  `internal/episodes/testdata/aquaculture_intents.json`.
+Start with `git status --short`; the tree may hold someone else's work. These files do not load by
+themselves: open the row that matches the work.
 
-Do not invent architecture outside the documented design. The design was written to be built as specified; deviations need a design change first.
+| When you | Read |
+| --- | --- |
+| Edit Go | [go-style.md](.agents/context/go-style.md), [quality-bar.md](.agents/context/quality-bar.md) |
+| Write or change tests | [testing.md](.agents/context/testing.md) |
+| Add a package, import edge, table or cross-module write | [architecture.md](.agents/context/architecture.md), [architecture-bar.md](.agents/context/architecture-bar.md) |
+| Touch an invariant, contract, protocol or the design | [architecture docs](documentation/architecture/README.md), [design docs](documentation/design/README.md), [contracts](documentation/contracts/README.md) |
+| Work inside a module | its `README.md` and `UBIQUITOUS_LANGUAGE.md` |
+| Need to find what owns something | [repository-map.md](documentation/architecture/repository-map.md) |
+| Hand off a change | [duplication.md](.agents/context/duplication.md), [review-checklist.md](.agents/context/review-checklist.md) |
+| Run a long campaign or experiment | "Long Runs" in [testing.md](.agents/context/testing.md) |
+| Build or rebuild a module to the reference pattern | [reference-module-refactor.md](.agents/prompts/reference-module-refactor.md) |
+| Fix a bug, add a feature, plan or review | the matching file in [.agents/prompts/](.agents/prompts/) |
 
-## Architecture Overview
+## Architecture Rules
 
-The documented structure (see [documentation/architecture/repository-map.md](documentation/architecture/repository-map.md)):
-
-- `cmd/agentic-stream/` - entrypoint, flags, wiring, shutdown
-- `internal/contractsv1` - versioned envelopes and JSON contracts
-- `internal/canonicaljson` - RFC 8785 canonical JSON and domain-separated digests; thin facade over a pure domain (see [canonical JSON guide](internal/canonicaljson/README.md))
-- `internal/spec` - SituationSpec authoring, YAML in, canonical JSON digest; the event-schema registry (built-in schemas plus a directory given with the root flag `--event-schemas`, validated as it loads)
-- `internal/ingress` - configured ingress facade; app replay and live-serve use cases, pure domain admission and simulator rules, a checkpoint store and a file/socket transport (see [ingress module guide](internal/ingress/README.md))
-- `internal/eventlog` - normalized event log, watermark/completeness tracking; append/quarantine/redrive use cases in `internal/app`, pure admission and identity rules in `internal/domain`, all SQL in `internal/store` (see [event log module guide](internal/eventlog/README.md))
-- `internal/engine` - configured stream-engine facade; app use cases, pure domain rules and an opaque-transaction store that owns the inbox, checkpoint, operator-state, Situation, lineage and timer tables (see [engine module guide](internal/engine/README.md))
-- `internal/operators` - deterministic operators (hysteresis, debounce, cooldown)
-- `internal/situations` - Situation state machine, versioning, publication
-- `internal/cognition` - configured scheduler facade; ordered app use cases, pure domain rules, and opaque caller-transaction store (see [cognition module guide](internal/cognition/README.md))
-- `internal/episodes` - configured `Service` facade; ordered assembly/execution use cases in `internal/app`, pure contracts and rules in `internal/domain`, opaque transaction joins and SQL in `internal/store` preserving the caller's transaction (see [episodes module guide](internal/episodes/README.md))
-- `internal/executor/fixture`, `internal/executor/native`, `internal/executor/remote` - concrete executors behind the episode `Executor` port (in-process and streamed worker protocol)
-- `internal/evidence` - configured Service facade over capability-scoped read tools and durable call recovery; app use cases, pure domain rules, opaque store transactions/SQL, exact wire codecs and gRPC/eventlog adapters (see [evidence module guide](internal/evidence/README.md))
-- `internal/decisions` - pure Decision/Intent validator; thin facade over `internal/domain`, with opaque compiled intent authority (see [decisions module guide](internal/decisions/README.md))
-- `internal/policy` - policy plane; revalidates every intent before dispatch. Reference structure: thin `Service` facade, ordered use cases in `internal/app`, pure governance records/rules in `internal/domain`, and caller-owned transaction plumbing plus SQL in `internal/store` (see [policy module pattern](internal/policy/README.md))
-- `internal/actions` - configured dispatch facade; ordered app use cases, pure domain rules and document checks, and an opaque-transaction store that owns the command, outbox, outcome and verification ledgers (see [actions module guide](internal/actions/README.md))
-- `internal/watch` - derived-trigger watches installed by approved commands; configured facade, app use cases, pure domain rules and an opaque-transaction store (see [watch module guide](internal/watch/README.md))
-- `internal/notify` - durable notification outbox and lifecycle contract; configured facade, app use cases, pure domain rules (including the embedded Channel-B contract) and a store that owns the five notification tables (see [notify module guide](internal/notify/README.md))
-- `internal/actionport` - approved-command/effect contracts without implementation dependencies
-- `internal/device` - device effect boundary; the reference adapter module: thin facade, session use cases in `internal/app`, pure `internal/domain`, record codec in `internal/wire`, gateway link in `internal/transport`
-- `internal/plantwire` - plant wire host adapter beside the device adapter: thin facade over the host use cases in `internal/app`, the pure session rules in `internal/domain`, the vendored contract and its schemas in `internal/wire` and the framed connection in `internal/transport`; called by `cmd/agentic-stream` only ([design](documentation/design/plant-wire-adapter.md))
-- `internal/playbook` - rule promotion: routes each admitted episode to an approved rule, an audit or the model, and keeps rule fires, evaluations, circuits, verified cases, drafts and proposals; facade, app use cases, pure domain and an opaque-transaction store; authorizes nothing ([design](documentation/design/playbook.md), [ubiquitous language](internal/playbook/UBIQUITOUS_LANGUAGE.md))
-- `internal/executor/rule` - in-process executor that turns a matched playbook rule into a Decision
-- `internal/draftport` - contract of the rule-draft call: request, reply and the `Drafter` port a worker adapter implements
-- `internal/interlock` - durable readiness state (global action-plane interlock) and read-only assertions
-- `internal/runartifact` - immutable, verifiable run artifact (`export-run`, `verify-run`) with a soak verdict; read-only, owns no tables
-- `internal/episodeledger` - durable episode pipeline lifecycle (scheduler queue items, episodes, fenced attempts, rejection audit, recovery); configured facade, app use cases, pure domain rules and an opaque-transaction store (see [episode ledger guide](internal/episodeledger/README.md))
-- `internal/approvalledger` - durable human approval lifecycle (request, expiry, resolution, withdrawal); configured facade, app use cases, pure domain and an opaque-transaction store; imports no `notify`, the caller supplies the withdrawal publisher (see [approval ledger guide](internal/approvalledger/README.md))
-- `internal/runtime` - thin live-pipeline, readiness and worker facades; concrete assembly in `internal/composition`, ordered use cases in `internal/app`, pure rules/reports in `internal/domain`, transaction plumbing in `internal/store`, source and worker resource adapters in `internal/transport` (see [runtime module guide](internal/runtime/README.md)).
-- `internal/control` - runtime control plane: owner lease, epoch drain/kill, final readiness capability and cost control (ledger, ceilings, kill switch); configured facade, app use cases, pure domain rules and an opaque-transaction store (see [control module guide](internal/control/README.md))
-- `internal/authority` - device claims, bindings, reconciliation and safety evidence; the reference module: thin `Service` facade, use cases in `internal/app`, pure `internal/domain`, transactions and SQL in `internal/store` (see module pattern and its ubiquitous language). To bring another package to this standard, follow [the reference module refactor prompt](.agents/prompts/reference-module-refactor.md)
-- `internal/replay` - effect-safe replay modes; ordered session use cases in `internal/app`, pure verification rules in `internal/domain`, all replay SQL in `internal/store`, trace files and isolated databases in `internal/transport` (see [replay module guide](internal/replay/README.md))
-- `internal/api` - JSON/HTTP plus Server-Sent Events
-- `internal/telemetry` - OpenTelemetry traces, metrics, logs
-- `internal/storage` - SQLite WAL via `modernc.org/sqlite`
-- `internal/architecture` - repository-wide architecture and quality gates: tests only, no production code; the only place for tests that span modules, and the repository root holds none (see [gate index](internal/architecture/README.md))
-- `internal/storage/storagetest` - test support only: opens a migrated temporary database from a template built once per migration set; import it from tests, never from production code
-- `internal/kernel` - the shared pure vocabulary: durable time text (`FormatTime`, `ParseTime`, `ParseStoredTime`) and digest text (`EncodeDigest`, `DecodeDigest`). Standard library only: no database, file, network, random source or clock read. Any production package may import it without declaring an `allowedImports` edge; `TestKernelStaysPure` enforces the purity. A symbol is admitted only when two or more modules need it and it is a stable representation rule, not business behaviour (see [kernel vocabulary](internal/kernel/UBIQUITOUS_LANGUAGE.md))
-- `internal/sources` - injected time and identity sources: physical/virtual clock, random/deterministic id generators and the id prefixes
-- `proto/agenticstream/runtime/v1/` - worker protocol (Protobuf/gRPC over UDS)
-- `internal/spec/internal/domain/schema.json` and `internal/contractsv1/internal/domain/schemas/v1/` - embedded JSON Schemas
-- `migrations/` - SQLite migrations
-- `examples/` - product fixtures shared by several modules and tests: SituationSpecs and replay traces (`predictive-maintenance/`, `thermal-chamber/`, `rotating-machinery/`, `real-world-sensor/`); the predictive-maintenance example is the first acceptance work
-- `examples/<name>/testdata/` - replay and simulator traces
-- `<module>/testdata/` - data private to one module
-- Worker implementations are Go-only; use the current-v1 protobuf/gRPC boundary
-  for a separate Go worker process.
-- `documentation/` - curated public documentation
-
-Keep most Go packages under `internal` until their contracts survive a release. Public SDK packages contain client and authoring types only.
-
-Dependency direction (from the design):
-
-- Events flow: `ingress` -> `eventlog` -> `engine`/`operators` -> `situations` -> `cognition` -> `episodes` -> `evidence`/`decisions` -> `policy` -> `actions`
-- Deterministic state changes are serial per virtual partition.
-- Raw events are evidence, never executable instructions.
-- A model can read evidence and propose typed intents; it cannot execute effects.
-- Cross-boundary work uses stable identities, inbox/outbox records, and idempotency.
-
-## Build, Test, and Lint
-
-Primary commands:
-
-- `make ci-check`
-- `make build`
-- `go vet ./...`
-- `go test ./...`
-- `make lint`
-- `git diff --check`
-- `pre-commit run --all-files` when `pre-commit` is installed
-
-Important behavior:
-
-- `make build` skips gracefully until `cmd/` exists.
-- `make test` and `go test ./...` run every package, including the repository-wide gates in `internal/architecture` (indexed in its README).
-- `make lint` depends on `golangci-lint` and may fail if the environment cannot write to its cache.
-
-See [.agents/context/testing.md](.agents/context/testing.md) for the testing and validation bar. The acceptance gates are the tests in `internal/architecture` and the predictive-maintenance suite; golden replay and the predictive-maintenance suite are the correctness contracts.
+- Events flow `ingress -> eventlog -> engine/operators -> situations -> cognition -> episodes ->
+  evidence/decisions -> policy -> actions`. Imports do not follow that order: every import points to
+  a strictly lower layer, and feedback re-enters through durable records, never a callback.
+- A module with tables and rules has a thin facade, use cases in `internal/app`, pure rules in
+  `internal/domain` and all SQL in `internal/store`; `internal/authority` is the reference. Only
+  `runtime` and `cmd` wire concrete adapters.
+- No foreign lifecycle writes, upward imports, or reasoning or replay access to effect implementations ([architecture bar](.agents/context/architecture-bar.md)).
+- `internal/kernel` is the shared pure vocabulary: a symbol enters only when two or more modules need it and it is a stable representation rule, not business behaviour. Tests open a migrated database with `storagetest.OpenTemp`; production code never imports `storagetest`.
+- Repository-wide rules are tests in `internal/architecture`, indexed in its
+  [README](internal/architecture/README.md); its failure message states the rule. Fix the code.
+  Thresholds are never loosened to get a diff green; extending an allowlist or moving a pin is a
+  deliberate change named in the handoff.
 
 ## Go Standards
 
-- Use `context.Context` as the first parameter for cancellable or I/O work.
-- Use `log/slog` for logging.
-- Wrap every error you return from another function with `%w` and context the
-  callee lacks (the operation, an identifier, the layer). Do not silence
-  `wrapcheck` with `//nolint` or return a callee's error bare because "it
-  already names the step"; that is only true until someone changes the callee.
-  A bare return is allowed in exactly two cases, and the directive must say
-  which: a facade operation that an architecture gate requires to be a single
-  delegating return, or an error that must reach a protocol unchanged (a gRPC
-  `status` error). Check `rows.Err()` and `Close()` like any other call.
-- Keep handlers thin; business logic lives in the engine/operators/situations/policy packages, not in API handlers.
-- Prefer standard library helpers such as `cmp`, `maps`, and `slices`.
-- Prefer existing package boundaries and local helpers over new abstractions.
-- Comment only a module's public interface: the doc comment on each exported
-  symbol of its facade package, and one package comment per package (an
-  architecture gate requires it). Inside a module (`internal/<module>/internal/**`,
-  `cmd/`) write no comments: a name, a function boundary or a test says what a
-  comment would. If code needs a comment to be understood, rename or split it.
-  The only comments allowed inside are tool directives (`//go:embed`,
-  `//nolint:<linter> // <reason>`), and a `//nolint` reason must be true of the
-  code, not a convenience.
-- Use table-driven tests with `t.Run()` and `t.Parallel()` where safe.
-- Use `t.Context()` in tests when appropriate.
-- Canonical JSON (RFC 8785) everywhere a digest is computed.
-- Keep the module path in `go.mod` only. Import statements name it in full
-  because Go requires a module-qualified import path; everywhere a command can
-  derive it, do so (`go list -m`). Do not add new string literals for it. The
-  unavoidable copies (protobuf `go_package`, pre-commit `goimports -local`,
-  telemetry instrumentation scope) are pinned by
-  `TestModulePathSingleSourceOfTruth` in `internal/architecture/module_path_test.go`.
-
-See [.agents/context/go-style.md](.agents/context/go-style.md) for the repo-specific style rules.
+- Use `context.Context` as the first parameter for cancellable or I/O work, and `log/slog` for logging.
+- Keep handlers thin; business logic lives in the owning module, not in API handlers.
+- Prefer standard library helpers such as `cmp`, `maps` and `slices`, and existing package boundaries and local helpers over new abstractions.
+- Wrap every error you return from another function with `%w` and context the callee lacks (the operation, an identifier, the layer). Do not silence `wrapcheck` with `//nolint` or return a callee's error bare because "it already names the step"; that is only true until someone changes the callee. A bare return is allowed in exactly two cases, and the directive must say which: a facade operation that an architecture gate requires to be a single delegating return, or an error that must reach a protocol unchanged (a gRPC `status` error). Check `rows.Err()` and `Close()` like any other call.
+- Comment only a module's public interface: the doc comment on each exported symbol of its facade package, and one package comment per package. Inside a module (`internal/<module>/internal/**`, `cmd/`) write no comments: a name, a function boundary or a test says what a comment would. If code needs a comment to be understood, rename or split it. The only comments allowed inside are tool directives (`//go:embed`, `//nolint:<linter> // <reason>`), and a `//nolint` reason must be true of the code, not a convenience.
+- Use table-driven tests with `t.Run()` and `t.Parallel()` where safe, and `t.Context()` in tests.
+- Change Go with tools that understand syntax, never `sed`, `awk`, regex or find-and-replace: `gopls rename`, `references` and `implementation`; `gofmt -r 'old -> new'`; `goimports -w`; for anything else a throwaway `go/parser` + `go/ast` + `go/format` program kept outside the repo. Then run `gofmt -l`, `go build ./...` and `go vet ./...` before the tests, and read the diff ([go-style.md](.agents/context/go-style.md)).
+- Duplicated code is a defect to fix in the change that finds it. Before adding a helper, search for the job it does and use what exists: `storage.QueryAll`, `storage.CollectRows` (read rows), `storage.NullIfEmpty` (empty string to NULL), `storage.QueryOptional` (one value or none), `storage.RowsAffected`, `storage.BoolInt`, `contractsv1.DocumentString`, `contractsv1.DocumentInt` (decoded JSON fields), `sources.OrLease` (default lease), `sources.OrPhysical`, `sources.OrRandom` (default clock and identities), `interlock.Assert` (the interlock check), `newOperatorCommand`, `newDatabaseCommand`, `newByIDCommand` (operator CLI). If two modules need the same helper, put one in the module that owns the concept and call it.
+- Keep a wrapper only when an architecture gate requires it (a facade delegating to `app`, an opaque `store.Tx` method) or it adds something: a fence, a transaction, context for the error. One `SELECT` of a row belongs in one place. Before handoff, run the [duplication scan](.agents/context/duplication.md) on the files you changed.
 
 ## Code Quality Expectations
 
-Code is written to be read top-down by the next reviewer. Every function in
-production code follows these rules (quality-bar rule Q7):
+Code is written to be read top-down by the next reviewer. Every function in production code follows these rules as it is written, not only at review (rule Q7; examples in the [quality bar](.agents/context/quality-bar.md)):
 
 - A function name states its intent.
 - A function is short (at most 15 body lines) and does one thing.
 - A function stays at one level of abstraction.
-- Public, top-level functions read like a small domain-specific language: a
-  short sequence of domain verbs over domain nouns.
-- Each function calls functions one level below it, and the code keeps
-  stepping down until the remaining operations are small and concrete (the
-  stepdown rule): entry point first, its steps below it.
+- Public, top-level functions read like a small domain-specific language: a short sequence of domain verbs over domain nouns.
+- Each function calls functions one level below it, and the code keeps stepping down until the remaining operations are small and concrete (the stepdown rule): entry point first, its steps below it.
 
-The linters enforce the mechanical floor (cognitive complexity ≤ 15, ≤ 15
-body lines and 15 statements, nested-`if` ≤ 3, files under 300 lines); review
-enforces the rest. A refactor toward these rules never changes behavior, and
-it never adds abstraction layers without a current need. The full bar, with
-examples, is [.agents/context/quality-bar.md](.agents/context/quality-bar.md).
+The linters enforce the mechanical floor (cognitive complexity ≤ 15, ≤ 15 body lines and 15 statements, nested-`if` ≤ 3, files under 300 lines); review enforces the rest. A refactor toward these rules never changes behavior, and it never adds abstraction layers without a current need. Do not use `//nolint` for `gocognit`, `gocyclo`, `nestif` or `funlen`, and do not delete or weaken tests or exclude packages to meet coverage: fix the code.
 
 Before accepting a refactoring round:
 
-- Read changed entry points aloud as domain steps. Move SQL, serialization,
-  transport framing, and loop bookkeeping into the step that owns them.
-- Place private steps below their first caller, splitting files by responsibility
-  when needed. Use names that explain the outcome; avoid numbered parts and
-  wrappers that merely rename another call.
-- Preserve public signatures, error precedence, identity and digest inputs,
-  ordering, clock reads, transaction boundaries, locks, cancellation, and effects.
-  Add regression tests for the boundaries touched by the extraction.
-- Review the diff against Q7 as well as the mechanical limits. Run focused tests
-  before each commit and the full gate before handoff. Keep any blocked check
-  explicit; passing lint alone does not demonstrate clean functions.
-
-
-## Refactoring Go Code
-
-Change Go code with Go tooling that understands syntax, not with `sed`, regular
-expressions or find-and-replace. Text edits miss call sites, hit strings and
-comments, break formatting and leave the compiler to find what they missed.
-
-- Rename a symbol, find its references or implementations: `gopls rename`,
-  `gopls references`, `gopls implementation`.
-- Rewrite a call or expression pattern across files: `gofmt -r 'old -> new'`.
-- Fix imports after any edit: `goimports -w`.
-- For anything else (remove a parameter or struct field, change a signature,
-  move comments, edit an entry of a table literal such as `allowedImports` (`internal/architecture/import_rules_test.go`),
-  strip or restructure many functions), write a small `go/parser` + `go/ast` +
-  `go/format` program, run it over the files, and keep it outside the repo
-  (the session scratchpad). The gates in `internal/architecture` show the
-  pattern.
-- `sed`, `awk` and regex are for non-Go text only: Markdown, YAML, JSON, the
-  Makefile.
-- After a mechanical change run `gofmt -l`, `go build ./...` and `go vet ./...`
-  before the tests, and read the diff: a tool that changes exactly what you
-  intended produces a small, uniform diff.
-
-## Duplication Scan
-
-Duplicated code is a defect to fix in the change that finds it, not to leave
-behind or to note for later. Run this scan on every file you add or change,
-before handoff, and repeat it after fixing, until nothing is left. This stays a
-required step until the repository is clean at the current threshold and the
-review checklist (Q8) has stopped finding duplicates.
-
-1. **Token clones.** `make lint` runs `dupl` at the threshold in
-   `.golangci.yml`. For a stricter look at your files, run it at a lower
-   threshold: copy `.golangci.yml`, set `linters.settings.dupl.threshold` to 60,
-   and run `golangci-lint run --config <copy> ./...`; fix what falls in files
-   you touched.
-2. **Same job, different code.** Before adding a helper, search the repo for the
-   job it does (`grep -rn` for the verb and for `func` names such as `nullable`,
-   `orPhysical`, `collect`, `format`). Use what exists:
-   `storage.QueryAll` and `storage.CollectRows` (read rows),
-   `storage.NullIfEmpty` (empty string to NULL), `storage.QueryOptional` (one
-   value or none), `storage.RowsAffected` and `storage.BoolInt`,
-   `contractsv1.DocumentString` and `DocumentInt` (decoded JSON fields),
-   `sources.OrLease` (default lease),
-   `sources.OrPhysical` and `sources.OrRandom` (default clock and identities),
-   `interlock.Assert` (the interlock check), and `newOperatorCommand`,
-   `newDatabaseCommand`, `newByIDCommand` (operator CLI). If two modules need
-   the same helper, put one in the module that owns the concept and call it.
-3. **Wrappers.** For every new function whose body is one call into another
-   module, ask whether the caller can call the target directly. Keep a wrapper
-   only when an architecture gate requires it (a facade delegating to `app`, an
-   opaque `store.Tx` method) or it adds something: a fence, a transaction,
-   context for the error. Two modules defining the same operation over a third
-   module's data (the old `control` interlock copy) is the case to catch.
-4. **Same query twice.** Search for the table name in `internal/**/store`; one
-   `SELECT` of a row belongs in one place.
-5. **Identical bodies.** Find functions whose bodies print the same with a
-   throwaway `go/ast` program (group `FuncDecl` bodies by `printer.Fprint`
-   output, report groups of 2 or more with at least 4 lines). Per-module
-   private types that only look alike (each module's opaque `Join`, each
-   module's `Tx`) are not duplicates; helpers with the same body are.
-
-Fix with the refactoring tools above, then run `make lint`. The `dupl` gate
-covers test files too; repeated test setup moves into a helper
-(`storagetest.OpenTemp` opens a migrated temporary database).
-
-Known duplication to burn down: at threshold 50 (the scan above, with 50 in
-place of 60) these `dupl` pairs remain. Each is a structural twin that a shared
-helper would not shorten, or whose only shared step would have to return another
-package's error bare, which the wrapping rule forbids:
-
-- `cmd/agentic-stream` operator commands: `notifications prune`/`principals apply`
-  (flag registration differs per command) and `awaitingTable`/`quarantineTable`
-  (a `tableText` call with a per-row format).
-- `internal/actions/internal/store`: `scanCommandView`/`scanAwaitingCommand` (distinct
-  row types and columns).
-- `internal/canonicaljson/internal/domain/digest.go`: `signedInteger`/`unsignedInteger`
-  (one type switch per integer family; a type switch cannot span two type sets).
-- `internal/episodes/internal/store/assembler.go`: `LoadSchedulerItem`/`LoadEvaluation`
-  (`loadRow` already holds the shared step; each call carries its own SQL and columns).
-- `internal/episodeledger/internal/store` (`episode_reads.go`/`scheduling_reads.go`) and
-  `internal/replay/internal/store/store.go`: a `storage.QueryAll` call followed by its one
-  operation-naming wrap; sharing it means returning `storage.QueryAll`'s error bare.
-- `internal/notify/internal/domain/lifecycle_identity.go`: the eight lifecycle event
-  constructors differ only in the event identity formula; the public facade keeps one
-  constructor per payload.
-- `internal/policy/internal/domain/rules.go`: `MatchesDecisionIdentity`/`MatchesIntentIdentity`
-  compare different fields.
-- `internal/policy/internal/store/approval_lookup.go`: `PendingApproval`/`ApprovedApproval`
-  each wrap their own `approvalledger` lookup.
-- `internal/runtime/internal/app/pipeline_run.go`: `RunLiveSocket`/`RunFeed` pass different
-  source callbacks to `runLiveSource`.
-
-Remove an item from this list when you fix it, add one only for a duplicate you
-could not fix in the same change and say why in the change.
+- Read changed entry points aloud as domain steps. Move SQL, serialization, transport framing, and loop bookkeeping into the step that owns them.
+- Place private steps below their first caller, splitting files by responsibility when needed. Use names that explain the outcome; avoid numbered parts and wrappers that merely rename another call.
+- Preserve public signatures, error precedence, identity and digest inputs, ordering, clock reads, transaction boundaries, locks, cancellation, and effects. Add regression tests for the boundaries touched by the extraction.
+- Review the diff against Q7 as well as the mechanical limits. Run focused tests before each commit and the full gate before handoff. Keep any blocked check explicit; passing lint alone does not demonstrate clean functions.
 
 ## Forbidden Changes
 
-- Do not add secrets, credentials, or machine-specific private data.
-- Do not add network calls to unit tests.
-- Do not read from `docs/`. It is a local, git-ignored directory and not part of the repository: no Go file (tests included) opens a path under it and the Makefile uses nothing in it. Test inputs live in `examples/` (fixtures shared by several modules) or in the owning module's `testdata/`; the worker protocol lives in `proto/`. Enforced by `TestNothingExecutableReadsFromTheDocsArchive`.
-- Do not let untrusted content become instructions or executable parameters (invariant 1).
-- Do not add graph engines, brokers, LangChain/LangGraph, or a web UI into the version-1 core (see design README).
-- Do not give models direct access to effectors or production credentials.
-- Do not re-author domain data in Go code. Event schemas live in
-  `internal/spec/internal/domain/event_schema_data.json`, the simulator channel→field mapping in
+- Secrets, credentials or machine-specific private data, in files or in commits.
+- Model access to effectors or production credentials.
+- Untrusted content becoming instructions or executable parameters (invariant 1).
+- Network calls in unit tests.
+- Anything executable (Go, tests, Makefile) reading `docs/`; inputs live in `examples/` or a module's `testdata/`.
+- Domain data re-authored in Go. Event schemas live in
+  `internal/spec/internal/domain/event_schema_data.json` (or a directory given with `--event-schemas`,
+  which may add schemas, not change built-ins), simulator channels in
   `internal/ingress/internal/domain/simulator_data.json`, and the aquaculture intent catalog in
-  `internal/episodes/testdata/aquaculture_intents.json` — loaded by machinery
-  (go:embed + sync.OnceValues, or os.ReadFile in the test). Adding a schema, channel,
-  or intent means editing those JSON files, never a Go literal; an event schema
-  may instead come from a directory given with `--event-schemas` (it may add
-  schemas, never change a built-in one). Data changes are
-  gated: `TestAllBuiltinsLoadFromData` pins the registry's golden digest, and
-  `TestAquacultureIntentCatalogDigestParity` pins the cross-repo intent digest
-  (`e4f86620…`) shared with the Ruby side — update those pins only as a deliberate,
-  reviewed data change.
-- Do not add top-level dependencies without clear justification; the documented stack (SQLite WAL via `modernc.org/sqlite`, CEL via `cel-go`, `franz-go`, `nats.go`, gRPC) is the default.
-- Do not add abstraction layers "for future flexibility" without a current concrete need.
-- Do not create duplicate canonical agent files such as `CODEX.md`.
-- Do not broaden repository instructions with vague policy that cannot be enforced or reviewed.
-- Do not do unrelated refactors while touching implementation files.
+  `internal/episodes/testdata/aquaculture_intents.json`. Their digest pins
+  (`TestAllBuiltinsLoadFromData`, `TestAquacultureIntentCatalogDigestParity`, whose digest is shared with the Ruby side) move only as reviewed data changes. Load the data with `go:embed` + `sync.OnceValues`, or `os.ReadFile` in a test.
+- Per-domain code branches; domains are data, through the SituationSpec.
+- A graph engine, broker, LangChain/LangGraph, web UI, vector retrieval, multi-agent mesh or LLM call per event in the v1 core.
+- New top-level dependencies without clear justification (the stack is SQLite WAL via `modernc.org/sqlite`, `cel-go`, gRPC), or abstraction layers without a current need.
+- New string literals of the module path; `go.mod` owns it (`go list -m`). Import statements name it in full because Go requires it.
+- Another canonical instruction file. A bridge file only points here.
+- Unrelated refactors.
 
 ## Definition Of Done
 
-A task is done when:
+- The requested scope is complete, by the simplest correct change that fits the design.
+- Production changes carry tests that prove the behavior, written first when feasible, and no modified package shows 0% coverage.
+- `make ci-check` passes, or for documentation-only work the narrower checks above do.
+- Golden replay and the predictive-maintenance suite still pass. They are the correctness contracts:
+  deterministic replay, duplicate and out-of-order handling, hysteresis, episode cancellation,
+  governed intents, idempotent effects, shadow mode, explainability.
+- Documentation, Makefile, CI and hooks agree with the behavior and commands you changed.
+- The handoff lists what changed, checks run, checks skipped and why, and remaining risk, and calls
+  out anything security-sensitive or any dependency or workflow-permission change. Blocked or failed
+  checks are reported as such.
 
-- the requested scope is complete
-- the change is specific to this repository and useful to future agents
-- the change is the simplest correct one that fits the documented design
-- production-code changes include meaningful tests, and modified packages do not show 0% coverage
-- behavior changes respect the ten product invariants and the deterministic-replay contract
-- the change meets [architecture-bar.md](.agents/context/architecture-bar.md), with no foreign lifecycle writes, upward imports, or reasoning/replay access to effect implementations
-- the change keeps the [quality and modularity bar](.agents/context/quality-bar.md); thresholds are never loosened to get a diff green
-- `make ci-check` passes, unless the change is documentation-only and a narrower check is clearly sufficient
-- documentation is updated when behavior, commands, or expectations change
-- secrets are not added, security-sensitive changes are called out, and dependency or workflow permission changes receive extra review
-- Makefile targets, CI, hooks, and documented commands agree
+## Changing This File
+
+Keep a line only if an agent could not work it out from the repository and would err without it.
+A rule an agent needs while writing code stays here, even when a gate or review also enforces it, so
+the code is right before review. A procedure or a one-area rule goes in `.agents/context/` with a row
+above; a rule with no exceptions also becomes a gate. Project rules go here, personal preferences in `CLAUDE.local.md`.
+`TestAgentInstructionsStayShortAndCurrent` caps this file and fails on a dead link, test name, file
+path or make target in the instruction files.

@@ -1,13 +1,11 @@
 # Go Style Context
 
+The rules every Go edit needs, errors and comments among them, are in
+[AGENTS.md](../../AGENTS.md). This file holds the rest.
+
 ## Core Rules
 
-- Use `context.Context` as the first parameter for I/O, blocking, or cancellable work.
 - Return `error` last.
-- Wrap errors with `%w` and context the callee lacks (operation, identifier, layer). Never silence `wrapcheck` because the callee "already names the step"; see AGENTS.md for the two allowed bare returns.
-- Use `log/slog` instead of `fmt.Println` for logging.
-- Comment only the public interface of a module (exported symbols of the facade package, plus one package comment per package). No comments inside a module; make the code say it.
-- Prefer standard library packages like `cmp`, `maps`, and `slices` over new helper dependencies.
 - Keep packages small, lowercase, and singular.
 - Prefer direct code over indirection when both are maintainable.
 - Add new abstractions only after a real second use, repeated logic, or a clear testing need appears.
@@ -33,11 +31,14 @@
 
 ## Layering Rules
 
-- Keep transport logic in `server`.
-- Keep business logic in `service`.
-- Keep persistence logic in `store`.
-- Keep data types and validation close to `models`.
+- A module's root package is a thin facade: configuration and delegation only.
+- `internal/app` orders use cases and never touches the database.
+- `internal/domain` holds pure rules: no I/O and no clock reads.
+- `internal/store` holds transactions and every SQL statement, behind an opaque `Tx`.
+- `internal/transport` and `internal/wire` hold framing and codecs when a module has them.
 - Define interfaces in the consumer package when possible.
+
+The full pattern is rule A12 in [architecture-bar.md](architecture-bar.md).
 
 ## Naming Rules
 
@@ -57,6 +58,22 @@
 
 ## Mechanical Changes
 
-Use `gopls`, `gofmt -r`, `goimports` or a throwaway `go/ast` program for renames,
-signature changes and table edits; never `sed` or regex on Go source. See
-AGENTS.md, "Refactoring Go Code".
+Change Go code with Go tooling that understands syntax, not with `sed`, regular
+expressions or find-and-replace. Text edits miss call sites, hit strings and
+comments, break formatting and leave the compiler to find what they missed.
+
+- Rename a symbol, find its references or implementations: `gopls rename`,
+  `gopls references`, `gopls implementation`.
+- Rewrite a call or expression pattern across files: `gofmt -r 'old -> new'`.
+- Fix imports after any edit: `goimports -w`.
+- For anything else (remove a parameter or struct field, change a signature,
+  move comments, edit an entry of a table literal such as `allowedImports`
+  (`internal/architecture/import_rules_test.go`), strip or restructure many
+  functions), write a small `go/parser` + `go/ast` + `go/format` program, run it
+  over the files, and keep it outside the repo (the session scratchpad). The gates
+  in `internal/architecture` show the pattern.
+- `sed`, `awk` and regex are for non-Go text only: Markdown, YAML, JSON, the
+  Makefile.
+- After a mechanical change run `gofmt -l`, `go build ./...` and `go vet ./...`
+  before the tests, and read the diff: a tool that changes exactly what you
+  intended produces a small, uniform diff.

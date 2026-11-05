@@ -14,7 +14,7 @@ recorded in the same change, never a way to get a diff green.
 | Q5 | Package imports follow the declared layering. Foundation packages import no domain package; cognition and episodes never import policy or actions; replay never imports actions or the runtime; nothing under `internal/` imports `cmd/`. | `TestPackageLayering` (`internal/architecture/imports_test.go`) |
 | Q6 | The existing gates stay green: proto, tidy, build, vet, race tests, deadcode (no production function reachable only from tests), vulncheck, docs. | `make ci-check` |
 | Q7 | Functions read top-down as intent, following the clean-function rules below. | Code review, checked against [review-checklist.md](review-checklist.md) |
-| Q8 | No copied code: Go code, tests included, has no token clone of 75 or more tokens, and a change adds no second implementation of something the repo already does. The threshold only goes down. | `dupl` in `.golangci.yml`; the duplication scan in AGENTS.md for the rest |
+| Q8 | No copied code: Go code, tests included, has no token clone of 75 or more tokens, and a change adds no second implementation of something the repo already does. The threshold only goes down. | `dupl` in `.golangci.yml`; the [duplication scan](duplication.md) for the rest |
 
 ## Q7: clean functions
 
@@ -62,8 +62,8 @@ introducing a type is warranted only when several steps share state.
 - Do not use `//nolint` for `gocognit`, `gocyclo`, `nestif`, or `funlen`. Fix
   the code instead. Any other `//nolint` names its linter and gives a reason
   that is true of the code. `//nolint:wrapcheck` is allowed only for a gated
-  facade delegation or a protocol error (AGENTS.md, Go Standards); otherwise
-  wrap the error.
+  facade delegation or a protocol error ([AGENTS.md](../../AGENTS.md), Go
+  Standards); otherwise wrap the error.
 - Do not delete or weaken tests, and do not exclude packages, to meet Q4.
 - A new package edge must follow the data flow in
   [architecture.md](architecture.md). Add it to the allowlist in
@@ -71,6 +71,6 @@ introducing a type is warranted only when several steps share state.
 
 ## Architecture ownership and directed flow
 
-Q5 is supplemented by [architecture-bar.md](architecture-bar.md), A1–A7.
+Q5 is supplemented by [architecture-bar.md](architecture-bar.md), A1–A12.
 New module boundaries require explicit business ownership, lower-layer imports,
 and durable mutation ownership; passing the import allowlist alone is insufficient.

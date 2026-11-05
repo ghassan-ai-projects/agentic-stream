@@ -40,7 +40,7 @@ Tests that check the whole repository (import layering, SQL ownership, facade sh
 Every test meets the rules T1-T12, which name how each is checked. In short:
 
 - **Place (T1, T2).** A test lives with the code it proves, at the lowest layer that owns the behavior, plus at most one integration path through the layer above. Nothing at the repository root; repository-wide gates live in `internal/architecture`.
-- **Name (T3).** The name is a sentence about the subject (`TestLeaseExpiresAfterItsTTL`); the file is named for the subject under test. No phase, round, ticket or wave numbers.
+- **Name (T3).** The name is a sentence about the subject (`TestKernelStaysPure`); the file is named for the subject under test. No phase, round, ticket or wave numbers.
 - **Assert (T4).** Every test checks an observable outcome and prints got and want. Error tests assert which error (`errors.Is`, `errors.As`, or the domain message), never `err != nil` alone. `TestErrorAssertionsNameTheErrorTheyExpect` ratchets the remaining assertions that accept any error: a file may only lower its count.
 - **Deterministic (T5).** A test never sleeps to wait for work: `TestTestsNeverSleep` fails on any `time.Sleep` in a `_test.go` file. Wait on a channel, a condition, or a bounded poll bound to `t.Context()`; take time from a virtual clock (`sources.NewVirtual`) and identities from deterministic generators.
 - **Isolated and parallel (T6).** Every top-level test and subtest calls `t.Parallel()`; use `t.TempDir`, `t.Context`, `t.Cleanup`, `t.Setenv`. A test that cannot be parallel or cannot use `t.TempDir` (process-global state, Unix socket path length) says why in `//nolint:paralleltest // <reason>`. No mutable package-level test state; no network beyond loopback and Unix sockets.
@@ -56,10 +56,10 @@ Every test meets the rules T1-T12, which name how each is checked. In short:
 | Layer | Proves | Uses |
 | --- | --- | --- |
 | `internal/domain` | Pure rules: every branch, boundary and rejection | Values only; no database, file, clock or network |
-| `internal/store` | SQL: inserts, conflicts, reads, ordering, transaction joins | `storagetest.Open` |
-| `internal/app` | Use-case ordering, error precedence, fences, idempotency | Fakes of ports, or `storagetest.Open` when the transaction is the behavior |
+| `internal/store` | SQL: inserts, conflicts, reads, ordering, transaction joins | `storagetest.OpenTemp` |
+| `internal/app` | Use-case ordering, error precedence, fences, idempotency | Fakes of ports, or `storagetest.OpenTemp` when the transaction is the behavior |
 | `internal/transport`, `internal/wire` | Framing, codecs, protocol errors | In-memory pipes, Unix sockets |
-| Facade | Wiring and the public contract, not the domain rules | The configured facade over `storagetest.Open` |
+| Facade | Wiring and the public contract, not the domain rules | The configured facade over `storagetest.OpenTemp` |
 | `cmd/agentic-stream` | Product acceptance flows and CLI contracts | Real binaries and processes, kept few and fast |
 
 ## Seeding Fixtures
@@ -99,3 +99,13 @@ For documentation-only changes:
 
 - Fix failures caused by your changes before stopping.
 - If a command fails for an existing repo issue or environment restriction, say so clearly and do not misreport it as validated.
+
+## Long Runs
+
+Before a multi-hour campaign or experiment:
+
+- Check its shape on paper: run duration covers the last fault, the detection and act allowance and the longest settle window, with no unintended overlap between runs.
+- Smoke it at the real worst case (same fault density, the same run length or a slice of it), and require the outcome the campaign depends on, not just "no crash".
+- Watch trend metrics from the first run and stop on drift, not only on crashes.
+- Keep the machine usable: one CPU-heavy job at a time (never a campaign beside `make ci-check`); on macOS start it under `taskpolicy -b` and put `.metadata_never_index` in folders that receive large run output.
+- Stop every process you started when the run ends.
