@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:agentic-stream:plant-wire-site:1",
   "title": "Plant wire site file",
-  "description": "Which device feeds which entity, which reading becomes which event type and field, which heartbeat event is emitted, and how wire quality maps to event quality.",
+  "description": "Which device feeds which entity, which reading (of a kind, or of one device of that kind) becomes which event type and field, which heartbeat event is emitted, and how wire quality maps to event quality.",
   "type": "object",
   "additionalProperties": false,
   "required": ["version", "source", "devices", "readings", "heartbeats", "quality"],
@@ -55,6 +55,7 @@
       "additionalProperties": false,
       "required": ["kind", "metric", "event_type", "schema_version", "field"],
       "properties": {
+        "device": {"$ref": "#/$defs/id"},
         "kind": {"$ref": "#/$defs/id"},
         "metric": {"$ref": "#/$defs/id"},
         "event_type": {"$ref": "#/$defs/name"},

@@ -132,7 +132,7 @@ func (g *ingest) sample(device *liveDevice, s Sample, a Arrival, r *Reaction) {
 	if s.Quality == qualityGood {
 		device.markGood(s.EventTimeNS)
 	}
-	if reading, mapped := g.mapping.reading(device.kind, metric); mapped && device.entity != nil {
+	if reading, mapped := g.mapping.reading(device.name, device.kind, metric); mapped && device.entity != nil {
 		g.emit(r, g.mapping.readingEvent(device, reading, s, a))
 	}
 }

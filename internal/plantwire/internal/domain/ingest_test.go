@@ -18,7 +18,12 @@ type step struct {
 
 func ingesting(t *testing.T, inventory domain.Inventory) *domain.Conversation {
 	t.Helper()
-	mapping, err := domain.NewMapping(valveSite(), valveInventory(t))
+	return ingestingSite(t, valveSite(), inventory)
+}
+
+func ingestingSite(t *testing.T, site domain.Site, inventory domain.Inventory) *domain.Conversation {
+	t.Helper()
+	mapping, err := domain.NewMapping(site, valveInventory(t))
 	if err != nil {
 		t.Fatal(err)
 	}

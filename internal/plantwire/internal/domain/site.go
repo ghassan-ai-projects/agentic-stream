@@ -15,6 +15,8 @@ var (
 	ErrSiteRuleTwice           = errors.New("plantwire: the site file has two rules for one reading or heartbeat")
 	ErrSiteDeviceWithoutEntity = errors.New("plantwire: a site device of a kind that gives events names no entity")
 	ErrSiteQualityLikeGood     = errors.New("plantwire: the site file maps a wire quality other than good to the event quality of a good sample")
+	ErrSiteReadingDeviceAbsent = errors.New("plantwire: a site reading names a device the site file does not list")
+	ErrSiteReadingDeviceKind   = errors.New("plantwire: a site reading names a device of another kind than the reading's")
 )
 
 type Site struct {
@@ -37,6 +39,7 @@ type Emitted struct {
 }
 
 type Reading struct {
+	Device string `json:"device,omitempty"`
 	Kind   string `json:"kind"`
 	Metric string `json:"metric"`
 	Field  string `json:"field"`
@@ -50,7 +53,7 @@ type HeartbeatRule struct {
 	Emitted
 }
 
-type readingKey struct{ kind, metric string }
+type readingKey struct{ device, kind, metric string }
 
 type Mapping struct {
 	source     string
@@ -67,7 +70,7 @@ func NewMapping(site Site, inventory Inventory) (Mapping, error) {
 	mapping := Mapping{source: site.Source, directory: Directory{devices: site.Devices}, quality: site.Quality,
 		readings: map[readingKey]Reading{}, heartbeats: map[string]HeartbeatRule{}}
 	for _, reading := range site.Readings {
-		mapping.readings[readingKey{reading.Kind, reading.Metric}] = reading
+		mapping.readings[reading.key()] = reading
 	}
 	for _, rule := range site.Heartbeats {
 		mapping.heartbeats[rule.Kind] = rule
@@ -75,9 +78,21 @@ func NewMapping(site Site, inventory Inventory) (Mapping, error) {
 	return mapping, nil
 }
 
-func (m Mapping) reading(kind, metric string) (Reading, bool) {
-	reading, mapped := m.readings[readingKey{kind, metric}]
+func (m Mapping) reading(device, kind, metric string) (Reading, bool) {
+	if reading, mapped := m.readings[readingKey{device, kind, metric}]; mapped {
+		return reading, true
+	}
+	reading, mapped := m.readings[readingKey{"", kind, metric}]
 	return reading, mapped
+}
+
+func (r Reading) key() readingKey { return readingKey{r.Device, r.Kind, r.Metric} }
+
+func (r Reading) described() string {
+	if r.Device == "" {
+		return fmt.Sprintf("metric %q of kind %q", r.Metric, r.Kind)
+	}
+	return fmt.Sprintf("metric %q of kind %q on device %q", r.Metric, r.Kind, r.Device)
 }
 
 func (s Site) check(inventory Inventory) error {
@@ -117,14 +132,29 @@ func (s Site) checkDevices(inventory Inventory) error {
 func (s Site) checkReadings(inventory Inventory) error {
 	seen := map[readingKey]bool{}
 	for _, reading := range s.Readings {
-		key := readingKey{reading.Kind, reading.Metric}
-		if seen[key] {
-			return fmt.Errorf("%w: metric %q of kind %q", ErrSiteRuleTwice, reading.Metric, reading.Kind)
+		if seen[reading.key()] {
+			return fmt.Errorf("%w: %s", ErrSiteRuleTwice, reading.described())
 		}
-		if !inventory.Declares(reading.Kind, reading.Metric) {
-			return fmt.Errorf("%w: metric %q of kind %q", ErrSiteMetricNotDeclared, reading.Metric, reading.Kind)
+		if err := s.checkReading(reading, inventory); err != nil {
+			return err
 		}
-		seen[key] = true
+		seen[reading.key()] = true
+	}
+	return nil
+}
+
+func (s Site) checkReading(reading Reading, inventory Inventory) error {
+	if !inventory.Declares(reading.Kind, reading.Metric) {
+		return fmt.Errorf("%w: %s", ErrSiteMetricNotDeclared, reading.described())
+	}
+	device, listed := s.Devices[reading.Device]
+	switch {
+	case reading.Device == "":
+		return nil
+	case !listed:
+		return fmt.Errorf("%w: %s", ErrSiteReadingDeviceAbsent, reading.described())
+	case device.Kind != reading.Kind:
+		return fmt.Errorf("%w: %s, the device is of kind %q", ErrSiteReadingDeviceKind, reading.described(), device.Kind)
 	}
 	return nil
 }

@@ -99,7 +99,32 @@ field, which heartbeat event is emitted and how wire quality maps to event
 quality is configuration, not code. It lives in one site file given at start
 (`--plant-wire-site`), outside the repository; it is checked against its schema
 and the commissioned kinds, and its digest is logged. No Go file in the module
-names a metric, an event type or an entity type. The rules (registration on
+names a metric, an event type or an entity type.
+
+A reading rule is keyed by kind and metric, so every device of a kind gives the
+same event type. When several devices of one kind feed one entity and the
+consumer must tell them apart, a rule may also name a `device` of the site file
+of that kind; a sample takes its device's rule first and the kind's rule
+otherwise. Heartbeat rules stay per kind.
+
+```json
+"devices": {
+  "D-1": {"kind": "drive", "entity": {"type": "line", "id": "line-1"}},
+  "D-2": {"kind": "drive", "entity": {"type": "line", "id": "line-1"}},
+  "D-3": {"kind": "drive", "entity": {"type": "line", "id": "line-1"}}
+},
+"readings": [
+  {"device": "D-1", "kind": "drive", "metric": "current", "event_type": "line.d1.current.observed", "schema_version": "1.0", "field": "amps"},
+  {"device": "D-2", "kind": "drive", "metric": "current", "event_type": "line.d2.current.observed", "schema_version": "1.0", "field": "amps"},
+  {"kind": "drive", "metric": "current", "event_type": "line.current.observed", "schema_version": "1.0", "field": "amps"}
+]
+```
+
+Here D-1 and D-2 give their own event types and D-3 falls back to the kind's.
+The site file is refused when a rule names a device it does not list, a device
+of another kind than the rule's, or two rules share device, kind and metric.
+
+The rules (registration on
 births, readings, historical data, the heartbeat on event time) are in the
 [module guide](../../internal/plantwire/README.md#ingest).
 

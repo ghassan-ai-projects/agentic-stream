@@ -31,6 +31,22 @@ func TestParseSiteFileReadsTheBenchExample(t *testing.T) {
 	}
 }
 
+func TestParseSiteFileReadsAReadingOfOneDevice(t *testing.T) {
+	t.Parallel()
+	raw, err := os.ReadFile(benchSite)
+	if err != nil {
+		t.Fatal(err)
+	}
+	named := strings.Replace(string(raw), `{"kind": "thermal_sensor", "metric": "humidity"`, `{"device": "zone-01", "kind": "thermal_sensor", "metric": "humidity"`, 1)
+	site, err := wire.ParseSiteFile([]byte(named))
+	if err != nil {
+		t.Fatalf("ParseSiteFile = %v", err)
+	}
+	if site.Readings[0].Device != "" || site.Readings[1].Device != "zone-01" {
+		t.Fatalf("readings = %+v, want the kind rule first and the zone's own rule second", site.Readings)
+	}
+}
+
 func TestParseSiteFileRefusesWhatIsNotASiteFile(t *testing.T) {
 	t.Parallel()
 	raw, err := os.ReadFile(benchSite)
@@ -46,6 +62,8 @@ func TestParseSiteFileRefusesWhatIsNotASiteFile(t *testing.T) {
 		{"a quality code missing", strings.Replace(string(raw), `"stale": "invalid",`, "", 1), []string{"/quality/stale"}},
 		{"an unknown member", strings.Replace(string(raw), `"version": 1,`, `"version": 1, "tenant": "x",`, 1), []string{"/tenant"}},
 		{"a device id with a space", strings.Replace(string(raw), `"led-01"`, `"led 01"`, 1), []string{""}},
+		{"a reading device with a space", strings.Replace(string(raw), `{"kind": "thermal_sensor", "metric"`, `{"device": "zone 01", "kind": "thermal_sensor", "metric"`, 1),
+			[]string{"/readings/0/device"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
