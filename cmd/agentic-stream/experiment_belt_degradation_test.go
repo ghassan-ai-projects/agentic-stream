@@ -26,20 +26,20 @@ var (
 	degradationSpec    = filepath.Join(conveyorData, "drive-degradation.situation.yaml")
 	conveyorPrincipals = filepath.Join(conveyorData, "principals.yaml")
 	isolationRun       = plannedRun{
-		story: bearingDegradation, device: "D-3",
+		degrading: untoldCause, story: bearingDegradation, device: "D-3",
 		order: []string{"F-1 set_feed map[feed_setpoint:54]", "F-1 set_feed map[feed_setpoint:0]", "D-3 stop_drive map[run_command:0]",
 			"F-1 set_feed map[feed_setpoint:54]"},
 		readBacks: [][3]string{{"set_feed", "feed_setpoint", "54"}, {"set_feed", "feed_setpoint", "0"}, {"stop_drive", "run_command", "0"}},
 		phases:    []string{"normal", "watch", "degrading", "shedding", "cause_bearing", "isolated"},
 	}
 	beltStopRun = plannedRun{
-		story: gearboxOilLoss, device: "B-1",
+		degrading: "gearbox_seizing", story: gearboxOilLoss, device: "B-1",
 		order:     []string{"F-1 set_feed map[feed_setpoint:54]", "F-1 set_feed map[feed_setpoint:0]", "B-1 stop_belt map[run_command:0]"},
 		readBacks: [][3]string{{"set_feed", "feed_setpoint", "0"}, {"stop_belt", "run_command", "0"}},
 		phases:    []string{"normal", "watch", "degrading", "shedding", "cause_gearbox", "belt_stopped"},
 	}
 	undecidedStopRun = plannedRun{
-		story: undecidedDegradation, device: "B-1",
+		degrading: "gearbox_seizing", story: undecidedDegradation, device: "B-1",
 		order:     beltStopRun.order,
 		readBacks: beltStopRun.readBacks,
 		phases:    []string{"normal", "watch", "degrading", "shedding", "belt_empty", "cause_undecided", "belt_stopped"},
@@ -47,6 +47,7 @@ var (
 )
 
 type plannedRun struct {
+	degrading string
 	story     beltStory
 	device    string
 	order     []string
@@ -88,6 +89,7 @@ func TestADriveDegradingAgainstItsPeersIsStoppedByPlanOnceTheBeltRunsEmpty(t *te
 				assertTwinReadBack(t, run.db, readBack[0], readBack[1], readBack[2])
 			}
 			assertPhases(t, run.db, planned.phases)
+			assertTheDegradingStepNames(t, run.db, planned.degrading)
 			assertR2PassedOnSettledFeatures(t, run.db, 2)
 			if quarantined := countRows(t, run.db, "event_quarantine"); quarantined != 0 {
 				t.Fatalf("%d events quarantined, want none", quarantined)
@@ -238,5 +240,15 @@ func assertR2PassedOnSettledFeatures(t *testing.T, dbPath string, want int) {
 	}
 	if approved != want || incomplete != 0 {
 		t.Fatalf("%d approved R2 intents and %d denied for incomplete evidence, want %d and none", approved, incomplete, want)
+	}
+}
+
+func assertTheDegradingStepNames(t *testing.T, dbPath, diagnosis string) {
+	t.Helper()
+	query := `SELECT d.validation_status || ' ' || json_extract(d.raw_json, '$.diagnosis_code') || ' ' || i.intent_type FROM decisions d
+		JOIN situation_versions v ON v.situation_id = d.situation_id AND v.version = d.situation_version
+		JOIN intents i ON i.decision_id = d.decision_id WHERE v.phase = 'degrading'`
+	if got := columnValues(t, dbPath, query); !slices.Equal(got, []string{"accepted " + diagnosis + " reduce_feed"}) {
+		t.Fatalf("degrading decisions = %v, want the limp step accepted with the diagnosis %s", got, diagnosis)
 	}
 }

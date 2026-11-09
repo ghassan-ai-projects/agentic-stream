@@ -16,7 +16,7 @@ const (
 	bearingVibrationResidualMmS = 0.3
 	gearboxSlopeResidualKPerH   = 2.0
 	gearboxQuietVibrationMmS    = 0.05
-	unknownCause                = "unknown"
+	untoldCause                 = "drive_degrading"
 )
 
 var (
@@ -68,7 +68,7 @@ func (r lineReasoner) execute() workerfake.ExecuteFunc {
 			return fmt.Errorf("decode the snapshot: %w", err)
 		}
 		mu.Lock()
-		if named[snapshot.SituationID] == "" || named[snapshot.SituationID] == unknownCause {
+		if named[snapshot.SituationID] == "" || named[snapshot.SituationID] == untoldCause {
 			named[snapshot.SituationID] = snapshot.cause(r.coverage)
 		}
 		diagnosis := named[snapshot.SituationID]
@@ -90,7 +90,7 @@ func (r lineReasoner) intents(diagnosis, phase string) []proposal {
 }
 
 func (r lineReasoner) watching(diagnosis string) bool {
-	return r.unsure != nil && diagnosis == unknownCause
+	return r.unsure != nil && diagnosis == untoldCause
 }
 
 func (r lineReasoner) watchUntil(validUntil time.Time) (time.Time, []proposal) {
@@ -109,7 +109,7 @@ func (s lineSnapshot) cause(coverage lineCoverage) string {
 		s.residual("winding_slope_30m") >= gearboxSlopeResidualKPerH && s.residual("vibration_15m") < gearboxQuietVibrationMmS:
 		return "gearbox_seizing"
 	}
-	return unknownCause
+	return untoldCause
 }
 
 func (s lineSnapshot) leastReadings(feature string) float64 {

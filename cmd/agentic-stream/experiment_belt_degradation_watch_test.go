@@ -75,7 +75,7 @@ func rejectTheFirstEpisode(reasoner workerfake.ExecuteFunc) workerfake.ExecuteFu
 		rejected := first == req.GetEpisodeId()
 		mu.Unlock()
 		if rejected {
-			return workerfake.Propose(req, emit, workerfake.Answer{Hypothesis: unknownCause, DiagnosisCode: unknownCause, Summary: "no level",
+			return workerfake.Propose(req, emit, workerfake.Answer{Hypothesis: untoldCause, DiagnosisCode: untoldCause, Summary: "no level",
 				Intents: []proposal{{Type: "reduce_feed", Risk: "R1", Parameters: map[string]any{}}}})
 		}
 		return reasoner(ctx, req, emit)

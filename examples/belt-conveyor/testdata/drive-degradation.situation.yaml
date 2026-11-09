@@ -588,16 +588,20 @@ cognition:
     dispatchPolicy: active
     riskCeiling: R2
     objective: |
-      One conveyor drive degrades against its peers at equal current. Name the
-      cause by the diagnosis catalog's rules (unknown while neither holds) and
-      request the one step of the situation's phase. The phase, not the
-      diagnosis, decides the step: an unknown cause is no reason to wait, and a
-      watch never replaces the step of a phase that has one. Never act on a rise
-      every drive shares.
-      - phase degrading: shed the feed to the plant's limp feed, whatever the
-        cause - intent reduce_feed (preset limp).
-      - phase shedding: run the belt empty by stopping the feeder, whatever the
-        cause - intent stop_feed (preset empty). Do not shed the feed again.
+      One conveyor drive degrades against its peers at equal current. Give the
+      diagnosis by the catalog's rules and request the one step of the
+      situation's phase. drive_degrading is the diagnosis of a drive that
+      degrades while neither the bearing rule nor the gearbox rule holds; bearing
+      and gearbox_seizing refine it once their rule holds. The phase, not the
+      cause, decides the step: an untold cause is no reason to wait, and a watch
+      never replaces the step of a phase that has one. Never act on a rise every
+      drive shares.
+      - phase degrading: shed the feed to the plant's limp feed - intent
+        reduce_feed (preset limp), with the diagnosis drive_degrading, or the
+        cause when its rule already holds.
+      - phase shedding: run the belt empty by stopping the feeder - intent
+        stop_feed (preset empty), with the diagnosis drive_degrading, or the
+        cause when its rule already holds. Do not shed the feed again.
       - phase belt_empty: no step; the evidence has not named the cause yet.
       - phase cause_bearing: stop the degraded drive by plan - intent
         isolate_drive (preset planned_stop).
@@ -606,7 +610,9 @@ cognition:
       - phase cause_undecided: stop the empty belt, the safe default - intent
         stop_belt (preset planned_stop).
       - phase isolated: restore the plant's limp feed - intent reduce_feed
-        (preset limp).
+        (preset limp). The drive was isolated because its bearing rule held:
+        give the diagnosis bearing, although the stopped drive no longer
+        vibrates.
     prompt: >
       Analyze the immutable snapshot (each drive's current, its vibration and
       winding temperature over 15 minutes, the degraded drive's winding slope,
@@ -628,7 +634,7 @@ cognition:
       totalToolResultBytes: 65536
       providerRetries: 1
       costMicrounits: 400000
-    diagnosisCatalog: '[{"code":"unknown","description":"no confident diagnosis"},{"code":"bearing","description":"a dry drive bearing: the drive''s 15 minute vibration mean is at least 0.3 mm/s above the larger of its peers'' (each window holding at least 14 of its 15 readings); its winding temperature rises with it at equal current"},{"code":"gearbox_seizing","description":"a drive gearbox losing oil, which will seize and drag the belt: in the same minute its 30 minute winding slope is at least 2 K/h above the larger of its peers'' (each holding at least 162 of its 180 readings) while its vibration mean is less than 0.05 mm/s above theirs; stop the empty belt rather than the drive"},{"code":"transient_none","description":"a rise every drive shares, such as a feed surge"}]'
+    diagnosisCatalog: '[{"code":"unknown","description":"no confident diagnosis"},{"code":"drive_degrading","description":"a drive degrades against its peers at equal current (winding or vibration residual); the cause is not told yet: neither the bearing rule nor the gearbox rule holds. bearing and gearbox_seizing refine it"},{"code":"bearing","description":"a dry drive bearing: the drive''s 15 minute vibration mean is at least 0.3 mm/s above the larger of its peers'' (each window holding at least 14 of its 15 readings); its winding temperature rises with it at equal current"},{"code":"gearbox_seizing","description":"a drive gearbox losing oil, which will seize and drag the belt: in the same minute its 30 minute winding slope is at least 2 K/h above the larger of its peers'' (each holding at least 162 of its 180 readings) while its vibration mean is less than 0.05 mm/s above theirs; stop the empty belt rather than the drive"},{"code":"transient_none","description":"a rise every drive shares, such as a feed surge"}]'
 
 actions:
   intents:
