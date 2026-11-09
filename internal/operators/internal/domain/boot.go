@@ -40,9 +40,6 @@ func operatorStateKey(env contractsv1.Envelope) string {
 	if bootID == "" {
 		return env.Entity.ID
 	}
-	// Device sequence and monotonic time are meaningful only within a boot.
-	// Keep explicit boots in separate durable state keys so a delayed event from
-	// an older boot cannot reset or contaminate the current boot's window.
 	return env.Entity.ID + "\x1f" + bootID
 }
 
@@ -61,24 +58,20 @@ func bootIDFromStateKey(stateKey string) string {
 	return bootID
 }
 
-// admitBoot fences delayed evidence from a prior device boot. Missing boot
-// identity remains compatible only until the first identified boot is seen;
-// thereafter it cannot be used to mutate physical numeric state.
 func (r *OperatorRuntime) admitBoot(ps *PartitionState, env contractsv1.Envelope) bool {
-	runtimeState := r.runtimeState(ps, env.Entity.ID)
+	fence := r.runtimeState(ps, env.Entity.ID).fenceOf(env.Type)
 	bootID := deviceBootID(env)
-	if bootID == "" {
-		return runtimeState.CurrentBootID == ""
-	}
-	if runtimeState.CurrentBootID == bootID {
+	switch {
+	case bootID == "":
+		return fence.CurrentBootID == ""
+	case fence.CurrentBootID == bootID:
 		return true
-	}
-	if !runtimeState.acceptsNewBoot(bootID) {
+	case !fence.acceptsNewBoot(bootID):
 		return false
 	}
-	discardEntityState(ps, env.Entity.ID)
-	runtimeState.CurrentBootID = bootID
-	runtimeState.SeenBootIDs = append(runtimeState.SeenBootIDs, bootID)
+	r.discardStateFedBy(ps, env.Entity.ID, env.Type)
+	fence.CurrentBootID = bootID
+	fence.SeenBootIDs = append(fence.SeenBootIDs, bootID)
 	return true
 }
 
@@ -90,41 +83,64 @@ func (r *OperatorRuntime) runtimeState(ps *PartitionState, entityID string) *Run
 	return meta.Runtime
 }
 
-// acceptsNewBoot refuses a boot seen before. A full bounded history cannot
-// safely distinguish an evicted old boot from a new one, so it fails closed
-// rather than allowing stale evidence to revive.
-func (s *RuntimeState) acceptsNewBoot(bootID string) bool {
-	return !slices.Contains(s.SeenBootIDs, bootID) && len(s.SeenBootIDs) < maxSeenBootIDs
+func (s *RuntimeState) fenceOf(eventType string) *BootFence {
+	if s.Fences == nil {
+		s.Fences = map[string]*BootFence{}
+	}
+	fence, fenced := s.Fences[eventType]
+	if !fenced {
+		fence = &BootFence{}
+		s.Fences[eventType] = fence
+	}
+	return fence
 }
 
-// discardEntityState drops every operator's state for the entity when a new
-// boot is admitted. Only the active boot's state is useful afterwards; the
-// seen-boot list still prevents a retired boot from being admitted again.
-func discardEntityState(ps *PartitionState, entityID string) {
-	for operatorID, states := range ps.OperatorStates {
-		if operatorID == RuntimeOperatorID {
+func (f *BootFence) acceptsNewBoot(bootID string) bool {
+	return !slices.Contains(f.SeenBootIDs, bootID) && len(f.SeenBootIDs) < maxSeenBootIDs
+}
+
+func (r *OperatorRuntime) discardStateFedBy(ps *PartitionState, entityID, eventType string) {
+	for _, input := range r.spec.Inputs {
+		if input.EventType != eventType {
 			continue
 		}
-		for stateKey := range states {
-			if stateKey == entityID || strings.HasPrefix(stateKey, entityID+"\x1f") {
-				delete(states, stateKey)
-			}
+		for _, inst := range r.byInput[input.Name] {
+			discardEntityState(ps.OperatorStates[inst.def.Name], entityID)
+		}
+	}
+}
+
+func discardEntityState(states map[string]*OperatorStateBlob, entityID string) {
+	for stateKey := range states {
+		if stateKey == entityID || strings.HasPrefix(stateKey, entityID+"\x1f") {
+			delete(states, stateKey)
 		}
 	}
 }
 
 func (r *OperatorRuntime) isActiveBoot(ps *PartitionState, stateKey string) bool {
-	bootID := bootIDFromStateKey(stateKey)
 	meta := ps.OperatorStates[RuntimeOperatorID][entityIDFromStateKey(stateKey)]
-	if bootID == "" {
-		return meta == nil || meta.Runtime == nil || meta.Runtime.CurrentBootID == ""
+	if meta == nil || meta.Runtime == nil {
+		return true
 	}
-	return meta == nil || meta.Runtime == nil || meta.Runtime.CurrentBootID == "" || meta.Runtime.CurrentBootID == bootID
+	return meta.Runtime.admits(bootIDFromStateKey(stateKey))
 }
 
-// IsTimerStateActive reports whether a persisted timer belongs to the current
-// boot admission state. The engine uses this to retire stale timers instead of
-// treating their intentional suppression as a processing failure.
+func (s *RuntimeState) admits(bootID string) bool {
+	current := s.currentBoots()
+	return len(current) == 0 || bootID != "" && slices.Contains(current, bootID)
+}
+
+func (s *RuntimeState) currentBoots() []string {
+	var boots []string
+	for _, fence := range s.Fences {
+		if fence.CurrentBootID != "" {
+			boots = append(boots, fence.CurrentBootID)
+		}
+	}
+	return boots
+}
+
 func (r *OperatorRuntime) IsTimerStateActive(ps *PartitionState, stateKey string) bool {
 	if ps == nil {
 		return false

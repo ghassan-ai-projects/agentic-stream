@@ -85,7 +85,14 @@ least that complete, and names the unmet requirement otherwise.
 ## Operators and windows
 
 The current deterministic operators include aggregates, slope-like features,
-and missing-heartbeat handling. Window kinds include tumbling, sliding, count,
+and missing-heartbeat handling. An event that carries a device `boot_id` is
+fenced by boot per entity and input event type: the first event of a new boot
+discards the state of the operators that event type feeds (an operator fed by
+several event types loses its state when any of them admits a new boot), and an
+event of a boot seen before for that event type never changes state. Several
+devices can feed one entity, each through its own event types; the plant wire
+site file refuses a kind-level reading of a kind with several devices on one
+entity, whose boots would share one event type. Window kinds include tumbling, sliding, count,
 and decay. The compiler checks that operator inputs, windows, and output names
 are declared and compatible.
 

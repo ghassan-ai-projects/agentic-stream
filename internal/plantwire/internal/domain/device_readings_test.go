@@ -55,6 +55,8 @@ func TestNewMappingRefusesADeviceReadingItCannotBind(t *testing.T) {
 		}, domain.ErrSiteReadingDeviceKind},
 		{"two rules for one device reading", func(s *domain.Site) { s.Readings = append(s.Readings, s.Readings[len(s.Readings)-1]) },
 			domain.ErrSiteRuleTwice},
+		{"a kind rule two devices of one entity would share", func(s *domain.Site) { s.Readings = s.Readings[:1] }, domain.ErrSiteRuleShared},
+		{"a heartbeat two devices of one entity would share", func(s *domain.Site) { s.Heartbeats = valveSite().Heartbeats }, domain.ErrSiteRuleShared},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

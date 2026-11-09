@@ -122,7 +122,12 @@ otherwise. Heartbeat rules stay per kind.
 
 Here D-1 and D-2 give their own event types and D-3 falls back to the kind's.
 The site file is refused when a rule names a device it does not list, a device
-of another kind than the rule's, or two rules share device, kind and metric.
+of another kind than the rule's, or two rules share device, kind and metric. It
+is also refused when a kind-level reading or a heartbeat rule would cover two
+devices bound to one entity: the stream engine fences device boots per entity
+and event type, so those devices' boots would mix in one event type. Give each
+such device its own reading; heartbeat rules need one device of their kind per
+entity.
 
 The rules (registration on
 births, readings, historical data, the heartbeat on event time) are in the

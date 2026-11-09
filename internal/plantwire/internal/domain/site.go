@@ -17,6 +17,7 @@ var (
 	ErrSiteQualityLikeGood     = errors.New("plantwire: the site file maps a wire quality other than good to the event quality of a good sample")
 	ErrSiteReadingDeviceAbsent = errors.New("plantwire: a site reading names a device the site file does not list")
 	ErrSiteReadingDeviceKind   = errors.New("plantwire: a site reading names a device of another kind than the reading's")
+	ErrSiteRuleShared          = errors.New("plantwire: a kind-level rule covers several devices of one entity, whose boots would mix in one event type")
 )
 
 type Site struct {
@@ -150,7 +151,7 @@ func (s Site) checkReading(reading Reading, inventory Inventory) error {
 	device, listed := s.Devices[reading.Device]
 	switch {
 	case reading.Device == "":
-		return nil
+		return s.checkKindReadingUnshared(reading)
 	case !listed:
 		return fmt.Errorf("%w: %s", ErrSiteReadingDeviceAbsent, reading.described())
 	case device.Kind != reading.Kind:
@@ -159,16 +160,53 @@ func (s Site) checkReading(reading Reading, inventory Inventory) error {
 	return nil
 }
 
+func (s Site) checkKindReadingUnshared(reading Reading) error {
+	ownRule := func(device string) bool {
+		return slices.ContainsFunc(s.Readings, func(r Reading) bool {
+			return r.Device == device && r.Kind == reading.Kind && r.Metric == reading.Metric
+		})
+	}
+	if entity, shared := s.sharedEntity(reading.Kind, ownRule); shared {
+		return fmt.Errorf("%w: %s on entity %q; give each of its devices its own reading (\"device\")", ErrSiteRuleShared, reading.described(), entity)
+	}
+	return nil
+}
+
+func (s Site) sharedEntity(kind string, ownRule func(device string) bool) (string, bool) {
+	devicesOn := map[string]int{}
+	for _, name := range s.DeviceNames() {
+		device := s.Devices[name]
+		if device.Kind != kind || device.Entity == nil || ownRule(name) {
+			continue
+		}
+		devicesOn[device.Entity.ID]++
+		if devicesOn[device.Entity.ID] > 1 {
+			return device.Entity.ID, true
+		}
+	}
+	return "", false
+}
+
 func (s Site) checkHeartbeats(inventory Inventory) error {
 	seen := map[string]bool{}
 	for _, rule := range s.Heartbeats {
 		if seen[rule.Kind] {
 			return fmt.Errorf("%w: heartbeat of kind %q", ErrSiteRuleTwice, rule.Kind)
 		}
-		if !inventory.Commissioned(rule.Kind) {
-			return fmt.Errorf("%w: heartbeat of kind %q", ErrSiteKindNotCommissioned, rule.Kind)
+		if err := s.checkHeartbeat(rule, inventory); err != nil {
+			return err
 		}
 		seen[rule.Kind] = true
+	}
+	return nil
+}
+
+func (s Site) checkHeartbeat(rule HeartbeatRule, inventory Inventory) error {
+	if !inventory.Commissioned(rule.Kind) {
+		return fmt.Errorf("%w: heartbeat of kind %q", ErrSiteKindNotCommissioned, rule.Kind)
+	}
+	if entity, shared := s.sharedEntity(rule.Kind, func(string) bool { return false }); shared {
+		return fmt.Errorf("%w: heartbeat of kind %q on entity %q; a heartbeat rule needs one device of its kind per entity", ErrSiteRuleShared, rule.Kind, entity)
 	}
 	return nil
 }

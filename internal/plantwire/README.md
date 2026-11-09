@@ -51,7 +51,9 @@ It is checked at start against its embedded schema (`internal/wire/site.schema.j
 and the commissioned kinds: every site kind is commissioned, every mapped metric
 is declared by its kind, a reading that names a `device` names a site device of
 the reading's kind, no reading (device, kind and metric) or heartbeat (kind) has
-two rules, every device of
+two rules, no kind-level reading or heartbeat rule covers two devices bound to
+one entity (their boots would mix in one event type; give each device its own
+reading), every device of
 a kind that gives events names its entity, every wire quality has an event
 quality and none but `good` maps to the event quality of `good`. Without a site
 file the host serves sessions and gives no events.

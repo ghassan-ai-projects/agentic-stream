@@ -2,16 +2,13 @@ package domain
 
 import "time"
 
-// Feature is an emitted operator result.
 type Feature struct {
-	FeatureID  string `json:"feature_id"`
-	OperatorID string `json:"operator_id"`
-	OutputName string `json:"output_name"`
-	TenantID   string `json:"tenant_id"`
-	EntityType string `json:"entity_type"`
-	EntityID   string `json:"entity_id"`
-	// StateKey is the exact durable operator key. It is internal plumbing for
-	// timer matching and is intentionally excluded from serialized evidence.
+	FeatureID         string                 `json:"feature_id"`
+	OperatorID        string                 `json:"operator_id"`
+	OutputName        string                 `json:"output_name"`
+	TenantID          string                 `json:"tenant_id"`
+	EntityType        string                 `json:"entity_type"`
+	EntityID          string                 `json:"entity_id"`
 	StateKey          string                 `json:"-"`
 	BootID            string                 `json:"boot_id,omitempty"`
 	PartitionID       int                    `json:"partition_id"`
@@ -29,7 +26,6 @@ type Feature struct {
 	Metadata          map[string]interface{} `json:"metadata,omitempty"`
 }
 
-// State is the durable state blob for one operator instance (keyed by entity).
 type State struct {
 	OperatorID string
 	StateKey   string
@@ -37,7 +33,6 @@ type State struct {
 	Data       []byte
 }
 
-// Sample is one timestamped scalar input to a windowed operator.
 type Sample struct {
 	EventID   string    `json:"event_id"`
 	EventTime time.Time `json:"event_time"`
@@ -45,8 +40,6 @@ type Sample struct {
 	BootID    string    `json:"boot_id,omitempty"`
 }
 
-// WindowState stores samples for windowed aggregates. The samples are durable
-// as rows of their own, so the JSON form carries the window's position only.
 type WindowState struct {
 	BootID    string    `json:"boot_id,omitempty"`
 	Samples   []Sample  `json:"-"`
@@ -55,7 +48,6 @@ type WindowState struct {
 	changes   sampleChanges
 }
 
-// HeartbeatState stores the last seen heartbeat for a keyed entity.
 type HeartbeatState struct {
 	BootID             string     `json:"boot_id,omitempty"`
 	LastEventTime      *time.Time `json:"last_event_time,omitempty"`
@@ -65,24 +57,21 @@ type HeartbeatState struct {
 	Tracestate         string     `json:"tracestate,omitempty"`
 }
 
-// RuntimeState records boot admission for one logical entity. A boot is
-// admitted once; an event from a previously seen boot is stale evidence and
-// must not mutate active operator state.
 type RuntimeState struct {
+	Fences map[string]*BootFence `json:"fences,omitempty"`
+}
+
+type BootFence struct {
 	CurrentBootID string   `json:"current_boot_id,omitempty"`
 	SeenBootIDs   []string `json:"seen_boot_ids,omitempty"`
 }
 
-// RuntimeOperatorID identifies the metadata row persisted alongside normal
-// operator state. It is not a user-declared operator.
 const RuntimeOperatorID = "__agentic_stream_runtime__"
 
-// PartitionState is the in-memory operator state for one partition.
 type PartitionState struct {
-	OperatorStates map[string]map[string]*OperatorStateBlob // operatorID -> stateKey -> blob
+	OperatorStates map[string]map[string]*OperatorStateBlob
 }
 
-// Completeness describes how complete the feature is.
 type Completeness string
 
 const (

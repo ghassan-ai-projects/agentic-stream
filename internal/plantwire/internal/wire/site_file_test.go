@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire/internal/wire"
 )
 
@@ -78,4 +79,54 @@ func TestParseSiteFileRefusesWhatIsNotASiteFile(t *testing.T) {
 	if _, err := wire.ParseSiteFile([]byte("[]")); !errors.Is(err, wire.ErrNotARecord) {
 		t.Fatalf("ParseSiteFile([]) = %v, want ErrNotARecord", err)
 	}
+}
+
+func TestEveryCommittedSiteFileMapsAgainstItsKindFiles(t *testing.T) {
+	t.Parallel()
+	sites, err := filepath.Glob(filepath.Join("..", "..", "..", "..", "examples", "*", "testdata", "plant-wire", "*.site.json"))
+	if err != nil || len(sites) < 3 {
+		t.Fatalf("committed site files = %v (%v), want the bench, the pump station and the conveyor", sites, err)
+	}
+	for _, path := range sites {
+		t.Run(filepath.Base(path), func(t *testing.T) {
+			t.Parallel()
+			site, err := wire.ParseSiteFile(readFile(t, path))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := domain.NewMapping(site, commissionKindsBeside(t, path)); err != nil {
+				t.Fatalf("NewMapping(%s) = %v, want the committed site to map", path, err)
+			}
+		})
+	}
+}
+
+func commissionKindsBeside(t *testing.T, sitePath string) domain.Inventory {
+	t.Helper()
+	paths, err := filepath.Glob(filepath.Join(filepath.Dir(sitePath), "kinds", "*.kind.json"))
+	if err != nil || len(paths) == 0 {
+		t.Fatalf("no kind files beside %s: %v", sitePath, err)
+	}
+	kinds := make([]domain.Kind, 0, len(paths))
+	for _, path := range paths {
+		kind, err := wire.ParseKindFile(readFile(t, path))
+		if err != nil {
+			t.Fatalf("%s: %v", path, err)
+		}
+		kinds = append(kinds, kind)
+	}
+	inventory, err := domain.Commission(kinds, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return inventory
+}
+
+func readFile(t *testing.T, path string) []byte {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
 }
