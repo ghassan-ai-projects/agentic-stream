@@ -2,6 +2,7 @@ package domain_test
 
 import (
 	"encoding/json"
+	"math"
 	"testing"
 	"time"
 
@@ -137,4 +138,17 @@ func arrival(recordType string, seq uint64, body func(*domain.Arrival)) domain.A
 	a := domain.Arrival{Envelope: domain.Envelope{Type: recordType, ProtocolVersion: 1, SessionID: "s-1", Seq: seq}, Sequenced: true}
 	body(&a)
 	return a
+}
+
+func TestAReadingOfNegativeZeroIsEmittedAsZero(t *testing.T) {
+	t.Parallel()
+	conversation := ingesting(t, valveInventory(t))
+	conversation.Receive(deviceBirth(1, "V1", "valve", "b1", startNS))
+	reaction := conversation.Receive(data(2, "V1", "b1", false, domain.Sample{Alias: 1, Value: json.Number("-0"), Quality: "good", EventTimeNS: startNS}))
+	if len(reaction.Events) == 0 {
+		t.Fatalf("reaction = %+v, want the opening event", reaction)
+	}
+	if value, isFloat := reaction.Events[0].Data["percent"].(float64); !isFloat || value != 0 || math.Signbit(value) {
+		t.Fatalf("event data = %v, want percent 0 without a negative sign", reaction.Events[0].Data)
+	}
 }

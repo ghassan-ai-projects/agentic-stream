@@ -57,7 +57,14 @@ func numeric(value any) any {
 		return value
 	}
 	if parsed, err := number.Float64(); err == nil {
-		return parsed
+		return withoutNegativeZero(parsed)
+	}
+	return value
+}
+
+func withoutNegativeZero(value float64) float64 {
+	if value == 0 {
+		return 0
 	}
 	return value
 }
