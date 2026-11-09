@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"testing"
 	"time"
 
@@ -163,10 +164,19 @@ func (s liveStory) assertPlayed(t *testing.T, dbPath string, onset time.Time, ou
 	}
 	assertRoutes(t, dbPath, s.planned.routes)
 	for _, readBack := range s.planned.readBacks {
+		if readBack[2] == plantLimp {
+			readBack[2] = catalogLimp(t, s.plant)
+		}
 		assertTwinReadBack(t, dbPath, readBack[0], readBack[1], readBack[2])
 	}
 	if !s.barrier {
 		assertLimpFeedInTime(t, dbPath, onset)
 	}
 	assertNoTripNorStrandedBelt(t, grade, outcome, s.planned.unharmed)
+}
+
+func catalogLimp(t *testing.T, plant string) string {
+	t.Helper()
+	setpoint := readConveyorRoutes(t, plant)[limpFeed.Type].Presets[limpFeed.Parameters["level"].(string)]["feed_setpoint"]
+	return strconv.FormatFloat(setpoint, 'f', -1, 64)
 }
