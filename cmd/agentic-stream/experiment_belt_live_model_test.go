@@ -21,15 +21,16 @@ var (
 	liveFaults = map[string]string{"bearing": "conveyor_drive__lube_loss", "gearbox_seizing": "conveyor_drive__gear_oil_loss",
 		"drive_tripped": "conveyor_drive__vfd_fault"}
 	liveStories = map[string]liveStory{
-		"s1-a": {spec: degradationSpec, barrier: true, planned: twinStories["s1-a"]},
-		"s2-b": {spec: conveyorSpec, planned: twinStory{routes: []string{"reduce_feed"}, readBacks: [][3]string{{"set_feed", "feed_setpoint", conveyorSetpointLimp}},
+		"s1-a": {spec: degradationSpec, plant: "a", barrier: true, planned: twinStories["s1-a"]},
+		"s2-b": {spec: conveyorSpec, plant: "b", planned: twinStory{routes: []string{"reduce_feed"}, readBacks: [][3]string{{"set_feed", "feed_setpoint", conveyorSetpointLimp}},
 			unharmed: []string{"D-1", "D-2"}, faulted: "D-3"}},
-		"s3-a": {spec: degradationSpec, barrier: true, planned: twinStories["s3-a"]},
+		"s3-a": {spec: degradationSpec, plant: "a", barrier: true, planned: twinStories["s3-a"]},
 	}
 )
 
 type liveStory struct {
 	spec    string
+	plant   string
 	barrier bool
 	planned twinStory
 }
@@ -56,7 +57,7 @@ func (c conveyorTwin) playLive(t *testing.T, live liveModel, name string, row in
 	out := live.runFolder(t, fmt.Sprintf("%s-row%d", name, row))
 	spec := editedSpec(t, story.spec, out, liveBudget)
 	meter, workerSocket := serveMeteredTamoz(t, out, live.startTamoz(t, out))
-	run := startLiveServe(t, spec, out, workerSocket)
+	run := startLiveServe(t, spec, story.plant, out, workerSocket)
 	t.Cleanup(func() { logCommandOutcomes(t, run.db) })
 	seed, plan := c.livePlan(t, story, name, row, run.socket, conveyorPolicyDigest(t, spec))
 	stopApproving := approveWhileRunning(t, run)
@@ -69,7 +70,7 @@ func (c conveyorTwin) playLive(t *testing.T, live liveModel, name string, row in
 	onset := ran.onsetOf(t, story.planned.faulted)
 	logPhasesSince(t, run.db, onset)
 	horizon := time.Duration(readJSONFile(t, plan)["horizon_s"].(float64) * float64(time.Second))
-	outcome := c.keepEvidence(t, runDir, out, campaign.Window{From: ran.start(), Until: ran.start().Add(horizon)})
+	outcome := c.keepEvidence(t, story.plant, runDir, out, campaign.Window{From: ran.start(), Until: ran.start().Add(horizon)})
 	if quarantined := countRows(t, run.db, "event_quarantine"); quarantined != 0 {
 		t.Errorf("%d events quarantined, want none", quarantined)
 	}
@@ -78,14 +79,14 @@ func (c conveyorTwin) playLive(t *testing.T, live liveModel, name string, row in
 	story.assertPlayed(t, run.db, onset, outcome)
 }
 
-func startLiveServe(t *testing.T, specPath, out, workerSocket string) degradationServe {
+func startLiveServe(t *testing.T, specPath, plant, out, workerSocket string) degradationServe {
 	t.Helper()
 	dir := privateSocketDir(t)
 	run := degradationServe{plantWireServe: plantWireServe{dir: out, socket: filepath.Join(dir, "host.sock"), db: filepath.Join(out, "stream.db")},
 		address: freeLoopbackAddress(t)}
 	seedMigratedDatabase(t, run.db)
 	applyPrincipalsFile(t, run.db, conveyorPrincipals)
-	run.stop = servePlantWire(t, run.plantWireServe, run.address, specPath, conveyorKinds, conveyorSite, "--device-catalog", conveyorCatalog,
+	run.stop = servePlantWire(t, run.plantWireServe, run.address, specPath, conveyorKinds, conveyorSite, "--device-catalog", conveyorCatalogOf(plant),
 		"--dispatch-lease", conveyorRouteLease, "--worker-socket", workerSocket, "--worker-name", "tamoz", "--event-schemas", conveyorEventSchemas)
 	return run
 }
@@ -132,11 +133,11 @@ func (c conveyorTwin) storyRow(t *testing.T, name string, row int) (map[string]a
 	return nil, nil
 }
 
-func (c conveyorTwin) keepEvidence(t *testing.T, runDir, out string, window campaign.Window) []byte {
+func (c conveyorTwin) keepEvidence(t *testing.T, plant, runDir, out string, window campaign.Window) []byte {
 	t.Helper()
 	outcome := c.run(t, "outcome", "--run", runDir, "--domains-dir", c.examples(), "--adapters-dir", c.adapters())
 	writePrivateFile(t, filepath.Join(out, "outcome.json"), string(outcome))
-	subjects := c.subjects(t, "", "")
+	subjects := c.subjects(t, plant, "", "")
 	subjects.Detected = func(entityID, diagnosed string) (string, string) {
 		if fault, known := liveFaults[diagnosed]; known {
 			return "D-3", fault

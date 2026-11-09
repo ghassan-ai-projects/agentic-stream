@@ -75,7 +75,7 @@ func (c conveyorTwin) playBarrierPaced(t *testing.T, play twinPlay, story twinSt
 	t.Cleanup(func() {
 		t.Logf("%s seed %d played in %s of wall time", play.name, play.seed(), time.Since(started).Round(time.Second))
 	})
-	run := startDegradationServe(t, degradationSpec, shippedCoverage, limpFeedOf(play.story.Plant))
+	run := startDegradationServe(t, degradationSpec, shippedCoverage, play.story.Plant)
 	t.Cleanup(func() { logCommandOutcomes(t, run.db) })
 	plan := c.sessionPlan(t, play.name, run.socket, conveyorPolicyDigest(t, degradationSpec), play.story.planOf(play.row))
 	stopApproving := approveWhileRunning(t, run)
@@ -99,7 +99,7 @@ func (c conveyorTwin) playBarrierPaced(t *testing.T, play twinPlay, story twinSt
 	}
 	horizon := time.Duration(readJSONFile(t, plan)["horizon_s"].(float64) * float64(time.Second))
 	c.scoreVerdict(t, run.db, runDir, campaign.Window{From: ran.start(), Until: ran.start().Add(horizon)},
-		campaign.Verdict{Version: "belt-m3", Arm: "planned-stop", Subjects: c.subjects(t, story.diagnosis, story.fault)})
+		campaign.Verdict{Version: "belt-m3", Arm: "planned-stop", Subjects: c.subjects(t, play.story.Plant, story.diagnosis, story.fault)})
 	if quarantined := countRows(t, run.db, "event_quarantine"); quarantined != 0 {
 		t.Fatalf("%d events quarantined, want none", quarantined)
 	}

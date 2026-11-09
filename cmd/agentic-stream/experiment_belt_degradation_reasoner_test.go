@@ -18,11 +18,12 @@ const (
 )
 
 var (
-	limpFeedA       = limpFeedOf("a")
 	emptyTheBelt    = proposal{Type: "stop_feed", Risk: "R2", Parameters: map[string]any{"level": "empty"}}
 	isolateTheDrive = proposal{Type: "isolate_drive", Risk: "R2", Parameters: map[string]any{"mode": "planned_stop"}}
 	stopTheBelt     = proposal{Type: "stop_belt", Risk: "R2", Parameters: map[string]any{"mode": "planned_stop"}}
-	plannedSteps    = map[string]bool{"degrading": true, "shedding": true, "cause_bearing": true, "cause_gearbox": true, "cause_undecided": true,
+	lineSteps       = map[string]proposal{"degrading": limpFeed, "shedding": emptyTheBelt, "cause_bearing": isolateTheDrive, "cause_gearbox": stopTheBelt,
+		"cause_undecided": stopTheBelt, "isolated": limpFeed}
+	plannedSteps = map[string]bool{"degrading": true, "shedding": true, "cause_bearing": true, "cause_gearbox": true, "cause_undecided": true,
 		"isolated": true}
 )
 
@@ -42,11 +43,7 @@ type lineSnapshot struct {
 	Facts       map[string]any `json:"facts"`
 }
 
-func limpFeedOf(plant string) proposal {
-	return proposal{Type: "reduce_feed", Risk: "R1", Parameters: map[string]any{"level": "limp_" + plant}}
-}
-
-func reasonAboutTheLine(coverage lineCoverage, limp proposal) workerfake.ExecuteFunc {
+func reasonAboutTheLine(coverage lineCoverage) workerfake.ExecuteFunc {
 	var mu sync.Mutex
 	named := map[string]string{}
 	return func(_ context.Context, req *runtimev1.EpisodeRequest, emit func(*runtimev1.EpisodeEvent) error) error {
@@ -61,16 +58,11 @@ func reasonAboutTheLine(coverage lineCoverage, limp proposal) workerfake.Execute
 		diagnosis := named[snapshot.SituationID]
 		mu.Unlock()
 		answer := workerfake.Answer{Hypothesis: diagnosis, DiagnosisCode: diagnosis, Summary: "D-3 degrades against its peers at equal current"}
-		if step, planned := lineSteps(limp)[snapshot.Phase]; planned {
+		if step, planned := lineSteps[snapshot.Phase]; planned {
 			answer.Intents = []proposal{step}
 		}
 		return workerfake.Propose(req, emit, answer)
 	}
-}
-
-func lineSteps(limp proposal) map[string]proposal {
-	return map[string]proposal{"degrading": limp, "shedding": emptyTheBelt, "cause_bearing": isolateTheDrive, "cause_gearbox": stopTheBelt,
-		"cause_undecided": stopTheBelt, "isolated": limp}
 }
 
 func (s lineSnapshot) cause(coverage lineCoverage) string {

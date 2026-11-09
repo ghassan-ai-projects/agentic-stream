@@ -31,9 +31,8 @@ var (
 	conveyorPlantWire    = filepath.Join(conveyorData, "plant-wire")
 	conveyorKinds        = filepath.Join(conveyorPlantWire, "kinds")
 	conveyorSite         = filepath.Join(conveyorPlantWire, "belt-conveyor.site.json")
-	conveyorCatalog      = filepath.Join(conveyorPlantWire, "belt-conveyor.catalog.json")
 	conveyorDevices      = []string{"F-1", "B-1", "D-1", "D-2", "D-3"}
-	limpFeed             = proposal{Type: "reduce_feed", Risk: "R1", Parameters: map[string]any{"level": "limp_b"}}
+	limpFeed             = proposal{Type: "reduce_feed", Risk: "R1", Parameters: map[string]any{"level": "limp"}}
 )
 
 func TestTheLineOverloadSpecCompilesOnlyWithTheConveyorEventSchemas(t *testing.T) {
@@ -123,7 +122,7 @@ func startConveyorServe(t *testing.T) plantWireServe {
 	t.Helper()
 	workerSocket := filepath.Join(privateSocketDir(t), "worker.sock")
 	serveWorker(t, workerSocket, relieveTheLine)
-	return startPlantWireServe(t, conveyorSpec, conveyorKinds, conveyorSite, "--device-catalog", conveyorCatalog,
+	return startPlantWireServe(t, conveyorSpec, conveyorKinds, conveyorSite, "--device-catalog", conveyorCatalogOf("b"),
 		"--dispatch-lease", conveyorRouteLease, "--worker-socket", workerSocket, "--worker-name", "tamoz", "--event-schemas", conveyorEventSchemas)
 }
 
@@ -146,6 +145,10 @@ func conveyorNode(t *testing.T, socket string) *plantwirefake.Node {
 		node.Send(birth)
 	}
 	return node
+}
+
+func conveyorCatalogOf(plant string) string {
+	return filepath.Join(conveyorPlantWire, "belt-conveyor-"+plant+".catalog.json")
 }
 
 func bootOf(device string) string {

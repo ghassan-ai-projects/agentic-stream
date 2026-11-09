@@ -158,9 +158,9 @@ func (c conveyorTwin) scoreVerdict(t *testing.T, dbPath, runDir string, window c
 	t.Logf("score:\n%s", output)
 }
 
-func (c conveyorTwin) subjects(t *testing.T, diagnosis, fault string) campaign.Subjects {
+func (c conveyorTwin) subjects(t *testing.T, plant, diagnosis, fault string) campaign.Subjects {
 	t.Helper()
-	routes, raw := readConveyorRoutes(t), c.rawCommands(t)
+	routes, raw := readConveyorRoutes(t, plant), c.rawCommands(t)
 	return campaign.Subjects{
 		Detected: func(entityID, diagnosed string) (string, string) {
 			if diagnosed == diagnosis {
@@ -180,12 +180,12 @@ type conveyorRoute struct {
 	Presets        map[string]map[string]float64 `json:"presets"`
 }
 
-func readConveyorRoutes(t *testing.T) map[string]conveyorRoute {
+func readConveyorRoutes(t *testing.T, plant string) map[string]conveyorRoute {
 	t.Helper()
 	var catalog struct {
 		Routes map[string]conveyorRoute `json:"routes"`
 	}
-	decodeFile(t, conveyorCatalog, &catalog)
+	decodeFile(t, conveyorCatalogOf(plant), &catalog)
 	return catalog.Routes
 }
 

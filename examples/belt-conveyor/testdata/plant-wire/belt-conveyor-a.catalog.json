@@ -8,8 +8,7 @@
       "selector_field": "level",
       "expires_after_ms": 180000,
       "presets": {
-        "limp_a": {"feed_setpoint": 54},
-        "limp_b": {"feed_setpoint": 18},
+        "limp": {"feed_setpoint": 54},
         "restore": {"feed_setpoint": 100}
       },
       "bounds": {"feed_setpoint": {"min": 0, "max": 100}}

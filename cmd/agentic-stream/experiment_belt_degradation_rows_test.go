@@ -119,7 +119,7 @@ func rowNumbers(row map[string]any, field string) []float64 {
 
 func (c conveyorTwin) limpSetpoint(t *testing.T, table storyTable, plant string) string {
 	t.Helper()
-	setpoint := readConveyorRoutes(t)[limpFeedOf(plant).Type].Presets[limpFeedOf(plant).Parameters["level"].(string)]["feed_setpoint"]
+	setpoint := readConveyorRoutes(t, plant)[limpFeed.Type].Presets[limpFeed.Parameters["level"].(string)]["feed_setpoint"]
 	if setpoint != table.SafeLimpFeedPct[plant] {
 		t.Fatalf("the catalog's limp feed of plant %s is %v %%, the story table's safe limp feed %v %%", plant, setpoint, table.SafeLimpFeedPct[plant])
 	}

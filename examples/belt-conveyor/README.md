@@ -6,7 +6,7 @@ belt `B-1` of `conveyor-1`, fed by `F-1`. Two specs, one per `serve`:
 
 - `line_overload` (M2, story S2-B on plant `belt-conveyor-drives-b`): when one
   drive's current drops to about 0 A while the feed is still high, the decision
-  `reduce_feed` (R1, automatic) sets the feeder to the limp feed (`limp_b`, 18 %)
+  `reduce_feed` (R1, automatic) sets the feeder to the limp feed (preset `limp`, 18 % on plant B)
   the two survivors can carry; the feeder's setpoint read-back verifies the
   command.
 - `drive_degradation` (M3, stories S1, S3 and S4): a drive whose winding
@@ -43,7 +43,7 @@ gates, because the specs need their own event schemas:
 | `testdata/event-schemas/conveyor.json` | One event type per drive's current, winding and vibration, the feed, its setpoint and the belt's tail speed |
 | `testdata/plant-wire/kinds/` | Byte copies of streams-simulator's `examples/belt-conveyor/kinds/*.kind.json` (guarded by `TestTheConveyorKindFilesAreByteCopiesOfStreamsims`) |
 | `testdata/plant-wire/belt-conveyor.site.json` | Every device on `conveyor-1`; per-device current, winding and vibration readings for the drives |
-| `testdata/plant-wire/belt-conveyor.catalog.json` | `reduce_feed` (presets `limp_a` 54 %, `limp_b` 18 %, `restore` 100 %) and `stop_feed` (0 %) to `set_feed` on `F-1`, `isolate_drive` to `stop_drive` on `D-3`, `stop_belt` to `stop_belt` on `B-1`; a command lives 180 s, longer than a barrier-paced world step (60 s), so `serve` takes `--dispatch-lease 5m` |
+| `testdata/plant-wire/belt-conveyor-{a,b}.catalog.json` | One device catalog per plant, as each plant's deployment has its own: `reduce_feed` (presets `limp`, the plant's safe limp feed, 54 % on plant A and 18 % on plant B, and `restore` 100 %; the specs name only `limp`, because nothing in a snapshot tells the plants apart) and `stop_feed` (0 %) to `set_feed` on `F-1`, `isolate_drive` to `stop_drive` on `D-3`, `stop_belt` to `stop_belt` on `B-1`; a command lives 180 s, longer than a barrier-paced world step (60 s), so `serve` takes `--dispatch-lease 5m` |
 | `testdata/principals.yaml` | A test approver for R1 and R2 on `conveyor-1` (the all-zero-seed test key) |
 
 The tests are in `cmd/agentic-stream/experiment_belt_conveyor*_test.go` (M2) and

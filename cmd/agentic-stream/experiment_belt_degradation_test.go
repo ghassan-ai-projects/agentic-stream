@@ -77,7 +77,7 @@ func TestADriveDegradingAgainstItsPeersIsStoppedByPlanOnceTheBeltRunsEmpty(t *te
 	for name, planned := range map[string]plannedRun{"a dry bearing isolates the drive": isolationRun, "a gearbox losing oil stops the belt": beltStopRun,
 		"a cause the evidence never names stops the belt": undecidedStopRun} {
 		t.Run(name, func(t *testing.T) {
-			run := startDegradationServe(t, compressedSpec(t, nil), compressedCoverage, limpFeedA)
+			run := startDegradationServe(t, compressedSpec(t, nil), compressedCoverage, "a")
 			desk := approvalDesk(run.address, conveyorApprovalToken, conveyorApprover, campaign.ApproveAll{})
 			line := connectBeltLine(t, run, planned.story)
 			if !line.runUntil(t, degradationTicks, run.approvingUntilSettled(t, desk, len(planned.order), planned.phases[len(planned.phases)-1])) || !slices.Equal(line.obeyed, planned.order) {
@@ -99,7 +99,7 @@ func TestADriveDegradingAgainstItsPeersIsStoppedByPlanOnceTheBeltRunsEmpty(t *te
 
 func TestFeedSurgesThatLoadEveryDriveTogetherNeverMoveTheLine(t *testing.T) {
 	t.Parallel()
-	run := startDegradationServe(t, compressedSpec(t, nil), compressedCoverage, limpFeedA)
+	run := startDegradationServe(t, compressedSpec(t, nil), compressedCoverage, "a")
 	line := connectBeltLine(t, run, feedSurges)
 	line.runUntil(t, surgeTicks, func(time.Time) bool { return false })
 	assertPhases(t, run.db, []string{"normal"})
@@ -116,7 +116,7 @@ func TestFeedSurgesThatLoadEveryDriveTogetherNeverMoveTheLine(t *testing.T) {
 func TestAnR2StepOnProvisionalFeaturesIsDeniedForIncompleteEvidence(t *testing.T) {
 	t.Parallel()
 	provisional := compressedSpec(t, map[string]string{"emit: on_close": "emit: early_and_close"})
-	run := startDegradationServe(t, provisional, compressedCoverage, limpFeedA)
+	run := startDegradationServe(t, provisional, compressedCoverage, "a")
 	line := connectBeltLine(t, run, bearingDegradation)
 	denied := `SELECT COUNT(*) FROM policy_evaluations p JOIN intents i ON i.intent_id = p.intent_id
 		WHERE i.intent_type = 'stop_feed' AND p.result = 'denied' AND p.reason = 'source_health_incomplete'`
@@ -160,15 +160,15 @@ type degradationServe struct {
 	address string
 }
 
-func startDegradationServe(t *testing.T, specPath string, coverage lineCoverage, limp proposal) degradationServe {
+func startDegradationServe(t *testing.T, specPath string, coverage lineCoverage, plant string) degradationServe {
 	t.Helper()
 	dir := privateSocketDir(t)
 	run := degradationServe{plantWireServe: plantWireServe{dir: dir, socket: filepath.Join(dir, "host.sock"), db: newMigratedDatabasePath(t)},
 		address: freeLoopbackAddress(t)}
 	applyPrincipalsFile(t, run.db, conveyorPrincipals)
 	workerSocket := filepath.Join(dir, "worker.sock")
-	serveWorker(t, workerSocket, reasonAboutTheLine(coverage, limp))
-	run.stop = servePlantWire(t, run.plantWireServe, run.address, specPath, conveyorKinds, conveyorSite, "--device-catalog", conveyorCatalog,
+	serveWorker(t, workerSocket, reasonAboutTheLine(coverage))
+	run.stop = servePlantWire(t, run.plantWireServe, run.address, specPath, conveyorKinds, conveyorSite, "--device-catalog", conveyorCatalogOf(plant),
 		"--dispatch-lease", conveyorRouteLease, "--worker-socket", workerSocket, "--worker-name", "tamoz", "--event-schemas", conveyorEventSchemas)
 	return run
 }

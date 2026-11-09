@@ -583,7 +583,7 @@ cognition:
       request the one step of the situation's phase. The phase, not the
       diagnosis, decides the step; never act on a rise every drive shares.
       - phase degrading: shed the feed to the plant's limp feed, whatever the
-        cause - intent reduce_feed (preset limp_a on plant A, limp_b on plant B).
+        cause - intent reduce_feed (preset limp).
       - phase shedding: run the belt empty by stopping the feeder, whatever the
         cause - intent stop_feed (preset empty). Do not shed the feed again.
       - phase belt_empty: no step; the evidence has not named the cause yet.
@@ -594,7 +594,7 @@ cognition:
       - phase cause_undecided: stop the empty belt, the safe default - intent
         stop_belt (preset planned_stop).
       - phase isolated: restore the plant's limp feed - intent reduce_feed
-        (preset limp_a on plant A, limp_b on plant B).
+        (preset limp).
     prompt: >
       Analyze the immutable snapshot (each drive's current, its vibration and
       winding temperature over 15 minutes, the degraded drive's winding slope,
@@ -655,7 +655,7 @@ actions:
       rateLimitPerHour: 4
     - type: reduce_feed
       risk: R1
-      description: Set the feeder to a preset feed; limp_a and limp_b are the feeds two drives of plant A and B carry.
+      description: Set the feeder to a preset feed; limp is the feed this plant's two survivors carry (the plant's device catalog sets it), restore the full feed.
       parameterSchema:
         type: object
         properties:
@@ -667,15 +667,13 @@ actions:
             type: integer
           level:
             type: string
-            enum: [limp_a, limp_b, restore]
+            enum: [limp, restore]
         required: [level]
         additionalProperties: false
       modelWritableFields: [level]
       presets:
-        limp_a:
-          level: limp_a
-        limp_b:
-          level: limp_b
+        limp:
+          level: limp
         restore:
           level: restore
       policy: automatic

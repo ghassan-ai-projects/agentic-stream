@@ -238,7 +238,7 @@ cognition:
       the drive whose current fell to about 0 A. Request the one step of the
       situation's phase; never stop the belt.
       - phase overload: cut the feed to the limp feed the two survivors carry -
-        intent reduce_feed (preset limp_b).
+        intent reduce_feed (preset limp).
     prompt: >
       Analyze the immutable snapshot (each drive's current, the feed and its
       setpoint) and return a typed decision with a diagnosis and at most one
@@ -298,7 +298,7 @@ actions:
       rateLimitPerHour: 4
     - type: reduce_feed
       risk: R1
-      description: Set the feeder to a preset feed; limp_b is the feed two drives of plant B carry.
+      description: Set the feeder to a preset feed; limp is the feed this plant's two survivors carry (the plant's device catalog sets it), restore the full feed.
       parameterSchema:
         type: object
         properties:
@@ -310,13 +310,13 @@ actions:
             type: integer
           level:
             type: string
-            enum: [limp_b, restore]
+            enum: [limp, restore]
         required: [level]
         additionalProperties: false
       modelWritableFields: [level]
       presets:
-        limp_b:
-          level: limp_b
+        limp:
+          level: limp
         restore:
           level: restore
       policy: automatic
