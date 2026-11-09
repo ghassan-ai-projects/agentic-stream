@@ -14,6 +14,11 @@ kind: SituationSpec
 # carries more than its share (above 5 A; about 4.2 A each on three drives at
 # full feed, 6.2 A on two). Gates are short: this spec drives a test against a
 # wall-paced twin and must react well inside the ~98 s the survivors have.
+#
+# The site gives every reading of the line, and a deployment registers the
+# event schemas of its spec's inputs only; evidence of an unregistered type is
+# quarantined. So the spec declares the drives' winding and vibration and the
+# belt's tail speed as inputs although no operator reads them.
 
 metadata:
   name: line_overload
@@ -56,6 +61,55 @@ inputs:
     eventType: conveyor.feed_setpoint.observed
     schemaVersion: "1.0"
     schema: conveyor.feed_setpoint.observed/1.0
+    partitionKey: entity.id
+    entityType: conveyor
+    classification: internal
+  - name: drive1_winding
+    eventType: conveyor.drive1_winding.observed
+    schemaVersion: "1.0"
+    schema: conveyor.drive1_winding.observed/1.0
+    partitionKey: entity.id
+    entityType: conveyor
+    classification: internal
+  - name: drive2_winding
+    eventType: conveyor.drive2_winding.observed
+    schemaVersion: "1.0"
+    schema: conveyor.drive2_winding.observed/1.0
+    partitionKey: entity.id
+    entityType: conveyor
+    classification: internal
+  - name: drive3_winding
+    eventType: conveyor.drive3_winding.observed
+    schemaVersion: "1.0"
+    schema: conveyor.drive3_winding.observed/1.0
+    partitionKey: entity.id
+    entityType: conveyor
+    classification: internal
+  - name: drive1_vibration
+    eventType: conveyor.drive1_vibration.observed
+    schemaVersion: "1.0"
+    schema: conveyor.drive1_vibration.observed/1.0
+    partitionKey: entity.id
+    entityType: conveyor
+    classification: internal
+  - name: drive2_vibration
+    eventType: conveyor.drive2_vibration.observed
+    schemaVersion: "1.0"
+    schema: conveyor.drive2_vibration.observed/1.0
+    partitionKey: entity.id
+    entityType: conveyor
+    classification: internal
+  - name: drive3_vibration
+    eventType: conveyor.drive3_vibration.observed
+    schemaVersion: "1.0"
+    schema: conveyor.drive3_vibration.observed/1.0
+    partitionKey: entity.id
+    entityType: conveyor
+    classification: internal
+  - name: tail_speed
+    eventType: conveyor.tail_speed.observed
+    schemaVersion: "1.0"
+    schema: conveyor.tail_speed.observed/1.0
     partitionKey: entity.id
     entityType: conveyor
     classification: internal

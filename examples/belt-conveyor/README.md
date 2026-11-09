@@ -27,7 +27,7 @@ gates, because the specs need their own event schemas:
 
 | File | What |
 | --- | --- |
-| `testdata/line-overload.situation.yaml` | The M2 spec; compile it with `--event-schemas testdata/event-schemas` |
+| `testdata/line-overload.situation.yaml` | The M2 spec; compile it with `--event-schemas testdata/event-schemas`. It declares every reading the shared site gives as an input, also those no operator reads: a deployment registers only its inputs' event schemas and quarantines the rest |
 | `testdata/drive-degradation.situation.yaml` | The M3 spec; compile it the same way |
 | `testdata/event-schemas/conveyor.json` | One event type per drive's current, winding and vibration, the feed, its setpoint and the belt's tail speed |
 | `testdata/plant-wire/kinds/` | Byte copies of streams-simulator's `examples/belt-conveyor/kinds/*.kind.json` (guarded by `TestTheConveyorKindFilesAreByteCopiesOfStreamsims`) |

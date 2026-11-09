@@ -90,6 +90,35 @@ func TestALostDriveAtFullFeedSetsTheFeederToTheLimpFeedAndItsReadBackVerifiesIt(
 	}
 }
 
+func TestTheLineOverloadSpecAdmitsEveryReadingOfTheSharedSite(t *testing.T) {
+	t.Parallel()
+	run := startConveyorServe(t)
+	line := connectBeltLine(t, degradationServe{plantWireServe: run}, func(int) beltDisturbance { return beltDisturbance{} })
+	line.runUntil(t, 3, func(time.Time) bool { return false })
+	line.phaseOnceProcessed(t)
+	if quarantined := countRows(t, run.db, "event_quarantine"); quarantined != 0 {
+		t.Fatalf("%d events quarantined, want none: the spec must register every event type the site gives", quarantined)
+	}
+	for _, eventType := range siteEventTypes(t) {
+		waitForRow(t, run.db, "SELECT COUNT(*) FROM event_log WHERE event_type = '"+eventType+"'", loopTimeout)
+	}
+}
+
+func siteEventTypes(t *testing.T) []string {
+	t.Helper()
+	var site struct {
+		Readings []struct {
+			EventType string `json:"event_type"`
+		} `json:"readings"`
+	}
+	decodeFile(t, conveyorSite, &site)
+	eventTypes := make([]string, len(site.Readings))
+	for i, reading := range site.Readings {
+		eventTypes[i] = reading.EventType
+	}
+	return eventTypes
+}
+
 func startConveyorServe(t *testing.T) plantWireServe {
 	t.Helper()
 	workerSocket := filepath.Join(privateSocketDir(t), "worker.sock")
