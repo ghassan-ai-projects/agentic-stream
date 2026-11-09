@@ -160,14 +160,7 @@ func (c conveyorTwin) scoreVerdict(t *testing.T, dbPath, runDir string, window c
 
 func (c conveyorTwin) subjects(t *testing.T, diagnosis, fault string) campaign.Subjects {
 	t.Helper()
-	var catalog struct {
-		Routes map[string]struct {
-			Operation      string            `json:"operation"`
-			TargetBindings map[string]string `json:"target_bindings"`
-		} `json:"routes"`
-	}
-	decodeFile(t, conveyorCatalog, &catalog)
-	raw := c.rawCommands(t)
+	routes, raw := readConveyorRoutes(t), c.rawCommands(t)
 	return campaign.Subjects{
 		Detected: func(entityID, diagnosed string) (string, string) {
 			if diagnosed == diagnosis {
@@ -176,9 +169,24 @@ func (c conveyorTwin) subjects(t *testing.T, diagnosis, fault string) campaign.S
 			return entityID, diagnosed
 		},
 		Acted: func(route, target string) (string, string) {
-			return catalog.Routes[route].TargetBindings[target], raw[catalog.Routes[route].Operation]
+			return routes[route].TargetBindings[target], raw[routes[route].Operation]
 		},
 	}
+}
+
+type conveyorRoute struct {
+	Operation      string                        `json:"operation"`
+	TargetBindings map[string]string             `json:"target_bindings"`
+	Presets        map[string]map[string]float64 `json:"presets"`
+}
+
+func readConveyorRoutes(t *testing.T) map[string]conveyorRoute {
+	t.Helper()
+	var catalog struct {
+		Routes map[string]conveyorRoute `json:"routes"`
+	}
+	decodeFile(t, conveyorCatalog, &catalog)
+	return catalog.Routes
 }
 
 func (c conveyorTwin) rawCommands(t *testing.T) map[string]string {

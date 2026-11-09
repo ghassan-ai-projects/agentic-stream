@@ -16,7 +16,7 @@ const (
 )
 
 var (
-	limpFeedA       = proposal{Type: "reduce_feed", Risk: "R1", Parameters: map[string]any{"level": "limp_a"}}
+	limpFeedA       = limpFeedOf("a")
 	emptyTheBelt    = proposal{Type: "stop_feed", Risk: "R2", Parameters: map[string]any{"level": "empty"}}
 	isolateTheDrive = proposal{Type: "isolate_drive", Risk: "R2", Parameters: map[string]any{"mode": "planned_stop"}}
 	stopTheBelt     = proposal{Type: "stop_belt", Risk: "R2", Parameters: map[string]any{"mode": "planned_stop"}}
@@ -38,7 +38,11 @@ type lineSnapshot struct {
 	Facts       map[string]any `json:"facts"`
 }
 
-func reasonAboutTheLine(coverage lineCoverage) workerfake.ExecuteFunc {
+func limpFeedOf(plant string) proposal {
+	return proposal{Type: "reduce_feed", Risk: "R1", Parameters: map[string]any{"level": "limp_" + plant}}
+}
+
+func reasonAboutTheLine(coverage lineCoverage, limp proposal) workerfake.ExecuteFunc {
 	var mu sync.Mutex
 	seizing := map[string]bool{}
 	return func(_ context.Context, req *runtimev1.EpisodeRequest, emit func(*runtimev1.EpisodeEvent) error) error {
@@ -51,19 +55,19 @@ func reasonAboutTheLine(coverage lineCoverage) workerfake.ExecuteFunc {
 		diagnosis := map[bool]string{true: "gearbox_seizing", false: "bearing"}[seizing[snapshot.SituationID]]
 		mu.Unlock()
 		answer := workerfake.Answer{Hypothesis: diagnosis, DiagnosisCode: diagnosis, Summary: "D-3 degrades against its peers at equal current"}
-		if step, planned := lineSteps(diagnosis)[snapshot.Phase]; planned {
+		if step, planned := lineSteps(diagnosis, limp)[snapshot.Phase]; planned {
 			answer.Intents = []proposal{step}
 		}
 		return workerfake.Propose(req, emit, answer)
 	}
 }
 
-func lineSteps(diagnosis string) map[string]proposal {
+func lineSteps(diagnosis string, limp proposal) map[string]proposal {
 	stop := isolateTheDrive
 	if diagnosis == "gearbox_seizing" {
 		stop = stopTheBelt
 	}
-	return map[string]proposal{"degrading": limpFeedA, "shedding": emptyTheBelt, "belt_empty": stop, "isolated": limpFeedA}
+	return map[string]proposal{"degrading": limp, "shedding": emptyTheBelt, "belt_empty": stop, "isolated": limp}
 }
 
 func (s lineSnapshot) gearboxSeizing(coverage lineCoverage) bool {
