@@ -42,3 +42,16 @@ commands, and against the streams-simulator twin (skipped without
 `STREAMSIM_BIN`; M3's stories S1-A, S3-A and S4-A run barrier-paced), graded by
 `streamsim outcome` and `streamsim score`. Their reasoner is a stand-in that
 diagnoses by the catalog's rules and takes the plan's step for each phase.
+
+`experiment_belt_live_*_test.go` plays S1-A, S2-B and S3-A with the real Tamoz
+worker as the reasoner instead (arm B: Tamoz reasons, the specs act). It calls a
+real model and runs only when asked: `CONVEYOR_LIVE_MODEL=1`,
+`CONVEYOR_TAMOZ_DIR` (a Tamoz checkout, run under `rbenv`), `ZAI_API_KEY` in the
+environment, `STREAMSIM_BIN`, and optionally `CONVEYOR_LIVE_ROWS` (seed rows of
+streams-simulator's `stories.json`, default `1`) and `CONVEYOR_LIVE_OUT` (where
+each run keeps its database, Tamoz's database and log, the worker exchanges, the
+twin's run folder, `outcome.json`, `score.txt` and the verified export). Each run
+starts its own worker on a fresh Tamoz database, copies the spec with the live
+budget (300 s wall time, 24000 input and 20000 output tokens: the model reasons
+20 to 80 s per call), counts model calls and refuses further episodes past 60;
+R2 steps are approved by the scripted approver through the signed relay.

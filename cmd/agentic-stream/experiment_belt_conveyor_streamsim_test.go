@@ -27,7 +27,7 @@ func TestTheLimpFeedSavesTheSurvivorsOfALostDriveOnAPacedStreamsimTwin(t *testin
 		t.Run("seed-"+strconv.FormatInt(seed, 10), func(t *testing.T) {
 			t.Parallel()
 			run := startConveyorServe(t)
-			runDir := twin.connect(t, "seed "+strconv.FormatInt(seed, 10), twin.plan(t, seed, run.socket))
+			runDir := twin.connect(t, "seed "+strconv.FormatInt(seed, 10), twin.plan(t, seed, run.socket, conveyorPolicyDigest(t, conveyorSpec)))
 			t.Cleanup(func() { logCommandOutcomes(t, run.db) })
 			assertTwinReadBack(t, run.db, "set_feed", "feed_setpoint", conveyorSetpointLimp)
 			ran := readTwinRun(t, runDir)
@@ -46,9 +46,9 @@ func TestTheLimpFeedSavesTheSurvivorsOfALostDriveOnAPacedStreamsimTwin(t *testin
 	}
 }
 
-func (c conveyorTwin) plan(t *testing.T, seed int64, socket string) string {
+func (c conveyorTwin) plan(t *testing.T, seed int64, socket, policyDigest string) string {
 	t.Helper()
-	return c.sessionPlan(t, "s2-b", socket, conveyorPolicyDigest(t, conveyorSpec), func(plan map[string]any) {
+	return c.sessionPlan(t, "s2-b", socket, policyDigest, func(plan map[string]any) {
 		disturbances := plan["disturbances"].([]any)
 		disturbances[0].(map[string]any)["at_s"] = conveyorTripAtS
 		stop := disturbances[1].(map[string]any)
