@@ -44,9 +44,11 @@ type consumer struct {
 }
 
 type detection struct {
-	EntityID   string `json:"entity_id"`
-	DetectedAt string `json:"detected_at"`
-	Label      string `json:"label,omitempty"`
+	EntityID           string `json:"entity_id"`
+	DetectedAt         string `json:"detected_at"`
+	Label              string `json:"label,omitempty"`
+	PredictedFailureAt string `json:"predicted_failure_at,omitempty"`
+	situationEntity    string
 }
 
 type action struct {
@@ -64,10 +66,16 @@ type action struct {
 // out (a diagnosis that names nothing). One mapped to an instance without a
 // label is a symptom: it is not a row of its own while a labeled detection of
 // that instance exists, whose detection time it moves earlier; otherwise its
-// earliest occurrence is reported without a label.
+// earliest occurrence is reported without a label. Prognosis names, per
+// label, the Situation fact that holds the seconds until the detected
+// instance fails if nobody acts (an extrapolate operator's output): a
+// detection of that label carries the failure time its Situation predicted
+// then, and each later prediction, at most one per PredictionSpacing of event
+// time, is reported as a further detection of the same instance and label.
 type Subjects struct {
-	Detected func(entityID, diagnosis string) (instance, label string)
-	Acted    func(route, target string) (instance, effector string)
+	Detected  func(entityID, diagnosis string) (instance, label string)
+	Acted     func(route, target string) (instance, effector string)
+	Prognosis map[string]string
 }
 
 // SameNames is the campaign's subjects: an entity "site-a:pump-1" is the
@@ -103,11 +111,20 @@ func WriteVerdictOf(ctx context.Context, db *sql.DB, runDir string, window Windo
 		return err
 	}
 	v := verdict{SchemaVersion: schemaVersion, RunID: runID, Consumer: consumer{Name: "agentic-stream", Version: of.Version, Arm: of.Arm}}
+	if err := v.gather(ctx, db, window, of.Subjects); err != nil {
+		return err
+	}
+	_, err = writeIn(runDir, verdictFile, v)
+	return err
+}
+
+func (v *verdict) gather(ctx context.Context, db *sql.DB, window Window, subjects Subjects) error {
 	if err := v.read(ctx, db, window); err != nil {
 		return err
 	}
-	of.Subjects.place(&v)
-	_, err = writeIn(runDir, verdictFile, v)
+	subjects.place(v)
+	var err error
+	v.Detections, err = subjects.predict(ctx, db, window.Until, v.Detections)
 	return err
 }
 
@@ -133,7 +150,7 @@ func (s Subjects) detections(decided []detection) []detection {
 	for _, d := range decided {
 		instance, label := s.Detected(d.EntityID, d.Label)
 		if instance != "" {
-			placed = append(placed, detection{EntityID: instance, DetectedAt: d.DetectedAt, Label: label})
+			placed = append(placed, detection{EntityID: instance, DetectedAt: d.DetectedAt, Label: label, situationEntity: d.EntityID})
 		}
 	}
 	return placed
