@@ -12,6 +12,13 @@
     {"device": "D-1", "kind": "conveyor_drive", "metric": "current", "event_type": "conveyor.drive1_current.observed", "schema_version": "1.0", "field": "amps"},
     {"device": "D-2", "kind": "conveyor_drive", "metric": "current", "event_type": "conveyor.drive2_current.observed", "schema_version": "1.0", "field": "amps"},
     {"device": "D-3", "kind": "conveyor_drive", "metric": "current", "event_type": "conveyor.drive3_current.observed", "schema_version": "1.0", "field": "amps"},
+    {"device": "D-1", "kind": "conveyor_drive", "metric": "winding", "event_type": "conveyor.drive1_winding.observed", "schema_version": "1.0", "field": "celsius"},
+    {"device": "D-2", "kind": "conveyor_drive", "metric": "winding", "event_type": "conveyor.drive2_winding.observed", "schema_version": "1.0", "field": "celsius"},
+    {"device": "D-3", "kind": "conveyor_drive", "metric": "winding", "event_type": "conveyor.drive3_winding.observed", "schema_version": "1.0", "field": "celsius"},
+    {"device": "D-1", "kind": "conveyor_drive", "metric": "vibration", "event_type": "conveyor.drive1_vibration.observed", "schema_version": "1.0", "field": "mm_s"},
+    {"device": "D-2", "kind": "conveyor_drive", "metric": "vibration", "event_type": "conveyor.drive2_vibration.observed", "schema_version": "1.0", "field": "mm_s"},
+    {"device": "D-3", "kind": "conveyor_drive", "metric": "vibration", "event_type": "conveyor.drive3_vibration.observed", "schema_version": "1.0", "field": "mm_s"},
+    {"kind": "belt_conveyor", "metric": "tail_speed", "event_type": "conveyor.tail_speed.observed", "schema_version": "1.0", "field": "rpm"},
     {"kind": "bulk_feeder", "metric": "feed", "event_type": "conveyor.feed.observed", "schema_version": "1.0", "field": "kg_s"},
     {"kind": "bulk_feeder", "metric": "feed_setpoint", "event_type": "conveyor.feed_setpoint.observed", "schema_version": "1.0", "field": "percent"}
   ],

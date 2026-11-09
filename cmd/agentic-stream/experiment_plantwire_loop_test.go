@@ -112,7 +112,11 @@ func awaitCommand(t *testing.T, node *plantwirefake.Node) map[string]any {
 }
 
 func answer(node *plantwirefake.Node, command map[string]any, recordType, member, value string) {
-	node.Send(map[string]any{"type": recordType, "lane": "control", "command_id": command["command_id"], member: value, "boot_id": benchBoot})
+	answerFrom(node, benchBoot, command, recordType, member, value)
+}
+
+func answerFrom(node *plantwirefake.Node, boot string, command map[string]any, recordType, member, value string) {
+	node.Send(map[string]any{"type": recordType, "lane": "control", "command_id": command["command_id"], member: value, "boot_id": boot})
 }
 
 func TestAnUnknownPlantWireOutcomeIsReconciledByTheDevicesOwnReading(t *testing.T) {

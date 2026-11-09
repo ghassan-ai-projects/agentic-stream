@@ -1,26 +1,44 @@
 # Belt conveyor
 
-Test inputs for the belt conveyor's first closed loop (streams-simulator
-`docs/belt-conveyor-drives/M2-DESIGN.md`, story S2-B on plant
-`belt-conveyor-drives-b`): three drives `D-1`..`D-3` of one kind share the belt
-`B-1` of `conveyor-1`, fed by `F-1`. When one drive's current drops to about
-0 A while the feed is still high, the spec opens `line_overload` and the
-decision `reduce_feed` (R1, automatic) sets the feeder to the limp feed
-(`limp_b`, 18 %) the two survivors can carry; the feeder's setpoint read-back
-verifies the command.
+Test inputs for the belt conveyor's closed loops (streams-simulator
+`docs/belt-conveyor-drives/`): three drives `D-1`..`D-3` of one kind share the
+belt `B-1` of `conveyor-1`, fed by `F-1`. Two specs, one per `serve`:
+
+- `line_overload` (M2, story S2-B on plant `belt-conveyor-drives-b`): when one
+  drive's current drops to about 0 A while the feed is still high, the decision
+  `reduce_feed` (R1, automatic) sets the feeder to the limp feed (`limp_b`, 18 %)
+  the two survivors can carry; the feeder's setpoint read-back verifies the
+  command.
+- `drive_degradation` (M3, stories S1, S3 and S4): a drive whose winding
+  temperature or vibration leaves its peers' band at equal current walks the
+  line through `normal`, `watch`, `degrading`, `shedding`, `belt_empty` and
+  `isolated` (or `belt_stopped`), one trigger per phase: shed the feed to the
+  limp setting (R1), stop the feed so the belt runs empty (R2), stop the drive
+  (`isolate_drive`, R2) or the belt (`stop_belt`, R2) by plan, then restore the
+  limp feed (R1). A feed surge moves every drive together and no residual. Every
+  window emits on close, because an R2 intent is denied on provisional evidence,
+  and counts only with 90 % of its readings. The thresholds come from
+  streams-simulator's calibration (`M3-DESIGN.md` section 7) and are named in the
+  one transition that uses each; whether the drive's bearing or its gearbox fails
+  is the reasoner's diagnosis, by the rules in the spec's diagnosis catalog.
 
 Everything lives under `testdata/`, outside the `examples/*/*.situation.yaml`
-gates, because the spec needs its own event schemas:
+gates, because the specs need their own event schemas:
 
 | File | What |
 | --- | --- |
-| `testdata/line-overload.situation.yaml` | The spec; compile it with `--event-schemas testdata/event-schemas` |
-| `testdata/event-schemas/conveyor.json` | One event type per drive's current, the feed and the feed setpoint |
+| `testdata/line-overload.situation.yaml` | The M2 spec; compile it with `--event-schemas testdata/event-schemas` |
+| `testdata/drive-degradation.situation.yaml` | The M3 spec; compile it the same way |
+| `testdata/event-schemas/conveyor.json` | One event type per drive's current, winding and vibration, the feed, its setpoint and the belt's tail speed |
 | `testdata/plant-wire/kinds/` | Byte copies of streams-simulator's `examples/belt-conveyor/kinds/*.kind.json` (guarded by `TestTheConveyorKindFilesAreByteCopiesOfStreamsims`) |
-| `testdata/plant-wire/belt-conveyor.site.json` | Every device on `conveyor-1`; per-device current readings for the drives |
-| `testdata/plant-wire/belt-conveyor.catalog.json` | `reduce_feed` to `set_feed` on `F-1`, presets `limp_b` (18 %) and `restore` (100 %) |
+| `testdata/plant-wire/belt-conveyor.site.json` | Every device on `conveyor-1`; per-device current, winding and vibration readings for the drives |
+| `testdata/plant-wire/belt-conveyor.catalog.json` | `reduce_feed` (presets `limp_a` 54 %, `limp_b` 18 %, `restore` 100 %) and `stop_feed` (0 %) to `set_feed` on `F-1`, `isolate_drive` to `stop_drive` on `D-3`, `stop_belt` to `stop_belt` on `B-1`; a command lives 180 s, longer than a barrier-paced world step (60 s), so `serve` takes `--dispatch-lease 5m` |
+| `testdata/principals.yaml` | A test approver for R1 and R2 on `conveyor-1` (the all-zero-seed test key) |
 
-The tests are in `cmd/agentic-stream/experiment_belt_conveyor*_test.go`: one
-against a fake plant wire node, and one against the paced streams-simulator
-twin (skipped without `STREAMSIM_BIN`), graded by `streamsim outcome` and
-`streamsim score`.
+The tests are in `cmd/agentic-stream/experiment_belt_conveyor*_test.go` (M2) and
+`experiment_belt_degradation*_test.go` (M3): against a fake plant wire node that
+replays backdated readings at the sensors' cadences and obeys the host's
+commands, and against the streams-simulator twin (skipped without
+`STREAMSIM_BIN`; M3's stories S1-A, S3-A and S4-A run barrier-paced), graded by
+`streamsim outcome` and `streamsim score`. Their reasoner is a stand-in that
+diagnoses by the catalog's rules and takes the plan's step for each phase.

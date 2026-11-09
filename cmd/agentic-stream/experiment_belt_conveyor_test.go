@@ -21,6 +21,7 @@ const (
 	conveyorDriveAmps    = 4.2
 	conveyorSurvivorAmps = 6.2
 	conveyorSetpointLimp = "18"
+	conveyorRouteLease   = "5m"
 )
 
 var (
@@ -43,26 +44,31 @@ func TestTheLineOverloadSpecCompilesOnlyWithTheConveyorEventSchemas(t *testing.T
 		t.Fatalf("validate without the conveyor schemas = %v, want the drive current schema unknown", err)
 	}
 	out := runCLI(t, newRootCommand(), "validate", conveyorSpec, "--event-schemas", conveyorEventSchemas)
-	if !strings.HasPrefix(out, "ok: line_overload\n") || !strings.Contains(out, "\npolicy_digest: "+conveyorPolicyDigest(t)+"\n") {
+	if !strings.HasPrefix(out, "ok: line_overload\n") || !strings.Contains(out, "\npolicy_digest: "+conveyorPolicyDigest(t, conveyorSpec)+"\n") {
 		t.Fatalf("validate --event-schemas = %q, want line_overload and its policy digest", out)
 	}
 }
 
-func conveyorPolicyDigest(t *testing.T) string {
+func conveyorPolicyDigest(t *testing.T, specPath string) string {
+	t.Helper()
+	digest, err := policy.DigestForVersion(compileConveyorSpec(t, specPath).Digest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return digest
+}
+
+func compileConveyorSpec(t *testing.T, specPath string) *spec.CompiledSpec {
 	t.Helper()
 	schemas, err := spec.LoadEventSchemas(conveyorEventSchemas)
 	if err != nil {
 		t.Fatal(err)
 	}
-	compiled, err := spec.CompileFile(t.Context(), conveyorSpec, spec.WithEventSchemas(schemas))
+	compiled, err := spec.CompileFile(t.Context(), specPath, spec.WithEventSchemas(schemas))
 	if err != nil {
 		t.Fatal(err)
 	}
-	digest, err := policy.DigestForVersion(compiled.Digest)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return digest
+	return compiled
 }
 
 func TestALostDriveAtFullFeedSetsTheFeederToTheLimpFeedAndItsReadBackVerifiesIt(t *testing.T) {
@@ -89,7 +95,7 @@ func startConveyorServe(t *testing.T) plantWireServe {
 	workerSocket := filepath.Join(privateSocketDir(t), "worker.sock")
 	serveWorker(t, workerSocket, relieveTheLine)
 	return startPlantWireServe(t, conveyorSpec, conveyorKinds, conveyorSite, "--device-catalog", conveyorCatalog,
-		"--worker-socket", workerSocket, "--worker-name", "tamoz", "--event-schemas", conveyorEventSchemas)
+		"--dispatch-lease", conveyorRouteLease, "--worker-socket", workerSocket, "--worker-name", "tamoz", "--event-schemas", conveyorEventSchemas)
 }
 
 func relieveTheLine(_ context.Context, req *runtimev1.EpisodeRequest, emit func(*runtimev1.EpisodeEvent) error) error {

@@ -108,7 +108,7 @@ func startDatabase(t *testing.T, path, from string) {
 	t.Helper()
 	if from == "" {
 		seedMigratedDatabase(t, path)
-		applyCampaignPrincipals(t, path)
+		applyPrincipalsFile(t, path, filepath.Join(pumpStationCampaignData, "principals.yaml"))
 		return
 	}
 	folder, err := os.OpenRoot(filepath.Dir(from))
@@ -156,13 +156,13 @@ func campaignOutput(t *testing.T) string {
 	return out
 }
 
-func applyCampaignPrincipals(t *testing.T, db string) {
+func applyPrincipalsFile(t *testing.T, db, file string) {
 	t.Helper()
 	cmd := newRootCommand()
-	cmd.SetArgs([]string{"principals", "apply", "--db", db, "--file", filepath.Join(pumpStationCampaignData, "principals.yaml")})
+	cmd.SetArgs([]string{"principals", "apply", "--db", db, "--file", file})
 	cmd.SetOut(io.Discard)
 	if err := cmd.ExecuteContext(t.Context()); err != nil {
-		t.Fatalf("apply the campaign principals: %v", err)
+		t.Fatalf("apply the principals of %s: %v", file, err)
 	}
 }
 
@@ -228,10 +228,14 @@ func (s campaignSetup) serve(t *testing.T) func(context.Context, campaign.Run) (
 		serving := plantWireServe{dir: s.sockets, socket: filepath.Join(s.sockets, fmt.Sprintf("host-%d.sock", run.Index)), db: s.db}
 		stop := servePlantWire(t, serving, address, pumpStationSpec, filepath.Join(pumpStationPlantWire, kindsOf(run.Domain)),
 			filepath.Join(pumpStationPlantWire, "pump-station.site.json"), s.serveFlags()...)
-		desk := &campaign.Desk{Approver: s.arm.Approver, Relay: campaign.Relay{BaseURL: "http://" + address, Token: campaignApprovalToken,
-			Approver: campaignApprover, Key: ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize)), Client: http.DefaultClient}}
+		desk := approvalDesk(address, campaignApprovalToken, campaignApprover, s.arm.Approver)
 		return campaign.Consumer{DB: openReadOnly(t, s.db), HostSocket: serving.socket, Desk: desk, Stop: func() error { stop(); return nil }}, nil
 	}
+}
+
+func approvalDesk(address, token, approver string, decides campaign.Approver) *campaign.Desk {
+	return &campaign.Desk{Approver: decides, Relay: campaign.Relay{BaseURL: "http://" + address, Token: token,
+		Approver: approver, Key: ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize)), Client: http.DefaultClient}}
 }
 
 func (s campaignSetup) serveFlags() []string {

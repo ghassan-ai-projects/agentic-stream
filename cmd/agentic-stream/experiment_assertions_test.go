@@ -69,11 +69,11 @@ func assertDeviceReceivedPolicyDigest(t *testing.T, run experimentRun) {
 
 // assertRunArtifactVerifies exports the run and verifies it, as the runbook's
 // last step does.
-func assertRunArtifactVerifies(t *testing.T, run experimentRun) {
+func assertRunArtifactVerifies(t *testing.T, run experimentRun, exportFlags ...string) {
 	t.Helper()
 	output := filepath.Join(run.dir, "artifact")
 	export := newExportRunCommand()
-	export.SetArgs([]string{"--db", run.db, "--tenant", "default", "--output", output})
+	export.SetArgs(append([]string{"--db", run.db, "--tenant", "default", "--output", output}, exportFlags...))
 	if err := export.ExecuteContext(t.Context()); err != nil {
 		t.Fatalf("export-run: %v", err)
 	}
