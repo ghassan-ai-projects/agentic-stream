@@ -55,8 +55,11 @@ replays backdated readings at the sensors' cadences and obeys the host's
 commands, and against the streams-simulator twin (skipped without
 `STREAMSIM_BIN`; M3's stories S1-A, S3-A and S4-A run barrier-paced), graded by
 `streamsim outcome` and `streamsim score`. Their reasoner is a stand-in that
-diagnoses by the catalog's rules (unknown while neither holds) and takes the
-phase's step, which does not depend on its diagnosis.
+diagnoses by the catalog's rules (`drive_degrading` while neither the bearing
+nor the gearbox rule holds; the cause refines it) and takes the phase's step,
+which does not depend on its diagnosis. The verdict maps `drive_degrading` to
+D-3 without a label, a symptom that dates the later cause's detection, and
+leaves `unknown` out.
 
 `experiment_belt_live_*_test.go` plays S1-A, S2-B and S3-A with the real Tamoz
 worker as the reasoner instead (arm B: Tamoz reasons, the specs act). It calls a

@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/testsupport/campaign"
 )
 
@@ -158,13 +159,19 @@ func (c conveyorTwin) scoreVerdict(t *testing.T, dbPath, runDir string, window c
 	t.Logf("score:\n%s", output)
 }
 
-func (c conveyorTwin) subjects(t *testing.T, plant, diagnosis, fault string) campaign.Subjects {
+func (c conveyorTwin) subjects(t *testing.T, plant string, faults map[string]string) campaign.Subjects {
 	t.Helper()
 	routes, raw := readConveyorRoutes(t, plant), c.rawCommands(t)
 	return campaign.Subjects{
 		Detected: func(entityID, diagnosed string) (string, string) {
-			if diagnosed == diagnosis {
+			if fault, known := faults[diagnosed]; known {
 				return "D-3", fault
+			}
+			switch diagnosed {
+			case untoldCause:
+				return "D-3", ""
+			case spec.UnknownDiagnosis:
+				return "", ""
 			}
 			return entityID, diagnosed
 		},
