@@ -48,8 +48,8 @@ as behavior qualified for a production deployment.
 - **Failed reasoning:** with `cognition.retryFailedReasoning` (`after`, `max`), a
   Situation whose latest episode concluded without an accepted decision (it
   failed, timed out or its decision was rejected) is woken once `after` of event
-  time has passed since the version that episode reasoned on, while its phase
-  and version are unchanged, at most `max` times per phase. `delta.reasoning_failed`
+  time has passed since the version that episode reasoned on, while its phase holds,
+  once per failure and at most `max` times per phase. `delta.reasoning_failed`
   is true on that version, and the retry is a new episode.
 - **Debounce:** sets the earliest run time after a queue opportunity is created.
 - **Cooldown:** delays work until the configured interval after the latest trigger admission.

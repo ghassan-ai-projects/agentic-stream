@@ -29,14 +29,14 @@ func FailedSituations(failed []FailedReasoning) []string {
 	return situationIDs
 }
 
-func RetryDue(policy spec.RetryPolicy, at situations.Position, reasoned []ReasonedVersion) (bool, error) {
+func RetryDue(policy spec.RetryPolicy, at situations.Position, reasoned []ReasonedVersion, retried int) (int, bool, error) {
 	after, err := spec.ParseDuration(policy.After)
 	if err != nil {
-		return false, fmt.Errorf("parse retryFailedReasoning.after: %w", err)
+		return 0, false, fmt.Errorf("parse retryFailedReasoning.after: %w", err)
 	}
 	failures, latest := failuresInPhase(at.Phase, reasoned)
-	unretried := failures > 0 && latest.Version == at.Version
-	return unretried && failures <= policy.Max && !at.EventTime.Before(latest.Horizon.Add(after)), nil
+	unretried := failures > 0 && latest.Version > retried
+	return latest.Version, unretried && failures <= policy.Max && !at.EventTime.Before(latest.Horizon.Add(after)), nil
 }
 
 func failuresInPhase(phase string, reasoned []ReasonedVersion) (int, ReasonedVersion) {

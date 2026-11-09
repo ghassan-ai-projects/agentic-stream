@@ -42,9 +42,10 @@ type FailedReasoning = domain.FailedReasoning
 // RetryFailedReasoning wakes each open Situation whose failed reasoning is due
 // for a retry under the spec's cognition.retryFailedReasoning: the Situation is
 // still in the phase of its latest failure, at most Max failures happened in that
-// phase, and After of event time passed since the latest failed version. The
-// woken version carries `delta.reasoning_failed`. Without the policy it does
-// nothing.
+// phase, After of event time passed since the latest failed version, and that
+// failure was not retried yet (the engine remembers the failures it retried
+// while it runs). The woken version carries `delta.reasoning_failed`. Without
+// the policy it does nothing.
 func (s *Service) RetryFailedReasoning(ctx context.Context, failed []FailedReasoning) error {
 	return s.app.RetryFailedReasoning(ctx, failed)
 }

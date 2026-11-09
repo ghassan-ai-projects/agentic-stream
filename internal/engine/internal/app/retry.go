@@ -23,27 +23,31 @@ func (s *Service) RetryFailedReasoning(ctx context.Context, failed []domain.Fail
 }
 
 func (s *Service) retryIfDue(ctx context.Context, situationID string, failed []domain.FailedReasoning) error {
-	due, err := s.retryDue(ctx, situationID, failed)
+	failedVersion, due, err := s.retryDue(ctx, situationID, failed)
 	if err != nil || !due {
 		return err
 	}
-	return s.wakeSituation(ctx, situationID, situations.WokenByFailedReasoning)
+	if err := s.wakeSituation(ctx, situationID, situations.WokenByFailedReasoning); err != nil {
+		return err
+	}
+	s.retried[situationID] = failedVersion
+	return nil
 }
 
-func (s *Service) retryDue(ctx context.Context, situationID string, failed []domain.FailedReasoning) (bool, error) {
+func (s *Service) retryDue(ctx context.Context, situationID string, failed []domain.FailedReasoning) (int, bool, error) {
 	at, open := s.sitEngine.PositionOf(situationID)
 	if !open {
-		return false, nil
+		return 0, false, nil
 	}
 	reasoned, err := s.reasonedVersions(ctx, situationID, failed)
 	if err != nil {
-		return false, err
+		return 0, false, err
 	}
-	due, err := domain.RetryDue(*s.spec.Cognition.RetryFailedReasoning, at, reasoned)
+	failedVersion, due, err := domain.RetryDue(*s.spec.Cognition.RetryFailedReasoning, at, reasoned, s.retried[situationID])
 	if err != nil {
-		return false, fmt.Errorf("judge the retry: %w", err)
+		return 0, false, fmt.Errorf("judge the retry: %w", err)
 	}
-	return due, nil
+	return failedVersion, due, nil
 }
 
 func (s *Service) reasonedVersions(ctx context.Context, situationID string, failed []domain.FailedReasoning) ([]domain.ReasonedVersion, error) {

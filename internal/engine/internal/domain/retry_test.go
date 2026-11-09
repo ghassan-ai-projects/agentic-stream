@@ -27,7 +27,7 @@ func TestAFailedReasoningIsRetriedOnceAfterItsEventTimeBackoffWhileItsPhaseHolds
 	}{
 		{"before the backoff", at("degrading", 3, 5*time.Minute), once, false},
 		{"at the backoff", at("degrading", 3, 6*time.Minute), once, true},
-		{"already retried: a version followed the failure", at("degrading", 4, time.Hour), once, false},
+		{"a later version of another cause does not stop the retry", at("degrading", 4, time.Hour), once, true},
 		{"the second failure counts from its own version", at("degrading", 4, 15*time.Minute), twice, false},
 		{"the second retry", at("degrading", 4, 16*time.Minute), twice, true},
 		{"past the cap", at("degrading", 5, time.Hour), thrice, false},
@@ -36,10 +36,24 @@ func TestAFailedReasoningIsRetriedOnceAfterItsEventTimeBackoffWhileItsPhaseHolds
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			if due, err := RetryDue(policy, tc.at, tc.reasoned); err != nil || due != tc.want {
+			if _, due, err := RetryDue(policy, tc.at, tc.reasoned, 0); err != nil || due != tc.want {
 				t.Fatalf("RetryDue = %v, %v; want %v", due, err, tc.want)
 			}
 		})
+	}
+}
+
+func TestAFailedReasoningIsRetriedOnlyOnce(t *testing.T) {
+	t.Parallel()
+	policy := spec.RetryPolicy{After: "6m", Max: 2}
+	failedAt := time.Date(2026, 1, 1, 3, 0, 0, 0, time.UTC)
+	reasoned := []ReasonedVersion{{Phase: "degrading", Version: 3, Horizon: failedAt}}
+	at := situations.Position{Phase: "degrading", Version: 4, EventTime: failedAt.Add(time.Hour)}
+	if failed, due, err := RetryDue(policy, at, reasoned, 0); err != nil || !due || failed != 3 {
+		t.Fatalf("first judgement = %d, %v, %v; want version 3 due", failed, due, err)
+	}
+	if _, due, err := RetryDue(policy, at, reasoned, 3); err != nil || due {
+		t.Fatalf("a failure already retried is due again (%v)", err)
 	}
 }
 
