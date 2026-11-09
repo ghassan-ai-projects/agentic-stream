@@ -85,6 +85,7 @@ least that complete, and names the unmet requirement otherwise.
 ## Operators and windows
 
 The current deterministic operators include aggregates, slope-like features,
+the time until a fitted quantity reaches a limit ([extrapolate](extrapolate-operator.md)),
 and missing-heartbeat handling. An event that carries a device `boot_id` is
 fenced by boot per entity and input event type: the first event of a new boot
 discards the state of the operators that event type feeds (an operator fed by

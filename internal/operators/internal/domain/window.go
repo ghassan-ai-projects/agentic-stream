@@ -22,7 +22,7 @@ func (r *OperatorRuntime) applyWindowOperator(inst *operatorInstance, blob *Oper
 		return nil, fmt.Errorf("window operator %s: %w", inst.def.Name, err)
 	}
 	ws.AddSample(Sample{EventID: env.ID, EventTime: env.EventTime, Value: value, BootID: deviceBootID(env)}, watermark.Add(-inst.window.size))
-	agg, err := computeAggregate(inst.def.Aggregate, ws.Samples)
+	agg, err := windowValue(inst, ws.Samples, watermark)
 	if err != nil {
 		return nil, fmt.Errorf("window operator %s: %w", inst.def.Name, err)
 	}
@@ -147,6 +147,13 @@ func (r *OperatorRuntime) isLateWindowCorrection(windowSize time.Duration, event
 		return false, fmt.Errorf("allowed lateness: %w", err)
 	}
 	return watermark.Sub(eventTime) <= allowedLateness, nil
+}
+
+func windowValue(inst *operatorInstance, samples []Sample, end time.Time) (float64, error) {
+	if inst.extrapolation != nil {
+		return secondsToLimit(*inst.extrapolation, samples, end), nil
+	}
+	return computeAggregate(inst.def.Aggregate, samples)
 }
 
 func computeAggregate(agg string, samples []Sample) (float64, error) {

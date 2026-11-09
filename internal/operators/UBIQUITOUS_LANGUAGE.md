@@ -2,7 +2,8 @@
 
 | Term | Meaning | Code name | Stored as |
 | --- | --- | --- | --- |
-| Operator | A deterministic, keyed stream computation declared in the spec. Kinds: `aggregate`, `slope`, `missing_heartbeat`. | `OperatorRuntime` | `operators` in the spec |
+| Operator | A deterministic, keyed stream computation declared in the spec. Kinds: `aggregate`, `slope`, `extrapolate`, `missing_heartbeat`. | `OperatorRuntime` | `operators` in the spec |
+| Extrapolation | The seconds until a least-squares fit (linear or quadratic) of a window's samples reaches a declared limit; 0 when there is no valid prediction (too few samples, not rising, no crossing ahead or beyond the horizon). | `secondsToLimit`, `spec.Extrapolation` | the operator's `configuration` |
 | Operator runtime | Applies the compiled operators to normalized events and to due timers. | `NewOperatorRuntime`, `ApplyEventAt`, `ApplyTimer` | — |
 | Window | A tumbling or sliding span of samples, with an emit mode (`on_update`, `on_close`, `early_and_close`). | `WindowState` | `OperatorStateBlob.Window` |
 | Sample | One timestamped scalar input to a windowed operator. | `Sample` | `operator_window_samples` (owned by `engine`) |

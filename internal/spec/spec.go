@@ -89,6 +89,18 @@ type Window = domain.Window
 // Operator defines a deterministic computation over inputs.
 type Operator = domain.Operator
 
+// Extrapolation is an extrapolate operator's configuration: the limit its fit
+// must reach, the fit (FitLinear or FitQuadratic), the fewest samples a fit
+// needs and, when positive, the furthest crossing it publishes.
+// Operator.Extrapolation reads it and names what is wrong with it.
+type Extrapolation = domain.Extrapolation
+
+// FitLinear and FitQuadratic are the fits an extrapolate operator declares.
+const (
+	FitLinear    = domain.FitLinear
+	FitQuadratic = domain.FitQuadratic
+)
+
 // Phase is a state in the Situation lifecycle.
 type Phase = domain.Phase
 

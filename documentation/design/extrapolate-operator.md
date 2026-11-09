@@ -1,6 +1,6 @@
 # Extrapolate operator
 
-Status: accepted design (A5, decision O31 of the streams-simulator belt-conveyor M4 plan). The calibration below was
+Status: built (A5, decision O31 of the streams-simulator belt-conveyor M4 plan). The calibration below was
 measured on streams-simulator's S1-B and S1-A do-nothing runs (10 seed rows each). It departs from O31, which names a
 linear fit: the owner approved (2026-11-09) a `quadratic` fit beside the linear default, and the S1 spec's use of it.
 

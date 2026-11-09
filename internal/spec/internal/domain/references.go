@@ -28,6 +28,9 @@ func checkOperatorsReferences(spec *CompiledSpec, names specNames) error {
 		if err := checkOperatorReferences(spec, op, names); err != nil {
 			return err
 		}
+		if err := checkExtrapolation(op); err != nil {
+			return err
+		}
 	}
 	return nil
 }
