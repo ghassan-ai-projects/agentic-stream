@@ -49,7 +49,7 @@ func TestFailedUnitOfWorkRollsBack(t *testing.T) {
 	s := openStore(t)
 	boom := errors.New("boom")
 	err := s.WithTx(t.Context(), func(tx *Tx) error {
-		if err := tx.InsertCondition(t.Context(), "w-1", condition(), testNow); err != nil {
+		if err := tx.InsertCondition(t.Context(), "w-1", condition(), nil, testNow); err != nil {
 			return err
 		}
 		return boom

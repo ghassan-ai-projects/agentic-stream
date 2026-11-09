@@ -8,6 +8,7 @@ CREATE TABLE watch_conditions (
     expires_at           TEXT NOT NULL,
     remaining_fires      INTEGER NOT NULL CHECK (remaining_fires BETWEEN 0 AND 100),
     status               TEXT NOT NULL CHECK (status IN ('active', 'expired', 'disabled')),
+    last_matched         INTEGER CHECK (last_matched IN (0, 1)),
     created_at           TEXT NOT NULL,
     updated_at           TEXT NOT NULL
 ) STRICT;

@@ -20,12 +20,15 @@ const InstallRoute = actionport.WatchInstallRoute
 // error, never a silently skipped check. RuntimeOwner is the ownership
 // assertion for Epoch, run on the mutating transaction;
 // control.RuntimeOwner.Assert is the production check. Clock defaults to the
-// physical clock.
+// physical clock. Features, when set, seeds a new watch with whether its
+// expression holds at install, so a watch fires only when its expression turns
+// true afterwards.
 type Config struct {
 	DB           *storage.DB
 	RuntimeOwner storage.OwnerCheck
 	Epoch        string
 	Clock        sources.Clock
+	Features     FeatureSource
 }
 
 // Service installs, fires and expires watch conditions. It implements the
@@ -34,7 +37,7 @@ type Service struct{ app *app.Service }
 
 // New validates the configuration and composes the watch use cases.
 func New(cfg Config) (*Service, error) {
-	service, err := app.New(app.Config{Store: store.New(cfg.DB, cfg.RuntimeOwner, cfg.Epoch), Clock: cfg.Clock})
+	service, err := app.New(app.Config{Store: store.New(cfg.DB, cfg.RuntimeOwner, cfg.Epoch), Clock: cfg.Clock, Features: cfg.Features})
 	if err != nil {
 		return nil, err //nolint:wrapcheck // The app layer's constructor errors are the facade's contract.
 	}

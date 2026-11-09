@@ -74,14 +74,6 @@ func fireIn(ctx context.Context, tx *store.Tx, watchID, eventID, situationID, ta
 	if err := tx.ExpireDue(ctx, now); err != nil {
 		return false, fmt.Errorf("expire due watches before firing: %w", err)
 	}
-	matches, err := activeWatchMatches(ctx, tx, watchID, eventID, situationID, target, features, now)
-	if err != nil || !matches {
-		return false, err
-	}
-	return recordFire(ctx, tx, watchID, eventID, now)
-}
-
-func activeWatchMatches(ctx context.Context, tx *store.Tx, watchID, eventID, situationID, target string, features map[string]any, now time.Time) (bool, error) {
 	active, found, err := tx.LoadActive(ctx, watchID, now)
 	if err != nil {
 		return false, fmt.Errorf("load active watch %s: %w", watchID, err)
@@ -89,13 +81,32 @@ func activeWatchMatches(ctx context.Context, tx *store.Tx, watchID, eventID, sit
 	if !found || !active.InScope(situationID, target) {
 		return false, nil
 	}
+	rose, err := evaluationRises(ctx, tx, watchID, eventID, active, features, now)
+	if err != nil || !rose {
+		return false, err
+	}
+	return recordFire(ctx, tx, watchID, eventID, now)
+}
+
+func evaluationRises(ctx context.Context, tx *store.Tx, watchID, eventID string, active domain.ActiveWatch, features map[string]any, now time.Time) (bool, error) {
+	matches := matchesFeatures(ctx, watchID, eventID, active, features)
+	if !active.Changes(matches) {
+		return false, nil
+	}
+	if err := tx.RecordEvaluation(ctx, watchID, matches, now); err != nil {
+		return false, fmt.Errorf("record the evaluation of watch %s: %w", watchID, err)
+	}
+	return active.RisesTo(matches), nil
+}
+
+func matchesFeatures(ctx context.Context, watchID, eventID string, active domain.ActiveWatch, features map[string]any) bool {
 	matches, err := domain.Evaluate(active.Expression, features)
 	if err != nil {
 		slog.WarnContext(ctx, "watch expression evaluation skipped",
 			"watch_id", watchID, "event_id", eventID, "situation_id", active.SituationID, "target", active.Target, "error", err)
-		return false, nil
+		return false
 	}
-	return matches, nil
+	return matches
 }
 
 func recordFire(ctx context.Context, tx *store.Tx, watchID, eventID string, now time.Time) (bool, error) {

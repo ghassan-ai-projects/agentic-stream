@@ -1,8 +1,8 @@
 # Watch module
 
 Watch owns derived-trigger watches: bounded, expiring conditions that an
-approved command installs through the effect port, that matching evidence fires
-at most `max_fires` times, and that expire without losing their audit rows. It
+approved command installs through the effect port, that fire when their expression
+turns true, at most `max_fires` times, and that expire without losing their audit rows. It
 never reaches dispatch, policy or reasoning itself: `FireEvent` reports the
 Situation of each fire, and the runtime wakes that Situation in the engine.
 
@@ -28,7 +28,12 @@ watches, requires the watch's Situation and target to match, evaluates the
 expression against the features of the watch's own Situation, read from its
 runtime state through a `FeatureSource` (the spec's feature names, as of the
 latest applied event; a Situation the source does not hold is a logged no-fire;
-an evaluation error is a logged no-fire too), records the fire once per
+an evaluation error counts as false and is logged), and fires on a rising edge
+only: when the expression holds now and did not at the watch's last evaluation.
+The last evaluation (`last_matched`) is seeded at install from the Situation's
+features when the service has a `FeatureSource` (`Config.Features`), so a watch
+whose expression already holds at install fires only after it has been false;
+without a seed the first true evaluation fires. A fire is recorded once per
 event and spends one allowance, disabling the watch at zero.
 
 Migration record.

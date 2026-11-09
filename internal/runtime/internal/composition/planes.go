@@ -41,8 +41,8 @@ func pipelineExecutionDefaults(cfg PipelineConfig) PipelineConfig {
 	return cfg
 }
 
-func composeEffectors(cfg PipelineConfig) (actionport.RoutedEffector, *watch.Service, error) {
-	watch, err := watch.New(watch.Config{DB: cfg.DB, RuntimeOwner: runtimeOwnershipCheck(cfg), Epoch: cfg.OwnerEpoch, Clock: cfg.Clock})
+func composeEffectors(cfg PipelineConfig, features watch.FeatureSource) (actionport.RoutedEffector, *watch.Service, error) {
+	watch, err := watch.New(watch.Config{DB: cfg.DB, RuntimeOwner: runtimeOwnershipCheck(cfg), Epoch: cfg.OwnerEpoch, Clock: cfg.Clock, Features: features})
 	if err != nil {
 		return nil, nil, fmt.Errorf("compose watch: %w", err)
 	}

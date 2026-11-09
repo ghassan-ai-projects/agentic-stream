@@ -29,7 +29,7 @@ var pumpWorldStart = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 
 type pumpMinute struct{ vibration, axial, current float64 }
 
-func TestAPumpStationWatchOfTheSpecsPresetFiresOnceTheVibrationMeanReachesItsThreshold(t *testing.T) {
+func TestAPumpStationWatchOfTheSpecsPresetFiresOnceWhenTheVibrationMeanReachesItsThreshold(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
 	db := storagetest.OpenTemp(t)
@@ -51,8 +51,8 @@ func TestAPumpStationWatchOfTheSpecsPresetFiresOnceTheVibrationMeanReachesItsThr
 		t.Fatalf("%s fires while vibration_mean_15m stays under 4.0, want none", fires)
 	}
 	runPumpMinutes(t, pipeline, 135, repeated(15, pumpMinute{8, 2, 60}))
-	if status := scalarText(t, db, "SELECT status || ' ' || remaining_fires FROM watch_conditions"); status != "disabled 0" {
-		t.Fatalf("watch after vibration_mean_15m reached 4.0 = %q, want its three fires spent", status)
+	if status := scalarText(t, db, "SELECT status || ' ' || remaining_fires || ' ' || (SELECT COUNT(*) FROM watch_fires) FROM watch_conditions"); status != "active 2 1" {
+		t.Fatalf("watch after vibration_mean_15m reached 4.0 and stayed there = %q, want one fire on the rise and two left", status)
 	}
 }
 
