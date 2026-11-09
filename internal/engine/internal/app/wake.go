@@ -30,18 +30,26 @@ func (s *Service) wakeSituation(ctx context.Context, situationID, by string) err
 		return fmt.Errorf("load checkpoint of partition %d: %w", partitionID, err)
 	}
 	err = s.store.WithTx(ctx, func(tx *store.Tx) error {
-		if err := tx.AssertOwner(ctx); err != nil {
-			return fmt.Errorf("assert owner before waking: %w", err)
-		}
-		return s.publishWokenVersion(ctx, tx, partitionID, situationID, by, checkpoint.Watermark)
+		return s.publishWokenVersionOwned(ctx, tx, partitionID, situationID, by, checkpoint.Watermark)
 	})
 	if err == nil {
 		return nil
 	}
+	return s.restoredAfter(ctx, err)
+}
+
+func (s *Service) restoredAfter(ctx context.Context, err error) error {
 	if restoreErr := s.restoreAfterRollback(ctx); restoreErr != nil {
 		return fmt.Errorf("%w; restore after rollback: %w", err, restoreErr)
 	}
 	return err
+}
+
+func (s *Service) publishWokenVersionOwned(ctx context.Context, tx *store.Tx, partitionID int, situationID, by string, watermark time.Time) error {
+	if err := tx.AssertOwner(ctx); err != nil {
+		return fmt.Errorf("assert owner before waking: %w", err)
+	}
+	return s.publishWokenVersion(ctx, tx, partitionID, situationID, by, watermark)
 }
 
 func (s *Service) publishWokenVersion(ctx context.Context, tx *store.Tx, partitionID int, situationID, by string, watermark time.Time) error {

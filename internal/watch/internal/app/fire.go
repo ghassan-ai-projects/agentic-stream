@@ -71,21 +71,26 @@ func fireIn(ctx context.Context, tx *store.Tx, watchID, eventID, situationID, ta
 	if err := assertGuards(ctx, tx, "", ""); err != nil {
 		return false, fmt.Errorf("guard the watch fire: %w", err)
 	}
-	if err := tx.ExpireDue(ctx, now); err != nil {
-		return false, fmt.Errorf("expire due watches before firing: %w", err)
-	}
-	active, found, err := tx.LoadActive(ctx, watchID, now)
-	if err != nil {
-		return false, fmt.Errorf("load active watch %s: %w", watchID, err)
-	}
-	if !found || !active.InScope(situationID, target) {
-		return false, nil
+	active, found, err := activeInScope(ctx, tx, watchID, situationID, target, now)
+	if err != nil || !found {
+		return false, err
 	}
 	rose, err := evaluationRises(ctx, tx, watchID, eventID, active, features, now)
 	if err != nil || !rose {
 		return false, err
 	}
 	return recordFire(ctx, tx, watchID, eventID, now)
+}
+
+func activeInScope(ctx context.Context, tx *store.Tx, watchID, situationID, target string, now time.Time) (domain.ActiveWatch, bool, error) {
+	if err := tx.ExpireDue(ctx, now); err != nil {
+		return domain.ActiveWatch{}, false, fmt.Errorf("expire due watches before firing: %w", err)
+	}
+	active, found, err := tx.LoadActive(ctx, watchID, now)
+	if err != nil {
+		return domain.ActiveWatch{}, false, fmt.Errorf("load active watch %s: %w", watchID, err)
+	}
+	return active, found && active.InScope(situationID, target), nil
 }
 
 func evaluationRises(ctx context.Context, tx *store.Tx, watchID, eventID string, active domain.ActiveWatch, features map[string]any, now time.Time) (bool, error) {

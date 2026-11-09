@@ -58,7 +58,10 @@ func NewPipeline(ctx context.Context, cfg PipelineConfig) (*app.Pipeline, error)
 	if err := validateOwnership(cfg); err != nil {
 		return nil, err
 	}
-	cfg = pipelineDefaults(cfg)
+	return composeStreamFirst(ctx, pipelineDefaults(cfg))
+}
+
+func composeStreamFirst(ctx context.Context, cfg PipelineConfig) (*app.Pipeline, error) {
 	log := eventlog.NewEventLogWithClock(cfg.DB, cfg.Clock)
 	stream, err := newOwnedStream(ctx, cfg, log)
 	if err != nil {
