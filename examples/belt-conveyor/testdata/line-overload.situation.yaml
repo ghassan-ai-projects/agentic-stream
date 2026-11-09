@@ -233,11 +233,12 @@ cognition:
     name: tamoz
     dispatchPolicy: active
     riskCeiling: R1
-    objective: >
-      Decide whether the conveyor lost a drive while the feed is high. Name the
-      drive whose current fell to about 0 A. If the survivors carry the full
-      feed, cut the feed to the limp setting they can carry; never stop the
-      belt.
+    objective: |
+      Decide whether the conveyor lost a drive while the feed is high and name
+      the drive whose current fell to about 0 A. Request the one step of the
+      situation's phase; never stop the belt.
+      - phase overload: cut the feed to the limp feed the two survivors carry -
+        intent reduce_feed (preset limp_b).
     prompt: >
       Analyze the immutable snapshot (each drive's current, the feed and its
       setpoint) and return a typed decision with a diagnosis and at most one
