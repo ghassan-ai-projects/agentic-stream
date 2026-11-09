@@ -75,7 +75,7 @@ func (c conveyorTwin) playBarrierPaced(t *testing.T, play twinPlay, story twinSt
 	t.Cleanup(func() {
 		t.Logf("%s seed %d played in %s of wall time", play.name, play.seed(), time.Since(started).Round(time.Second))
 	})
-	run := startDegradationServe(t, degradationSpec, shippedCoverage, play.story.Plant)
+	run := startDegradationServe(t, degradationSpec, play.story.Plant, reasonAboutTheLine(shippedCoverage))
 	t.Cleanup(func() { logCommandOutcomes(t, run.db) })
 	plan := c.sessionPlan(t, play.name, run.socket, conveyorPolicyDigest(t, degradationSpec), play.story.planOf(play.row))
 	stopApproving := approveWhileRunning(t, run)

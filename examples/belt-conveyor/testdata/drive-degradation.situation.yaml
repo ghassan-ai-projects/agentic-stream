@@ -29,7 +29,9 @@ kind: SituationSpec
 # mean minus the larger of its peers'. A window counts only when every drive's
 # holds 90 % of its expected readings (the *_readings minima, set by the
 # sensors' cadences and repeated where a window is read): an outage during a
-# load change biases a residual. The diagnosis catalog states the same rules.
+# load change biases a residual. The diagnosis catalog states the same rules,
+# and the watch preset holds when either rule does: a reasoner that only installs
+# the watch is woken (delta.watch_fired) when the evidence can tell the cause.
 #
 # On an empty belt a dry bearing wears with its load cubed, about a fifth as
 # fast as at full feed, so the evidence needs hours to name it. The empty belt
@@ -542,7 +544,7 @@ cognition:
       debounce: 100ms
       cooldown: 1m
       expiresAfter: 10m
-      materialDelta: delta.phase_changed
+      materialDelta: delta.phase_changed || delta.watch_fired
     - name: shed_line_needs_emptying
       when: situation.phase == "shedding"
       score: double(situation.severity) * 0.5 + double(delta.novelty) * 25.0
@@ -552,7 +554,7 @@ cognition:
       debounce: 100ms
       cooldown: 1m
       expiresAfter: 10m
-      materialDelta: delta.phase_changed
+      materialDelta: delta.phase_changed || delta.watch_fired
     - name: known_cause_needs_its_planned_stop
       when: situation.phase in ["cause_bearing", "cause_gearbox", "cause_undecided"]
       score: double(situation.severity) * 0.5 + double(delta.novelty) * 25.0
@@ -581,7 +583,9 @@ cognition:
       One conveyor drive degrades against its peers at equal current. Name the
       cause by the diagnosis catalog's rules (unknown while neither holds) and
       request the one step of the situation's phase. The phase, not the
-      diagnosis, decides the step; never act on a rise every drive shares.
+      diagnosis, decides the step: an unknown cause is no reason to wait, and a
+      watch never replaces the step of a phase that has one. Never act on a rise
+      every drive shares.
       - phase degrading: shed the feed to the plant's limp feed, whatever the
         cause - intent reduce_feed (preset limp).
       - phase shedding: run the belt empty by stopping the feeder, whatever the
@@ -622,7 +626,7 @@ actions:
   intents:
     - type: install_watch_condition
       risk: R0
-      description: Keep watching the line when no step is due; Tamoz falls back to it when it recommends nothing.
+      description: Watch until the evidence can tell the cause (the bearing rule or the gearbox rule of the diagnosis catalog holds); its fire wakes the degrading and shedding triggers. Tamoz falls back to it when it recommends nothing.
       parameterSchema:
         type: object
         properties:
@@ -647,10 +651,21 @@ actions:
         additionalProperties: false
       presets:
         default:
-          expression: features.drive3_winding_slope_30m >= 2.0
+          expression: >-
+            cel.bind(bearing_vibration_mm_s, 0.3,
+            cel.bind(gearbox_slope_k_per_h, 2.0,
+            cel.bind(gearbox_quiet_vibration_mm_s, 0.05,
+            cel.bind(vibration_readings_15m, 14.0,
+            cel.bind(slope_readings_30m, 162.0,
+            cel.bind(peer_vibration, features.drive1_vibration_15m > features.drive2_vibration_15m ? features.drive1_vibration_15m : features.drive2_vibration_15m,
+            cel.bind(peer_slope, features.drive1_winding_slope_30m > features.drive2_winding_slope_30m ? features.drive1_winding_slope_30m : features.drive2_winding_slope_30m,
+            cel.bind(vibration_counted, features.drive1_vibration_readings_15m >= vibration_readings_15m && features.drive2_vibration_readings_15m >= vibration_readings_15m && features.drive3_vibration_readings_15m >= vibration_readings_15m,
+            cel.bind(slope_counted, features.drive1_winding_readings_30m >= slope_readings_30m && features.drive2_winding_readings_30m >= slope_readings_30m && features.drive3_winding_readings_30m >= slope_readings_30m,
+              vibration_counted && (features.drive3_vibration_15m - peer_vibration >= bearing_vibration_mm_s ||
+                slope_counted && features.drive3_winding_slope_30m - peer_slope >= gearbox_slope_k_per_h && features.drive3_vibration_15m - peer_vibration < gearbox_quiet_vibration_mm_s))))))))))
           max_fires: 3
-          metric: drive3_winding_slope_30m
-          threshold: 2.0
+          metric: drive3_vibration_15m
+          threshold: 0.3
       policy: automatic
       rateLimitPerHour: 4
     - type: reduce_feed

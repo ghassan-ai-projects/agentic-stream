@@ -22,7 +22,10 @@ belt `B-1` of `conveyor-1`, fed by `F-1`. Two specs, one per `serve`:
   reaches 2 K/h while its vibration residual stays below 0.05 mm/s (stop the
   belt, `stop_belt`, R2), or `cause_undecided` after 5 h with neither (stop
   the belt, the safe default). Once the drive is isolated the limp feed is
-  restored (R1). A feed surge moves every drive together and no residual.
+  restored (R1). The watch preset (`install_watch_condition`) holds when the
+  bearing or the gearbox rule holds; a reasoner that only installs it at
+  `degrading` or `shedding` is asked again when it fires (the triggers name
+  `delta.watch_fired`). A feed surge moves every drive together and no residual.
   Every window emits on close, because an R2 intent is denied on provisional
   evidence, and counts only with 90 % of its readings. The thresholds come
   from streams-simulator's calibration (`M3-DESIGN.md` section 7) and are

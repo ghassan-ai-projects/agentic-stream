@@ -122,6 +122,9 @@ func (l *beltLine) awaitPlannedStep(t *testing.T, settled func(now time.Time) bo
 		if settled(l.now()) {
 			return true
 		}
+		if !l.stepRequested(t, phase) {
+			return false
+		}
 		if record, read := l.node.Next(beltCommandPoll); read && record["type"] == "DCMD" {
 			l.obey(t, record, l.now().Add(beltTick))
 			l.served[phase] = true
@@ -130,6 +133,17 @@ func (l *beltLine) awaitPlannedStep(t *testing.T, settled func(now time.Time) bo
 	}
 	t.Fatalf("no command for phase %s at minute %d within %s; obeyed %v", phase, l.minutes(), loopTimeout, l.obeyed)
 	return false
+}
+
+func (l *beltLine) stepRequested(t *testing.T, phase string) bool {
+	t.Helper()
+	var steps int
+	query := `SELECT COUNT(*) FROM intents i JOIN situation_versions v ON v.situation_id = i.situation_id AND v.version = i.situation_version
+		WHERE v.phase = ? AND i.intent_type != 'install_watch_condition'`
+	if err := l.db.QueryRowContext(t.Context(), query, phase).Scan(&steps); err != nil {
+		t.Fatal(err)
+	}
+	return steps > 0
 }
 
 func (l *beltLine) phaseOnceProcessed(t *testing.T) string {

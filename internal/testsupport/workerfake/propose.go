@@ -21,14 +21,16 @@ var proposalUsage = &runtimev1.Usage{InputTokens: 1200, OutputTokens: 300}
 var errSnapshotWithoutEntity = errors.New("snapshot has no entity id")
 
 // Answer is what a fake worker decides for one episode: a hypothesis, an
-// optional diagnosis code, its intents and the usage it reports (nil for a
-// fixed one).
+// optional diagnosis code, its intents, the usage it reports (nil for a fixed
+// one) and how long the decision is valid (ten minutes when zero; an intent
+// parameter expires_at must equal the decision's valid_until).
 type Answer struct {
 	Hypothesis    string
 	DiagnosisCode string
 	Summary       string
 	Intents       []ProposedIntent
 	Usage         *runtimev1.Usage
+	ValidUntil    time.Time
 }
 
 // ProposedIntent is one intent of an Answer: its type, risk class and the
@@ -99,7 +101,7 @@ func canonicalDecision(decision map[string]any) ([]byte, []byte, error) {
 
 func decisionDocument(req *runtimev1.EpisodeRequest, answer Answer) (map[string]any, error) {
 	scope := fmt.Sprintf("%s.%s.%d", req.GetEpisodeId(), req.GetAttemptId(), req.GetFence())
-	validUntil := time.Now().UTC().Add(10 * time.Minute).Format(time.RFC3339)
+	validUntil := cmp.Or(answer.ValidUntil, time.Now().Add(10*time.Minute)).UTC().Format(time.RFC3339)
 	intents, err := answerIntents(req, answer, scope, validUntil)
 	if err != nil {
 		return nil, err
