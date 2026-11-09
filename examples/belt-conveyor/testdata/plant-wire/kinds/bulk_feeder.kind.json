@@ -1,0 +1,20 @@
+{
+  "kind": "bulk_feeder",
+  "metrics": [
+    {"name": "feed", "data_type": "number", "unit": "kg/s", "eu_range": {"min": 0, "max": 80}, "resolution": 0.001, "writable": false},
+    {"name": "feed_setpoint", "data_type": "number", "unit": "%", "eu_range": {"min": 0, "max": 100}, "resolution": 0.1, "writable": true}
+  ],
+  "commands": [
+    {
+      "name": "set_feed",
+      "args_schema": {
+        "additionalProperties": false,
+        "properties": {"feed_setpoint": {"maximum": 100, "minimum": 0, "type": "number"}},
+        "required": ["feed_setpoint"],
+        "type": "object"
+      },
+      "risk_class": "medium",
+      "safe_stop": false
+    }
+  ]
+}

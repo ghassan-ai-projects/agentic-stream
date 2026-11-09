@@ -1,0 +1,212 @@
+{
+  "conveyor.drive1_current.observed/1.0": {
+    "event_type": "conveyor.drive1_current.observed",
+    "schema_version": "1.0",
+    "fields": {
+      "amps": {
+        "path": "amps",
+        "unit": "ampere",
+        "optional": true
+      },
+      "quality": {
+        "path": "quality",
+        "type": "string",
+        "enum": [
+          "valid",
+          "warming",
+          "invalid",
+          "disconnected"
+        ],
+        "optional": true
+      },
+      "boot_id": {
+        "path": "boot_id",
+        "type": "string",
+        "optional": true
+      },
+      "seq": {
+        "path": "seq",
+        "type": "integer",
+        "optional": true
+      },
+      "schema_version": {
+        "path": "schema_version",
+        "type": "string",
+        "optional": true
+      },
+      "device_mono_us": {
+        "path": "device_mono_us",
+        "type": "integer",
+        "optional": true
+      }
+    }
+  },
+  "conveyor.drive2_current.observed/1.0": {
+    "event_type": "conveyor.drive2_current.observed",
+    "schema_version": "1.0",
+    "fields": {
+      "amps": {
+        "path": "amps",
+        "unit": "ampere",
+        "optional": true
+      },
+      "quality": {
+        "path": "quality",
+        "type": "string",
+        "enum": [
+          "valid",
+          "warming",
+          "invalid",
+          "disconnected"
+        ],
+        "optional": true
+      },
+      "boot_id": {
+        "path": "boot_id",
+        "type": "string",
+        "optional": true
+      },
+      "seq": {
+        "path": "seq",
+        "type": "integer",
+        "optional": true
+      },
+      "schema_version": {
+        "path": "schema_version",
+        "type": "string",
+        "optional": true
+      },
+      "device_mono_us": {
+        "path": "device_mono_us",
+        "type": "integer",
+        "optional": true
+      }
+    }
+  },
+  "conveyor.drive3_current.observed/1.0": {
+    "event_type": "conveyor.drive3_current.observed",
+    "schema_version": "1.0",
+    "fields": {
+      "amps": {
+        "path": "amps",
+        "unit": "ampere",
+        "optional": true
+      },
+      "quality": {
+        "path": "quality",
+        "type": "string",
+        "enum": [
+          "valid",
+          "warming",
+          "invalid",
+          "disconnected"
+        ],
+        "optional": true
+      },
+      "boot_id": {
+        "path": "boot_id",
+        "type": "string",
+        "optional": true
+      },
+      "seq": {
+        "path": "seq",
+        "type": "integer",
+        "optional": true
+      },
+      "schema_version": {
+        "path": "schema_version",
+        "type": "string",
+        "optional": true
+      },
+      "device_mono_us": {
+        "path": "device_mono_us",
+        "type": "integer",
+        "optional": true
+      }
+    }
+  },
+  "conveyor.feed.observed/1.0": {
+    "event_type": "conveyor.feed.observed",
+    "schema_version": "1.0",
+    "fields": {
+      "kg_s": {
+        "path": "kg_s",
+        "unit": "kg_s",
+        "optional": true
+      },
+      "quality": {
+        "path": "quality",
+        "type": "string",
+        "enum": [
+          "valid",
+          "warming",
+          "invalid",
+          "disconnected"
+        ],
+        "optional": true
+      },
+      "boot_id": {
+        "path": "boot_id",
+        "type": "string",
+        "optional": true
+      },
+      "seq": {
+        "path": "seq",
+        "type": "integer",
+        "optional": true
+      },
+      "schema_version": {
+        "path": "schema_version",
+        "type": "string",
+        "optional": true
+      },
+      "device_mono_us": {
+        "path": "device_mono_us",
+        "type": "integer",
+        "optional": true
+      }
+    }
+  },
+  "conveyor.feed_setpoint.observed/1.0": {
+    "event_type": "conveyor.feed_setpoint.observed",
+    "schema_version": "1.0",
+    "fields": {
+      "percent": {
+        "path": "percent",
+        "unit": "percent",
+        "optional": true
+      },
+      "quality": {
+        "path": "quality",
+        "type": "string",
+        "enum": [
+          "valid",
+          "warming",
+          "invalid",
+          "disconnected"
+        ],
+        "optional": true
+      },
+      "boot_id": {
+        "path": "boot_id",
+        "type": "string",
+        "optional": true
+      },
+      "seq": {
+        "path": "seq",
+        "type": "integer",
+        "optional": true
+      },
+      "schema_version": {
+        "path": "schema_version",
+        "type": "string",
+        "optional": true
+      },
+      "device_mono_us": {
+        "path": "device_mono_us",
+        "type": "integer",
+        "optional": true
+      }
+    }
+  }
+}

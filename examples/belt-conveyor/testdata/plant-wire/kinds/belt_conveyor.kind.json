@@ -1,0 +1,52 @@
+{
+  "kind": "belt_conveyor",
+  "metrics": [
+    {
+      "data_type": "number",
+      "eu_range": {
+        "max": 100,
+        "min": 0
+      },
+      "name": "belt_conveyor.tail_speed",
+      "resolution": 0.1,
+      "unit": "rpm",
+      "writable": false
+    }
+  ],
+  "commands": [
+    {
+      "args_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "belt_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "belt_id"
+        ],
+        "type": "object"
+      },
+      "name": "belt_conveyor__start_belt",
+      "risk_class": "medium",
+      "safe_stop": false
+    },
+    {
+      "args_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "belt_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "belt_id"
+        ],
+        "type": "object"
+      },
+      "name": "belt_conveyor__stop_belt",
+      "risk_class": "medium",
+      "safe_stop": false
+    }
+  ]
+}

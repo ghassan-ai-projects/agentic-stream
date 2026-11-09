@@ -1,0 +1,101 @@
+{
+  "kind": "conveyor_drive",
+  "metrics": [
+    {
+      "data_type": "number",
+      "eu_range": {
+        "max": 15,
+        "min": 0
+      },
+      "name": "conveyor_drive.current",
+      "resolution": 0.1,
+      "unit": "A",
+      "writable": false
+    },
+    {
+      "data_type": "number",
+      "eu_range": {
+        "max": 200,
+        "min": 0
+      },
+      "name": "conveyor_drive.winding",
+      "resolution": 0.1,
+      "unit": "degC",
+      "writable": false
+    },
+    {
+      "data_type": "number",
+      "eu_range": {
+        "max": 45,
+        "min": 0
+      },
+      "name": "conveyor_drive.vibration",
+      "resolution": 0.01,
+      "unit": "mm/s",
+      "writable": false
+    },
+    {
+      "data_type": "boolean",
+      "eu_range": {
+        "max": 1,
+        "min": 0
+      },
+      "name": "conveyor_drive.run_status",
+      "resolution": 1,
+      "writable": false
+    }
+  ],
+  "commands": [
+    {
+      "args_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "drive_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "drive_id"
+        ],
+        "type": "object"
+      },
+      "name": "conveyor_drive__start_drive",
+      "risk_class": "medium",
+      "safe_stop": false
+    },
+    {
+      "args_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "drive_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "drive_id"
+        ],
+        "type": "object"
+      },
+      "name": "conveyor_drive__stop_drive",
+      "risk_class": "medium",
+      "safe_stop": false
+    },
+    {
+      "args_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "drive_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "drive_id"
+        ],
+        "type": "object"
+      },
+      "name": "conveyor_drive__reset_trip",
+      "risk_class": "low",
+      "safe_stop": false
+    }
+  ]
+}

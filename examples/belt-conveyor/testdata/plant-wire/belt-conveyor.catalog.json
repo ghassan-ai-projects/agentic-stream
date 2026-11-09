@@ -1,0 +1,17 @@
+{
+  "protocol_version": 1,
+  "routes": {
+    "reduce_feed": {
+      "operation": "set_feed",
+      "target": "F-1",
+      "target_bindings": {"conveyor-1": "F-1"},
+      "selector_field": "level",
+      "expires_after_ms": 20000,
+      "presets": {
+        "limp_b": {"feed_setpoint": 18},
+        "restore": {"feed_setpoint": 100}
+      },
+      "bounds": {"feed_setpoint": {"min": 0, "max": 100}}
+    }
+  }
+}

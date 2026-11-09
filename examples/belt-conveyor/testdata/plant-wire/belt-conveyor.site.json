@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "source": "plantwire",
+  "devices": {
+    "F-1": {"kind": "bulk_feeder", "entity": {"type": "conveyor", "id": "conveyor-1"}},
+    "B-1": {"kind": "belt_conveyor", "entity": {"type": "conveyor", "id": "conveyor-1"}},
+    "D-1": {"kind": "conveyor_drive", "entity": {"type": "conveyor", "id": "conveyor-1"}},
+    "D-2": {"kind": "conveyor_drive", "entity": {"type": "conveyor", "id": "conveyor-1"}},
+    "D-3": {"kind": "conveyor_drive", "entity": {"type": "conveyor", "id": "conveyor-1"}}
+  },
+  "readings": [
+    {"device": "D-1", "kind": "conveyor_drive", "metric": "conveyor_drive.current", "event_type": "conveyor.drive1_current.observed", "schema_version": "1.0", "field": "amps"},
+    {"device": "D-2", "kind": "conveyor_drive", "metric": "conveyor_drive.current", "event_type": "conveyor.drive2_current.observed", "schema_version": "1.0", "field": "amps"},
+    {"device": "D-3", "kind": "conveyor_drive", "metric": "conveyor_drive.current", "event_type": "conveyor.drive3_current.observed", "schema_version": "1.0", "field": "amps"},
+    {"kind": "bulk_feeder", "metric": "feed", "event_type": "conveyor.feed.observed", "schema_version": "1.0", "field": "kg_s"},
+    {"kind": "bulk_feeder", "metric": "feed_setpoint", "event_type": "conveyor.feed_setpoint.observed", "schema_version": "1.0", "field": "percent"}
+  ],
+  "heartbeats": [],
+  "quality": {
+    "good": "valid",
+    "warming_up": "warming",
+    "suspect": "invalid",
+    "out_of_range": "invalid",
+    "stale": "invalid",
+    "disconnected": "disconnected",
+    "manual_override": "invalid",
+    "out_of_service": "disconnected"
+  }
+}

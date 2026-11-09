@@ -57,26 +57,72 @@ type action struct {
 	OutcomeBelieved string `json:"outcome_believed"`
 }
 
-// WriteVerdict writes the run's consumer verdict beside its run file, in the
-// simulator's neutral vocabulary. Everything is placed in simulated time: a
-// detection is the first decision on a pump whose Situation version's event
-// horizon falls inside the run's window, labeled with its diagnosis, and an
-// action is a command whose deciding episode does, issued at that horizon.
+// Subjects names what a verdict reports in the simulator's vocabulary: the
+// instance and label of a detection from its Situation's entity and the
+// decision's diagnosis, and the instance and effector an action reached from
+// its route and normalized target.
+type Subjects struct {
+	Detected func(entityID, diagnosis string) (instance, label string)
+	Acted    func(route, target string) (instance, effector string)
+}
+
+// SameNames is the campaign's subjects: an entity "site-a:pump-1" is the
+// instance "site-a/pump-1", a diagnosis is the label and a route is the
+// effector.
+var SameNames = Subjects{
+	Detected: func(entityID, diagnosis string) (string, string) { return instanceOf(entityID), diagnosis },
+	Acted:    func(route, target string) (string, string) { return instanceOf(target), route },
+}
+
+// WriteVerdict writes the campaign run's consumer verdict with SameNames as
+// its subjects.
 func WriteVerdict(ctx context.Context, db *sql.DB, runDir, arm string, window Window) error {
+	return WriteVerdictOf(ctx, db, runDir, window, Verdict{Version: "rule-promotion", Arm: arm, Subjects: SameNames})
+}
+
+// Verdict is the consumer version and comparison arm a verdict names and the
+// subjects its rows report.
+type Verdict struct {
+	Version, Arm string
+	Subjects     Subjects
+}
+
+// WriteVerdictOf writes the run's consumer verdict beside its run file, in the
+// simulator's neutral vocabulary. Everything is placed in simulated time: a
+// detection is the first decision on an entity whose Situation version's
+// event horizon falls inside the run's window, and an action is a command
+// whose deciding episode does, issued at that horizon.
+func WriteVerdictOf(ctx context.Context, db *sql.DB, runDir string, window Window, of Verdict) error {
 	runID, err := readRunID(runDir)
 	if err != nil {
 		return err
 	}
-	v := verdict{SchemaVersion: schemaVersion, RunID: runID, Consumer: consumer{Name: "agentic-stream", Version: "rule-promotion", Arm: arm}}
+	v := verdict{SchemaVersion: schemaVersion, RunID: runID, Consumer: consumer{Name: "agentic-stream", Version: of.Version, Arm: of.Arm}}
+	if err := v.read(ctx, db, window); err != nil {
+		return err
+	}
+	of.Subjects.place(&v)
+	_, err = writeIn(runDir, verdictFile, v)
+	return err
+}
+
+func (v *verdict) read(ctx context.Context, db *sql.DB, window Window) error {
 	from, until := kernel.FormatTime(window.From), kernel.FormatTime(window.Until)
+	var err error
 	if v.Detections, err = readVerdictRows(ctx, db, "detection", scanDetection, detectionsQuery, from, until); err != nil {
 		return err
 	}
-	if v.Actions, err = readVerdictRows(ctx, db, "action", scanAction, actionsQuery, from, until); err != nil {
-		return err
-	}
-	_, err = writeIn(runDir, verdictFile, v)
+	v.Actions, err = readVerdictRows(ctx, db, "action", scanAction, actionsQuery, from, until)
 	return err
+}
+
+func (s Subjects) place(v *verdict) {
+	for i, d := range v.Detections {
+		v.Detections[i].EntityID, v.Detections[i].Label = s.Detected(d.EntityID, d.Label)
+	}
+	for i, a := range v.Actions {
+		v.Actions[i].EntityID, v.Actions[i].Effector = s.Acted(a.Effector, a.EntityID)
+	}
 }
 
 func readRunID(runDir string) (string, error) {
@@ -106,7 +152,6 @@ func scanDetection(rows *sql.Rows) (detection, error) {
 	if err := rows.Scan(&d.EntityID, &d.DetectedAt, &d.Label); err != nil {
 		return d, fmt.Errorf("scan a detection: %w", err)
 	}
-	d.EntityID = instanceOf(d.EntityID)
 	return d, nil
 }
 
@@ -116,7 +161,7 @@ func scanAction(rows *sql.Rows) (action, error) {
 	if err := rows.Scan(&a.CommandID, &a.Effector, &a.EntityID, &a.IssuedAt, &status); err != nil {
 		return a, fmt.Errorf("scan an action: %w", err)
 	}
-	a.EntityID, a.OutcomeBelieved = instanceOf(a.EntityID), believedOutcome(status)
+	a.OutcomeBelieved = believedOutcome(status)
 	return a, nil
 }
 
