@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -128,9 +129,10 @@ func TestAVerdictPlacesDetectionsAndActionsInTheRunsSimulatedWindow(t *testing.T
 		t.Fatalf("run 1 actions = %+v, want the one command issued at 00:40", first.Actions)
 	}
 	second := readVerdict(t, loaded, db, loaded.Runs[1])
-	wantDetections := []detection{{EntityID: "site-a/pump-3", DetectedAt: at("02:10:00"), Label: "misalignment"}, {EntityID: "site-a/pump-5", DetectedAt: at("02:20:00"), Label: "sensor_drift"}}
-	if len(second.Detections) != 2 || second.Detections[0] != wantDetections[0] || second.Detections[1] != wantDetections[1] {
-		t.Fatalf("run 2 detections = %+v, want one per faulted pump, each its first decision of the run", second.Detections)
+	wantDetections := []detection{{EntityID: "site-a/pump-3", DetectedAt: at("02:10:00"), Label: "misalignment"}, {EntityID: "site-a/pump-5", DetectedAt: at("02:20:00"), Label: "sensor_drift"},
+		{EntityID: "site-a/pump-5", DetectedAt: at("03:00:00"), Label: "bearing_wear"}}
+	if !slices.Equal(second.Detections, wantDetections) {
+		t.Fatalf("run 2 detections = %+v, want %+v: the first decision of each diagnosis on each pump in the run", second.Detections, wantDetections)
 	}
 	if len(second.Actions) != 3 || second.Actions[0].IssuedAt != at("02:10:00") || second.Actions[1].IssuedAt != at("02:20:00") || second.Actions[2].IssuedAt != at("03:00:00") {
 		t.Fatalf("run 2 actions = %+v, want the three commands decided in the run, issued in event time", second.Actions)

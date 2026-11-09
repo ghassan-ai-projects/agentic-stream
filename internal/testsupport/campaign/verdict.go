@@ -20,7 +20,7 @@ const decidedSQL = `FROM decisions d JOIN episodes e ON e.episode_id = d.episode
 
 const detectionsQuery = `SELECT entity_id, decided_at, label FROM (
 	SELECT s.entity_id AS entity_id, v.event_horizon AS decided_at, COALESCE(json_extract(d.raw_json, '$.diagnosis_code'), '') AS label,
-		ROW_NUMBER() OVER (PARTITION BY s.entity_id ORDER BY v.event_horizon, d.created_at, d.decision_id) AS n
+		ROW_NUMBER() OVER (PARTITION BY s.entity_id, json_extract(d.raw_json, '$.diagnosis_code') ORDER BY v.event_horizon, d.created_at, d.decision_id) AS n
 	` + decidedSQL + `) WHERE n = 1 ORDER BY decided_at, entity_id`
 
 const actionsQuery = `SELECT 'sha256:' || lower(hex(c.idempotency_key)), c.effector_route, c.normalized_target, v.event_horizon, c.status
@@ -89,8 +89,9 @@ type Verdict struct {
 
 // WriteVerdictOf writes the run's consumer verdict beside its run file, in the
 // simulator's neutral vocabulary. Everything is placed in simulated time: a
-// detection is the first decision on an entity whose Situation version's
-// event horizon falls inside the run's window, and an action is a command
+// detection is the first decision of each diagnosis on an entity whose
+// Situation version's event horizon falls inside the run's window (a first
+// "unknown" does not hide the cause a later decision names), and an action is a command
 // whose deciding episode does, issued at that horizon.
 func WriteVerdictOf(ctx context.Context, db *sql.DB, runDir string, window Window, of Verdict) error {
 	runID, err := readRunID(runDir)
