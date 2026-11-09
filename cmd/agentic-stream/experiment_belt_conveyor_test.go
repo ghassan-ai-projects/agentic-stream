@@ -104,9 +104,9 @@ func conveyorNode(t *testing.T, socket string) *plantwirefake.Node {
 	node.Expect("STATE")
 	born := time.Now().Add(-backdatedHistory).UnixNano()
 	node.Send(deviceBirth("F-1", "bulk_feeder", born, birthMetric("feed_setpoint", 1, 100, "good"), birthMetric("feed", 2, conveyorFullFeed, "good")))
-	node.Send(deviceBirth("B-1", "belt_conveyor", born, birthMetric("belt_conveyor.tail_speed", 1, 76.5, "good")))
+	node.Send(deviceBirth("B-1", "belt_conveyor", born, birthMetric("tail_speed", 1, 76.5, "good")))
 	for _, drive := range conveyorDevices[2:] {
-		birth := deviceBirth(drive, "conveyor_drive", born, birthMetric("conveyor_drive.current", 1, 4.2, "good"))
+		birth := deviceBirth(drive, "conveyor_drive", born, birthMetric("current", 1, 4.2, "good"))
 		birth["boot_id"] = bootOf(drive)
 		node.Send(birth)
 	}
