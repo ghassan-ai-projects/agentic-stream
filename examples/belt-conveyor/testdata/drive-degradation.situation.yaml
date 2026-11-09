@@ -7,9 +7,11 @@ kind: SituationSpec
 # equal current, in its vibration or its winding temperature. A feed surge
 # loads every drive together and moves no residual. The line's plan, one phase
 # and one trigger per step (barrier-paced worlds jump while trigger timers count
-# wall time): shed the feed to the limp setting (R1), run the belt empty (R2),
-# stop the degraded drive by plan (R2) or stop the empty belt (R2), then restore
-# the limp feed (R1).
+# wall time): shed the feed to the limp setting (R1) and run the belt empty (R2)
+# whatever the cause; on the empty belt wait until the evidence names the cause
+# (cause_bearing: stop the degraded drive by plan, R2; cause_gearbox: stop the
+# belt, R2), or stop the belt when the cause stays undecided for 5 hours
+# (cause_undecided, R2); once the drive is isolated restore the limp feed (R1).
 #
 # Every window emits on close: the policy denies an R2 intent while the
 # situation's completeness is provisional. An operator output with no value yet
@@ -20,13 +22,23 @@ kind: SituationSpec
 # are bound by name in the one transition that uses each: watch at a winding
 # residual of winding_watch_k or a vibration residual of vibration_watch_mm_s,
 # degrading at a winding residual of winding_degrading_k while the drive carries
-# its peers' current (current_share_tolerance). A residual is D-3's 15 minute
+# its peers' current (current_share_tolerance), a bearing at a vibration residual
+# of bearing_vibration_mm_s, a gearbox at a winding slope residual of
+# gearbox_slope_k_per_h while the vibration residual stays below
+# gearbox_quiet_vibration_mm_s. A residual is D-3's 15 minute (slope: 30 minute)
 # mean minus the larger of its peers'. A window counts only when every drive's
 # holds 90 % of its expected readings (the *_readings minima, set by the
 # sensors' cadences and repeated where a window is read): an outage during a
-# load change biases a residual. Which drive part fails (a dry bearing or a
-# gearbox losing oil) is the reasoner's diagnosis, from the facts, by the rules
-# in the diagnosis catalog.
+# load change biases a residual. The diagnosis catalog states the same rules.
+#
+# On an empty belt a dry bearing wears with its load cubed, about a fifth as
+# fast as at full feed, so the evidence needs hours to name it. The empty belt
+# is the safe state to wait in: the drive cannot reach its overtemperature trip
+# there, and a seizing gearbox cannot strand an empty belt. The wait is bounded
+# by the cause_undecided transition's minDuration of 5 hours: at full feed the
+# bearing rule follows the degrading rule by 0.6-1.0 h (streams-simulator
+# M3-DESIGN.md section 7), about 4.5 times longer on an empty belt, at most
+# about 4.2 h; the twin measured 1.9 h (S1-A) and 3.6 h (S1-B) on row 1.
 
 metadata:
   name: drive_degradation
@@ -355,6 +367,12 @@ situation:
       severity: 70
     - name: belt_empty
       severity: 75
+    - name: cause_bearing
+      severity: 80
+    - name: cause_gearbox
+      severity: 85
+    - name: cause_undecided
+      severity: 80
     - name: isolated
       severity: 50
     - name: belt_stopped
@@ -401,11 +419,41 @@ situation:
           features.feed_setpoint_percent < feed_off_percent && features.feed_kg_s < feed_off_kg_s))
       minDuration: 2m
     - from: belt_empty
+      to: cause_bearing
+      when: >
+        cel.bind(bearing_vibration_mm_s, 0.3,
+        cel.bind(vibration_readings_15m, 14.0,
+        cel.bind(peer_vibration, features.drive1_vibration_15m > features.drive2_vibration_15m ? features.drive1_vibration_15m : features.drive2_vibration_15m,
+          features.drive1_vibration_readings_15m >= vibration_readings_15m && features.drive2_vibration_readings_15m >= vibration_readings_15m && features.drive3_vibration_readings_15m >= vibration_readings_15m &&
+          features.drive3_vibration_15m - peer_vibration >= bearing_vibration_mm_s)))
+    - from: belt_empty
+      to: cause_gearbox
+      when: >
+        cel.bind(gearbox_slope_k_per_h, 2.0,
+        cel.bind(gearbox_quiet_vibration_mm_s, 0.05,
+        cel.bind(slope_readings_30m, 162.0,
+        cel.bind(vibration_readings_15m, 14.0,
+        cel.bind(peer_slope, features.drive1_winding_slope_30m > features.drive2_winding_slope_30m ? features.drive1_winding_slope_30m : features.drive2_winding_slope_30m,
+        cel.bind(peer_vibration, features.drive1_vibration_15m > features.drive2_vibration_15m ? features.drive1_vibration_15m : features.drive2_vibration_15m,
+          features.drive1_winding_readings_30m >= slope_readings_30m && features.drive2_winding_readings_30m >= slope_readings_30m && features.drive3_winding_readings_30m >= slope_readings_30m &&
+          features.drive1_vibration_readings_15m >= vibration_readings_15m && features.drive2_vibration_readings_15m >= vibration_readings_15m && features.drive3_vibration_readings_15m >= vibration_readings_15m &&
+          features.drive3_winding_slope_30m - peer_slope >= gearbox_slope_k_per_h &&
+          features.drive3_vibration_15m - peer_vibration < gearbox_quiet_vibration_mm_s))))))
+    - from: belt_empty
+      to: cause_undecided
+      when: >
+        cel.bind(belt_running_rpm, 1.0, features.tail_speed_rpm > belt_running_rpm)
+      minDuration: 5h
+    - from: cause_bearing
       to: isolated
       when: >
         cel.bind(drive_stopped_amps, 0.2, cel.bind(belt_running_rpm, 1.0,
           features.drive3_amps < drive_stopped_amps && features.tail_speed_rpm > belt_running_rpm))
-    - from: belt_empty
+    - from: cause_gearbox
+      to: belt_stopped
+      when: >
+        cel.bind(belt_running_rpm, 1.0, features.tail_speed_rpm < belt_running_rpm)
+    - from: cause_undecided
       to: belt_stopped
       when: >
         cel.bind(belt_running_rpm, 1.0, features.tail_speed_rpm < belt_running_rpm)
@@ -505,8 +553,8 @@ cognition:
       cooldown: 1m
       expiresAfter: 10m
       materialDelta: delta.phase_changed
-    - name: empty_belt_needs_a_planned_stop
-      when: situation.phase == "belt_empty"
+    - name: known_cause_needs_its_planned_stop
+      when: situation.phase in ["cause_bearing", "cause_gearbox", "cause_undecided"]
       score: double(situation.severity) * 0.5 + double(delta.novelty) * 25.0
       threshold: 20
       lane: fast
@@ -529,13 +577,24 @@ cognition:
     name: tamoz
     dispatchPolicy: active
     riskCeiling: R2
-    objective: >
-      Decide whether one conveyor drive is degrading against its peers at equal
-      current, name it and the likely cause, and take the line's next planned
-      step for the phase: in degrading shed the feed to the limp setting; in
-      shedding run the belt empty; on an empty belt stop the degraded drive by
-      plan, or stop the belt when the drive may seize; once the drive is
-      isolated restore the limp feed. Never act on a rise every drive shares.
+    objective: |
+      One conveyor drive degrades against its peers at equal current. Name the
+      cause by the diagnosis catalog's rules (unknown while neither holds) and
+      request the one step of the situation's phase. The phase, not the
+      diagnosis, decides the step; never act on a rise every drive shares.
+      - phase degrading: shed the feed to the plant's limp feed, whatever the
+        cause - intent reduce_feed (preset limp_a on plant A, limp_b on plant B).
+      - phase shedding: run the belt empty by stopping the feeder, whatever the
+        cause - intent stop_feed (preset empty). Do not shed the feed again.
+      - phase belt_empty: no step; the evidence has not named the cause yet.
+      - phase cause_bearing: stop the degraded drive by plan - intent
+        isolate_drive (preset planned_stop).
+      - phase cause_gearbox: stop the empty belt before the gearbox seizes -
+        intent stop_belt (preset planned_stop).
+      - phase cause_undecided: stop the empty belt, the safe default - intent
+        stop_belt (preset planned_stop).
+      - phase isolated: restore the plant's limp feed - intent reduce_feed
+        (preset limp_a on plant A, limp_b on plant B).
     prompt: >
       Analyze the immutable snapshot (each drive's current, its vibration and
       winding temperature over 15 minutes, the degraded drive's winding slope,

@@ -11,16 +11,27 @@ belt `B-1` of `conveyor-1`, fed by `F-1`. Two specs, one per `serve`:
   command.
 - `drive_degradation` (M3, stories S1, S3 and S4): a drive whose winding
   temperature or vibration leaves its peers' band at equal current walks the
-  line through `normal`, `watch`, `degrading`, `shedding`, `belt_empty` and
-  `isolated` (or `belt_stopped`), one trigger per phase: shed the feed to the
-  limp setting (R1), stop the feed so the belt runs empty (R2), stop the drive
-  (`isolate_drive`, R2) or the belt (`stop_belt`, R2) by plan, then restore the
-  limp feed (R1). A feed surge moves every drive together and no residual. Every
-  window emits on close, because an R2 intent is denied on provisional evidence,
-  and counts only with 90 % of its readings. The thresholds come from
-  streams-simulator's calibration (`M3-DESIGN.md` section 7) and are named in the
-  one transition that uses each; whether the drive's bearing or its gearbox fails
-  is the reasoner's diagnosis, by the rules in the spec's diagnosis catalog.
+  line through `normal`, `watch`, `degrading`, `shedding`, `belt_empty`, a
+  cause phase and `isolated` or `belt_stopped`, one trigger per step. The
+  steps that do not depend on the cause come first, whatever the diagnosis
+  (O34): at `degrading` shed the feed to the plant's limp preset (R1), at
+  `shedding` stop the feed so the belt runs empty (R2). On the empty belt the
+  line waits until the evidence names the cause: `cause_bearing` when the
+  drive's vibration residual reaches 0.3 mm/s (stop the drive by plan,
+  `isolate_drive`, R2), `cause_gearbox` when its winding slope residual
+  reaches 2 K/h while its vibration residual stays below 0.05 mm/s (stop the
+  belt, `stop_belt`, R2), or `cause_undecided` after 5 h with neither (stop
+  the belt, the safe default). Once the drive is isolated the limp feed is
+  restored (R1). A feed surge moves every drive together and no residual.
+  Every window emits on close, because an R2 intent is denied on provisional
+  evidence, and counts only with 90 % of its readings. The thresholds come
+  from streams-simulator's calibration (`M3-DESIGN.md` section 7) and are
+  named in the one transition that uses each. The wait: an empty belt is the
+  safe state (the drive cannot reach its overtemperature trip there and a
+  seizing gearbox cannot strand it), but a dry bearing wears with its load
+  cubed, about 4.5 times slower than at full feed, so the bearing rule, 0.6 to
+  1.0 h after the degrading rule at full feed, takes up to about 4.2 h on an
+  empty belt; the twin measured 1.9 h (S1-A) and 3.6 h (S1-B) on row 1.
 
 Everything lives under `testdata/`, outside the `examples/*/*.situation.yaml`
 gates, because the specs need their own event schemas:
@@ -41,7 +52,8 @@ replays backdated readings at the sensors' cadences and obeys the host's
 commands, and against the streams-simulator twin (skipped without
 `STREAMSIM_BIN`; M3's stories S1-A, S3-A and S4-A run barrier-paced), graded by
 `streamsim outcome` and `streamsim score`. Their reasoner is a stand-in that
-diagnoses by the catalog's rules and takes the plan's step for each phase.
+diagnoses by the catalog's rules (unknown while neither holds) and takes the
+phase's step, which does not depend on its diagnosis.
 
 `experiment_belt_live_*_test.go` plays S1-A, S2-B and S3-A with the real Tamoz
 worker as the reasoner instead (arm B: Tamoz reasons, the specs act). It calls a

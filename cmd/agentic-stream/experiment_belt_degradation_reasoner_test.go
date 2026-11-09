@@ -11,8 +11,10 @@ import (
 )
 
 const (
-	gearboxSlopeResidualKPerH = 2.0
-	gearboxQuietVibrationMmS  = 0.05
+	bearingVibrationResidualMmS = 0.3
+	gearboxSlopeResidualKPerH   = 2.0
+	gearboxQuietVibrationMmS    = 0.05
+	unknownCause                = "unknown"
 )
 
 var (
@@ -20,7 +22,8 @@ var (
 	emptyTheBelt    = proposal{Type: "stop_feed", Risk: "R2", Parameters: map[string]any{"level": "empty"}}
 	isolateTheDrive = proposal{Type: "isolate_drive", Risk: "R2", Parameters: map[string]any{"mode": "planned_stop"}}
 	stopTheBelt     = proposal{Type: "stop_belt", Risk: "R2", Parameters: map[string]any{"mode": "planned_stop"}}
-	plannedSteps    = map[string]bool{"degrading": true, "shedding": true, "belt_empty": true, "isolated": true}
+	plannedSteps    = map[string]bool{"degrading": true, "shedding": true, "cause_bearing": true, "cause_gearbox": true, "cause_undecided": true,
+		"isolated": true}
 )
 
 type lineCoverage struct{ slopeReadings, vibrationReadings float64 }
@@ -29,7 +32,8 @@ var (
 	shippedCoverage    = lineCoverage{slopeReadings: 162, vibrationReadings: 14}
 	compressedCoverage = lineCoverage{slopeReadings: 33, vibrationReadings: 3}
 	compressedWindows  = map[string]string{"size: 15m": "size: 3m", "size: 30m": "size: 6m",
-		"winding_readings_15m, 81.0": "winding_readings_15m, 17.0", "vibration_readings_15m, 14.0": "vibration_readings_15m, 3.0"}
+		"winding_readings_15m, 81.0": "winding_readings_15m, 17.0", "vibration_readings_15m, 14.0": "vibration_readings_15m, 3.0",
+		"slope_readings_30m, 162.0": "slope_readings_30m, 33.0", "minDuration: " + undecidedCauseWait: "minDuration: 5m"}
 )
 
 type lineSnapshot struct {
@@ -44,36 +48,45 @@ func limpFeedOf(plant string) proposal {
 
 func reasonAboutTheLine(coverage lineCoverage, limp proposal) workerfake.ExecuteFunc {
 	var mu sync.Mutex
-	seizing := map[string]bool{}
+	named := map[string]string{}
 	return func(_ context.Context, req *runtimev1.EpisodeRequest, emit func(*runtimev1.EpisodeEvent) error) error {
 		var snapshot lineSnapshot
 		if err := json.Unmarshal(req.GetSnapshotJson(), &snapshot); err != nil {
 			return fmt.Errorf("decode the snapshot: %w", err)
 		}
 		mu.Lock()
-		seizing[snapshot.SituationID] = seizing[snapshot.SituationID] || snapshot.gearboxSeizing(coverage)
-		diagnosis := map[bool]string{true: "gearbox_seizing", false: "bearing"}[seizing[snapshot.SituationID]]
+		if named[snapshot.SituationID] == "" || named[snapshot.SituationID] == unknownCause {
+			named[snapshot.SituationID] = snapshot.cause(coverage)
+		}
+		diagnosis := named[snapshot.SituationID]
 		mu.Unlock()
 		answer := workerfake.Answer{Hypothesis: diagnosis, DiagnosisCode: diagnosis, Summary: "D-3 degrades against its peers at equal current"}
-		if step, planned := lineSteps(diagnosis, limp)[snapshot.Phase]; planned {
+		if step, planned := lineSteps(limp)[snapshot.Phase]; planned {
 			answer.Intents = []proposal{step}
 		}
 		return workerfake.Propose(req, emit, answer)
 	}
 }
 
-func lineSteps(diagnosis string, limp proposal) map[string]proposal {
-	stop := isolateTheDrive
-	if diagnosis == "gearbox_seizing" {
-		stop = stopTheBelt
-	}
-	return map[string]proposal{"degrading": limp, "shedding": emptyTheBelt, "belt_empty": stop, "isolated": limp}
+func lineSteps(limp proposal) map[string]proposal {
+	return map[string]proposal{"degrading": limp, "shedding": emptyTheBelt, "cause_bearing": isolateTheDrive, "cause_gearbox": stopTheBelt,
+		"cause_undecided": stopTheBelt, "isolated": limp}
 }
 
-func (s lineSnapshot) gearboxSeizing(coverage lineCoverage) bool {
-	counted := min(s.fact("drive1_winding_readings_30m"), s.fact("drive2_winding_readings_30m"), s.fact("drive3_winding_readings_30m")) >= coverage.slopeReadings &&
-		min(s.fact("drive1_vibration_readings_15m"), s.fact("drive2_vibration_readings_15m"), s.fact("drive3_vibration_readings_15m")) >= coverage.vibrationReadings
-	return counted && s.residual("winding_slope_30m") >= gearboxSlopeResidualKPerH && s.residual("vibration_15m") < gearboxQuietVibrationMmS
+func (s lineSnapshot) cause(coverage lineCoverage) string {
+	vibrationCounted := s.leastReadings("vibration_readings_15m") >= coverage.vibrationReadings
+	switch {
+	case vibrationCounted && s.residual("vibration_15m") >= bearingVibrationResidualMmS:
+		return "bearing"
+	case vibrationCounted && s.leastReadings("winding_readings_30m") >= coverage.slopeReadings &&
+		s.residual("winding_slope_30m") >= gearboxSlopeResidualKPerH && s.residual("vibration_15m") < gearboxQuietVibrationMmS:
+		return "gearbox_seizing"
+	}
+	return unknownCause
+}
+
+func (s lineSnapshot) leastReadings(feature string) float64 {
+	return min(s.fact("drive1_"+feature), s.fact("drive2_"+feature), s.fact("drive3_"+feature))
 }
 
 func (s lineSnapshot) residual(feature string) float64 {
