@@ -19,14 +19,14 @@ func TestTheConveyorKindFilesAreByteCopiesOfStreamsims(t *testing.T) {
 		t.Skipf("no streams-simulator checkout beside this one or in %s: %v", streamsimRepositoryVariable, err)
 	}
 	defer func() { _ = root.Close() }()
-	theirs, err := filepath.Glob(filepath.Join(master, "*.kind.json"))
-	if err != nil || len(theirs) != 3 {
-		t.Fatalf("kind files in %s = %v (%v), want the feeder, the belt and the drive", master, theirs, err)
+	mine, err := filepath.Glob(filepath.Join(conveyorKinds, "*.kind.json"))
+	if err != nil || len(mine) != 3 {
+		t.Fatalf("kind files in %s = %v (%v), want the feeder, the belt and the drive", conveyorKinds, mine, err)
 	}
-	for _, path := range theirs {
+	for _, path := range mine {
 		name := filepath.Base(path)
-		if mine := readKindBytes(t, filepath.Join(conveyorKinds, name)); !bytes.Equal(mine, readMasterKind(t, root, name)) {
-			t.Errorf("%s differs from %s: copy it again", filepath.Join(conveyorKinds, name), path)
+		if !bytes.Equal(readKindBytes(t, path), readMasterKind(t, root, name)) {
+			t.Errorf("%s differs from %s: copy it again", path, filepath.Join(master, name))
 		}
 	}
 }
