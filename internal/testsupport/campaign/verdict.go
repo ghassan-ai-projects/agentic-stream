@@ -62,7 +62,7 @@ type action struct {
 // decision's diagnosis, and the instance and effector an action reached from
 // its route and normalized target. A detection mapped to no instance is left
 // out (a diagnosis that names nothing). One mapped to an instance without a
-// label is a symptom: it is not a row of its own while a labelled detection of
+// label is a symptom: it is not a row of its own while a labeled detection of
 // that instance exists, whose detection time it moves earlier; otherwise its
 // earliest occurrence is reported without a label.
 type Subjects struct {
