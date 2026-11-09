@@ -159,12 +159,12 @@ func stopTamoz(process *exec.Cmd) {
 
 func awaitSocket(t *testing.T, socket string) {
 	t.Helper()
-	deadline := time.Now().Add(liveWorkerStartup)
-	for time.Now().Before(deadline) {
-		if info, err := os.Stat(socket); err == nil && info.Mode()&os.ModeSocket != 0 {
-			return
-		}
-		time.Sleep(approvalPollInterval)
+	bound := pollUntil(t, liveWorkerStartup, func() bool {
+		info, err := os.Stat(socket)
+		return err == nil && info.Mode()&os.ModeSocket != 0
+	})
+	if bound {
+		return
 	}
 	t.Fatalf("the Tamoz worker did not bind %s within %s: see worker.log", socket, liveWorkerStartup)
 }
