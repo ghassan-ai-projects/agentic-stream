@@ -208,6 +208,39 @@ cognition:
 
 actions:
   intents:
+    - type: install_watch_condition
+      risk: R0
+      description: Keep watching the line when no step is due; Tamoz falls back to it when it recommends nothing.
+      parameterSchema:
+        type: object
+        properties:
+          entity_id:
+            type: string
+          expires_at:
+            type: string
+          expression:
+            type: [string, number]
+          max_fires:
+            type: integer
+          metric:
+            type: [string, number]
+          situation_id:
+            type: string
+          situation_version:
+            type: integer
+          target:
+            type: string
+          threshold:
+            type: number
+        additionalProperties: false
+      presets:
+        default:
+          expression: features.feed_kg_s > 20.0
+          max_fires: 3
+          metric: feed_kg_s
+          threshold: 20.0
+      policy: automatic
+      rateLimitPerHour: 4
     - type: reduce_feed
       risk: R1
       description: Set the feeder to a preset feed; limp_b is the feed two drives of plant B carry.
