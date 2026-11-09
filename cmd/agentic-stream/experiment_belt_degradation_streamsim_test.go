@@ -189,7 +189,8 @@ func logCommandsSince(t *testing.T, dbPath string, onset time.Time) {
 
 func assertRoutes(t *testing.T, dbPath string, want []string) {
 	t.Helper()
-	if routes := columnValues(t, dbPath, "SELECT effector_route FROM commands ORDER BY created_at, command_id"); !slices.Equal(routes, want) {
-		t.Fatalf("commands = %v, want %v", routes, want)
+	query := "SELECT effector_route FROM commands WHERE effector_route != 'install_watch_condition' ORDER BY created_at, command_id"
+	if routes := columnValues(t, dbPath, query); !slices.Equal(routes, want) {
+		t.Fatalf("the line's commands = %v, want %v (a watch is no step)", routes, want)
 	}
 }
