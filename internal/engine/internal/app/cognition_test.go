@@ -47,3 +47,30 @@ func TestCognitionIsNotReachedWhenDisabled(t *testing.T) {
 		}
 	}
 }
+
+func TestAWokenSituationPublishesAVersionWhoseWatchDeltaAdmitsTheTriggerAgain(t *testing.T) {
+	t.Parallel()
+	compiled := cognitionSpec()
+	compiled.Cognition.Triggers[0].MaterialDelta = "delta.phase_changed || delta.watch_fired"
+	rig := newRigWithCognition(t, compiled, true)
+	appendEnvelope(t, rig.log, thingEnvelope("evt-1", "test.observed", 0, map[string]any{"level": 15.0}))
+	runGlobal(t, rig.service)
+	appendEnvelope(t, rig.log, thingEnvelope("evt-2", "test.observed", 1, map[string]any{"level": 16.0}))
+	runGlobal(t, rig.service)
+	if admitted := countRows(t, rig.db, "SELECT COUNT(*) FROM trigger_evaluations WHERE outcome = 'admitted'"); admitted != 1 {
+		t.Fatalf("%d admitted evaluations before the wake, want 1", admitted)
+	}
+	situationID := queryText(t, rig.db, "SELECT situation_id FROM situations")
+	if err := rig.service.WakeSituations(t.Context(), []string{situationID, "sit_not_held"}); err != nil {
+		t.Fatal(err)
+	}
+	if versions := countRows(t, rig.db, "SELECT COUNT(*) FROM situation_versions"); versions != 2 {
+		t.Fatalf("%d situation versions after the wake, want 2", versions)
+	}
+	if admitted := countRows(t, rig.db, "SELECT COUNT(*) FROM trigger_evaluations WHERE outcome = 'admitted'"); admitted != 2 {
+		t.Fatalf("%d admitted evaluations after the wake, want 2: the woken version is a material delta", admitted)
+	}
+	if items := countRows(t, rig.db, "SELECT COUNT(*) FROM scheduler_items WHERE situation_version = 2"); items != 1 {
+		t.Fatalf("%d scheduler items on the woken version, want 1", items)
+	}
+}

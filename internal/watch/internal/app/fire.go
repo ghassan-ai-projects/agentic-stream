@@ -13,26 +13,26 @@ import (
 
 type FeatureSource func(ctx context.Context, situationID string) (map[string]any, bool, error)
 
-func (s *Service) FireEvent(ctx context.Context, eventID, target string, source FeatureSource) (int, error) {
+func (s *Service) FireEvent(ctx context.Context, eventID, target string, source FeatureSource) ([]string, error) {
 	if eventID == "" || target == "" {
-		return 0, errors.New("watch event identity is required")
+		return nil, errors.New("watch event identity is required")
 	}
 	candidates, err := s.store.ActiveForTarget(ctx, target, s.clk.Now().UTC())
 	if err != nil {
-		return 0, fmt.Errorf("active watches of target %s: %w", target, err)
+		return nil, fmt.Errorf("active watches of target %s: %w", target, err)
 	}
 	return s.fireCandidates(ctx, eventID, target, source, candidates)
 }
 
-func (s *Service) fireCandidates(ctx context.Context, eventID, target string, source FeatureSource, candidates []domain.Candidate) (int, error) {
-	fired := 0
+func (s *Service) fireCandidates(ctx context.Context, eventID, target string, source FeatureSource, candidates []domain.Candidate) ([]string, error) {
+	var fired []string
 	for _, item := range candidates {
 		matched, err := s.fireCandidate(ctx, eventID, target, source, item)
 		if err != nil {
 			return fired, err
 		}
 		if matched {
-			fired++
+			fired = append(fired, item.SituationID)
 		}
 	}
 	return fired, nil

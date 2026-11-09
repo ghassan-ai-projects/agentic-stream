@@ -25,3 +25,11 @@ func (s *Service) RunGlobal(ctx context.Context, beforeApply func(eventlog.Recor
 func (s *Service) SituationFeatures(ctx context.Context, situationID string) (map[string]any, bool, error) {
 	return s.app.SituationFeatures(ctx, situationID)
 }
+
+// WakeSituations publishes a new version of each named open Situation from its
+// current runtime state, marked as woken by a watch fire, and lets cognition
+// evaluate its triggers on it (`delta.watch_fired`). A Situation the engine does
+// not hold open is skipped.
+func (s *Service) WakeSituations(ctx context.Context, situationIDs []string) error {
+	return s.app.WakeSituations(ctx, situationIDs)
+}

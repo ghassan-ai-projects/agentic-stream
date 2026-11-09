@@ -61,7 +61,8 @@ failure clears readiness. Close stops and joins the heartbeat before releasing
 ownership.
 
 Batch: prepare/fence source advancement → ingest → expire watches → advance stream
-→ fire recent watches through paginated evidence → check ownership → admit
+→ fire recent watches through paginated evidence and wake each fired watch's
+Situation (the engine publishes a version with `delta.watch_fired`) → check ownership → admit
 episodes → execute episodes → evaluate intents → dispatch approved commands.
 Clock reads, identity sources, ordering, locks and transaction boundaries retain
 the original behavior. Maintenance expires watches and dispatches committed

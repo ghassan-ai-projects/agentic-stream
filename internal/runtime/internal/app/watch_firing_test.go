@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -27,10 +28,18 @@ func TestWatchFiringReadsEveryPageOfRecentEvents(t *testing.T) {
 	log := eventlog.NewEventLog(db)
 	appendLevelEvents(t, log, events, "target-final")
 
-	pipeline := &Pipeline{log: log, watch: watch, tenantID: "default", watchPageSize: pageSize, situationFeatures: levelOne}
+	var woken []string
+	wake := func(_ context.Context, situationIDs []string) error {
+		woken = append(woken, situationIDs...)
+		return nil
+	}
+	pipeline := &Pipeline{log: log, watch: watch, tenantID: "default", watchPageSize: pageSize, situationFeatures: levelOne, wakeSituations: wake}
 	span := noopSpan(t)
 	if err := pipeline.fireRecentWatches(t.Context(), 0, span); err != nil {
 		t.Fatalf("fire paginated watches: %v", err)
+	}
+	if !slices.Equal(woken, []string{"situation-watch-pagination"}) {
+		t.Fatalf("woken situations = %v, want the fired watch's situation once", woken)
 	}
 
 	fires := scalarInt(t, db, "SELECT COUNT(*) FROM watch_fires WHERE watch_id = 'watch-pagination'")
@@ -52,7 +61,7 @@ func TestWatchFiringOnlyReadsEventsAfterTheBatchStartPosition(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pipeline := &Pipeline{log: log, watch: watch, tenantID: "default", situationFeatures: levelOne}
+	pipeline := &Pipeline{log: log, watch: watch, tenantID: "default", situationFeatures: levelOne, wakeSituations: wakeNothing}
 	if err := pipeline.fireRecentWatches(t.Context(), current, noopSpan(t)); err != nil {
 		t.Fatal(err)
 	}
@@ -140,6 +149,8 @@ func noopSpan(t *testing.T) trace.Span {
 	t.Cleanup(func() { span.End() })
 	return span
 }
+
+func wakeNothing(context.Context, []string) error { return nil }
 
 func levelOne(context.Context, string) (map[string]any, bool, error) {
 	return map[string]any{"level": float64(1)}, true, nil

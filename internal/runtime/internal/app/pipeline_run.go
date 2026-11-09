@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"slices"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -249,8 +250,12 @@ func (p *Pipeline) fireWatchRecord(ctx context.Context, cursor eventlog.LogPosit
 	(*read)++
 	*lastPosition = record.Position
 	telemetry.AddLinkFromW3C(span, record.Envelope.Traceparent, record.Envelope.Tracestate)
-	if _, err := p.watch.FireEvent(ctx, record.EventID, record.EntityID, p.situationFeatures); err != nil {
+	fired, err := p.watch.FireEvent(ctx, record.EventID, record.EntityID, p.situationFeatures)
+	if err != nil {
 		return fmt.Errorf("event %s: %w", record.EventID, err)
+	}
+	if err := p.wakeSituations(ctx, slices.Compact(fired)); err != nil {
+		return fmt.Errorf("wake the situations of event %s's watch fires: %w", record.EventID, err)
 	}
 	return nil
 }

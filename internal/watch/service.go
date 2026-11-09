@@ -60,8 +60,8 @@ func (s *Service) Expire(ctx context.Context) error { return s.app.Expire(ctx) }
 type FeatureSource = app.FeatureSource
 
 // FireEvent fires every active watch scoped to the event's target whose
-// expression matches the features of the watch's Situation, and reports how
-// many fired.
-func (s *Service) FireEvent(ctx context.Context, eventID, target string, source FeatureSource) (int, error) {
+// expression matches the features of the watch's Situation, and reports the
+// Situation of each watch that fired, one entry per fire.
+func (s *Service) FireEvent(ctx context.Context, eventID, target string, source FeatureSource) ([]string, error) {
 	return s.app.FireEvent(ctx, eventID, target, source)
 }

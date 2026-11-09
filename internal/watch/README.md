@@ -3,7 +3,8 @@
 Watch owns derived-trigger watches: bounded, expiring conditions that an
 approved command installs through the effect port, that matching evidence fires
 at most `max_fires` times, and that expire without losing their audit rows. It
-never reaches dispatch, policy or reasoning.
+never reaches dispatch, policy or reasoning itself: `FireEvent` reports the
+Situation of each fire, and the runtime wakes that Situation in the engine.
 
 Read [the vocabulary](UBIQUITOUS_LANGUAGE.md) before changing rules.
 

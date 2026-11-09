@@ -35,6 +35,7 @@ var DeltaKeys = struct {
 	Facts                    string
 	NewFacts                 string
 	Novelty                  string
+	WatchFired               string
 }{
 	PhaseChanged:             "phase_changed",
 	SeverityChange:           "severity_change",
@@ -44,6 +45,7 @@ var DeltaKeys = struct {
 	Facts:                    "facts",
 	NewFacts:                 "new_facts",
 	Novelty:                  "novelty",
+	WatchFired:               "watch_fired",
 }
 
 type Metadata struct {

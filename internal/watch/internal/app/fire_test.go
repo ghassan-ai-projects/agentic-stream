@@ -18,14 +18,14 @@ func TestAWatchFiresOncePerEventAndOnlyWithinItsAllowance(t *testing.T) {
 	install(t, service, watchCommand("cmd-1", "features.temperature > 90", "motor-1", 1, fixtureNow.Add(time.Hour)))
 	hot := map[string]any{"temperature": 95}
 
-	if fired, err := service.FireEvent(t.Context(), "evt-1", "motor-1", featuresOf(hot)); err != nil || fired != 1 {
-		t.Fatalf("first fire = %d, %v; want 1", fired, err)
+	if fired, err := service.FireEvent(t.Context(), "evt-1", "motor-1", featuresOf(hot)); err != nil || len(fired) != 1 {
+		t.Fatalf("first fire = %d, %v; want 1", len(fired), err)
 	}
-	if fired, err := service.FireEvent(t.Context(), "evt-1", "motor-1", featuresOf(hot)); err != nil || fired != 0 {
-		t.Fatalf("redelivered event fired %d, %v; want the duplicate absorbed", fired, err)
+	if fired, err := service.FireEvent(t.Context(), "evt-1", "motor-1", featuresOf(hot)); err != nil || len(fired) != 0 {
+		t.Fatalf("redelivered event fired %d, %v; want the duplicate absorbed", len(fired), err)
 	}
-	if fired, err := service.FireEvent(t.Context(), "evt-2", "motor-1", featuresOf(hot)); err != nil || fired != 0 {
-		t.Fatalf("event after the allowance fired %d, %v; want none", fired, err)
+	if fired, err := service.FireEvent(t.Context(), "evt-2", "motor-1", featuresOf(hot)); err != nil || len(fired) != 0 {
+		t.Fatalf("event after the allowance fired %d, %v; want none", len(fired), err)
 	}
 	if got, want := readWatch(t, db, "cmd-1"), (watchState{Status: "disabled", Remaining: 0, Fires: 1}); got != want {
 		t.Fatalf("watch = %+v, want %+v", got, want)
@@ -55,8 +55,8 @@ func TestAWatchFiresOnlyWhenItsExpressionHoldsForTheEventFeatures(t *testing.T) 
 			db := openDB(t)
 			service := newService(t, db)
 			install(t, service, watchCommand("cmd-1", tc.expression, "zone-1", 1, fixtureNow.Add(time.Hour)))
-			if fired, err := service.FireEvent(t.Context(), "evt-1", "zone-1", featuresOf(tc.features)); err != nil || fired != tc.want {
-				t.Fatalf("fired = %d, %v; want %d", fired, err, tc.want)
+			if fired, err := service.FireEvent(t.Context(), "evt-1", "zone-1", featuresOf(tc.features)); err != nil || len(fired) != tc.want {
+				t.Fatalf("fired = %d, %v; want %d", len(fired), err, tc.want)
 			}
 		})
 	}
@@ -88,8 +88,8 @@ func TestAWatchIgnoresEventsOfAnotherSituationOrTarget(t *testing.T) {
 	service := newService(t, db)
 	install(t, service, installable("cmd-1"))
 	hot := map[string]any{"temperature": 95}
-	if fired, err := service.FireEvent(t.Context(), "evt-1", "motor-2", featuresOf(hot)); err != nil || fired != 0 {
-		t.Fatalf("event of another target fired %d, %v", fired, err)
+	if fired, err := service.FireEvent(t.Context(), "evt-1", "motor-2", featuresOf(hot)); err != nil || len(fired) != 0 {
+		t.Fatalf("event of another target fired %d, %v", len(fired), err)
 	}
 	if fired, err := service.Fire(t.Context(), "cmd-1", "evt-2", "sit-2", "motor-1", hot); err != nil || fired {
 		t.Fatalf("event of another Situation fired = %v, %v", fired, err)
@@ -109,8 +109,8 @@ func TestOneEventFiresEveryMatchingWatchOfItsTarget(t *testing.T) {
 	install(t, service, installable("cmd-1"))
 	install(t, service, watchCommand("cmd-2", "features.temperature > 50", "motor-1", 1, fixtureNow.Add(time.Hour)))
 	install(t, service, watchCommand("cmd-3", "features.temperature > 99", "motor-1", 1, fixtureNow.Add(time.Hour)))
-	if fired, err := service.FireEvent(t.Context(), "evt-1", "motor-1", featuresOf(map[string]any{"temperature": 95})); err != nil || fired != 2 {
-		t.Fatalf("fired = %d, %v; want the two watches whose expressions hold", fired, err)
+	if fired, err := service.FireEvent(t.Context(), "evt-1", "motor-1", featuresOf(map[string]any{"temperature": 95})); err != nil || len(fired) != 2 {
+		t.Fatalf("fired = %d, %v; want the two watches whose expressions hold", len(fired), err)
 	}
 }
 
@@ -143,12 +143,12 @@ func TestAWatchFiresUpToItsExpiryAndNotAtIt(t *testing.T) {
 	hot := map[string]any{"temperature": 95}
 
 	clock.Advance(time.Minute - time.Nanosecond)
-	if fired, err := service.FireEvent(t.Context(), "evt-1", "motor-1", featuresOf(hot)); err != nil || fired != 1 {
-		t.Fatalf("one nanosecond before expiry fired %d, %v; want 1", fired, err)
+	if fired, err := service.FireEvent(t.Context(), "evt-1", "motor-1", featuresOf(hot)); err != nil || len(fired) != 1 {
+		t.Fatalf("one nanosecond before expiry fired %d, %v; want 1", len(fired), err)
 	}
 	clock.Advance(time.Nanosecond)
-	if fired, err := service.FireEvent(t.Context(), "evt-2", "motor-1", featuresOf(hot)); err != nil || fired != 0 {
-		t.Fatalf("at expiry fired %d, %v; want none", fired, err)
+	if fired, err := service.FireEvent(t.Context(), "evt-2", "motor-1", featuresOf(hot)); err != nil || len(fired) != 0 {
+		t.Fatalf("at expiry fired %d, %v; want none", len(fired), err)
 	}
 }
 
@@ -162,8 +162,8 @@ func TestAWatchReadsTheFeaturesOfItsOwnSituation(t *testing.T) {
 		asked = append(asked, situationID)
 		return map[string]any{"temperature": 95}, true, nil
 	}
-	if fired, err := service.FireEvent(t.Context(), "evt-1", "motor-1", source); err != nil || fired != 1 {
-		t.Fatalf("fired = %d, %v; want 1", fired, err)
+	if fired, err := service.FireEvent(t.Context(), "evt-1", "motor-1", source); err != nil || !slices.Equal(fired, []string{"sit-1"}) {
+		t.Fatalf("fired = %v, %v; want the fire reported for its Situation sit-1", fired, err)
 	}
 	if !slices.Equal(asked, []string{"sit-1"}) {
 		t.Fatalf("features asked for situations %v, want only the watch's sit-1", asked)
@@ -176,8 +176,8 @@ func TestASituationWithoutFeaturesIsASkippedNoFireAndASourceFailureIsAnError(t *
 	service := newService(t, db)
 	install(t, service, installable("cmd-1"))
 	unknown := func(context.Context, string) (map[string]any, bool, error) { return nil, false, nil }
-	if fired, err := service.FireEvent(t.Context(), "evt-1", "motor-1", unknown); err != nil || fired != 0 {
-		t.Fatalf("unknown situation: fired = %d, %v; want a skipped no-fire", fired, err)
+	if fired, err := service.FireEvent(t.Context(), "evt-1", "motor-1", unknown); err != nil || len(fired) != 0 {
+		t.Fatalf("unknown situation: fired = %d, %v; want a skipped no-fire", len(fired), err)
 	}
 	failure := errors.New("database is gone")
 	broken := func(context.Context, string) (map[string]any, bool, error) { return nil, false, failure }
