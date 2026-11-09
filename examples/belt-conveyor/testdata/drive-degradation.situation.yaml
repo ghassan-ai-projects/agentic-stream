@@ -32,6 +32,11 @@ kind: SituationSpec
 # load change biases a residual. The diagnosis catalog states the same rules,
 # and the watch preset holds when either rule does: a reasoner that only installs
 # the watch is woken (delta.watch_fired) when the evidence can tell the cause.
+# An episode that gives no accepted decision (it failed, timed out or its
+# decision was rejected) is retried as a new episode once 6 minutes of event
+# time passed while the phase holds (delta.reasoning_failed), at most twice per
+# phase: longer than the 5 minute dispatch lease, and a new episode reasons in a
+# new worker thread, so it never meets the lease of the one that failed.
 #
 # On an empty belt a dry bearing wears with its load cubed, about a fifth as
 # fast as at full feed, so the evidence needs hours to name it. The empty belt
@@ -544,7 +549,7 @@ cognition:
       debounce: 100ms
       cooldown: 1m
       expiresAfter: 10m
-      materialDelta: delta.phase_changed || delta.watch_fired
+      materialDelta: delta.phase_changed || delta.watch_fired || delta.reasoning_failed
     - name: shed_line_needs_emptying
       when: situation.phase == "shedding"
       score: double(situation.severity) * 0.5 + double(delta.novelty) * 25.0
@@ -554,7 +559,7 @@ cognition:
       debounce: 100ms
       cooldown: 1m
       expiresAfter: 10m
-      materialDelta: delta.phase_changed || delta.watch_fired
+      materialDelta: delta.phase_changed || delta.watch_fired || delta.reasoning_failed
     - name: known_cause_needs_its_planned_stop
       when: situation.phase in ["cause_bearing", "cause_gearbox", "cause_undecided"]
       score: double(situation.severity) * 0.5 + double(delta.novelty) * 25.0
@@ -564,7 +569,7 @@ cognition:
       debounce: 100ms
       cooldown: 1m
       expiresAfter: 10m
-      materialDelta: delta.phase_changed
+      materialDelta: delta.phase_changed || delta.reasoning_failed
     - name: isolated_line_needs_its_feed
       when: situation.phase == "isolated"
       score: double(situation.severity) * 0.5 + double(delta.novelty) * 25.0
@@ -574,7 +579,10 @@ cognition:
       debounce: 100ms
       cooldown: 1m
       expiresAfter: 10m
-      materialDelta: delta.phase_changed
+      materialDelta: delta.phase_changed || delta.reasoning_failed
+  retryFailedReasoning:
+    after: 6m
+    max: 2
   executor:
     name: tamoz
     dispatchPolicy: active

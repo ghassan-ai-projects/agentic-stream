@@ -1,10 +1,16 @@
 package main
 
 import (
+	"cmp"
+	"context"
 	"slices"
+	"strings"
+	"sync"
 	"testing"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/testsupport/campaign"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/testsupport/workerfake"
+	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
 )
 
 //nolint:paralleltest // serve reads the approval token and relay from the process environment (t.Setenv)
@@ -41,4 +47,37 @@ func causeWatch(t *testing.T, specPath string) proposal {
 	}
 	t.Fatalf("%s has no install_watch_condition intent", specPath)
 	return proposal{}
+}
+
+//nolint:paralleltest // serve reads the approval token and relay from the process environment (t.Setenv)
+func TestAnEpisodeWhoseDecisionIsRejectedIsRetriedAsANewEpisodeAfterTheEventTimeBackoff(t *testing.T) {
+	t.Setenv("AGENTIC_STREAM_APPROVAL_TOKEN", conveyorApprovalToken)
+	t.Setenv("AGENTIC_STREAM_APPROVAL_RELAY", conveyorRelay)
+	run := startDegradationServe(t, compressedSpec(t, nil), "a", rejectTheFirstEpisode(reasonAboutTheLine(compressedCoverage)))
+	desk := approvalDesk(run.address, conveyorApprovalToken, conveyorApprover, campaign.ApproveAll{})
+	line := connectBeltLine(t, run, bearingDegradation)
+	if !line.runUntil(t, 2*degradationTicks, run.approvingUntilSettled(t, desk, len(isolationRun.order), "isolated")) || !slices.Equal(line.obeyed, isolationRun.order) {
+		t.Fatalf("after %d minutes the host commanded %v, want %v", line.minutes(), line.obeyed, isolationRun.order)
+	}
+	episodes := columnValues(t, run.db, `SELECT v.phase || ' ' || e.lifecycle_status || ' ' || COALESCE((SELECT GROUP_CONCAT(d.validation_status) FROM decisions d WHERE d.episode_id = e.episode_id), '')
+		FROM episodes e JOIN situation_versions v ON v.situation_id = e.situation_id AND v.version = e.situation_version ORDER BY e.accepted_at, e.episode_id`)
+	if len(episodes) < 2 || episodes[0] != "degrading concluded rejected" || !strings.HasPrefix(episodes[1], "degrading concluded accepted") {
+		t.Fatalf("episodes = %v, want the rejected degrading episode followed by a new, accepted one", episodes)
+	}
+}
+
+func rejectTheFirstEpisode(reasoner workerfake.ExecuteFunc) workerfake.ExecuteFunc {
+	var mu sync.Mutex
+	first := ""
+	return func(ctx context.Context, req *runtimev1.EpisodeRequest, emit func(*runtimev1.EpisodeEvent) error) error {
+		mu.Lock()
+		first = cmp.Or(first, req.GetEpisodeId())
+		rejected := first == req.GetEpisodeId()
+		mu.Unlock()
+		if rejected {
+			return workerfake.Propose(req, emit, workerfake.Answer{Hypothesis: unknownCause, DiagnosisCode: unknownCause, Summary: "no level",
+				Intents: []proposal{{Type: "reduce_feed", Risk: "R1", Parameters: map[string]any{}}}})
+		}
+		return reasoner(ctx, req, emit)
+	}
 }

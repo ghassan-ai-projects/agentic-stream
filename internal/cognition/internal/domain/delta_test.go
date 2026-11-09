@@ -129,7 +129,7 @@ func TestAWatchFireIsAMaterialDeltaForTheTriggersThatNameIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	previous := situations.Version{SituationID: "s", Version: 3, Phase: "degrading", Facts: map[string]any{"t": 1.0}}
-	current := situations.Version{SituationID: "s", Version: 4, Phase: "degrading", Facts: map[string]any{"t": 2.0}, WatchFired: true}
+	current := situations.Version{SituationID: "s", Version: 4, Phase: "degrading", Facts: map[string]any{"t": 2.0}, WokenBy: situations.WokenByWatch}
 	for _, tc := range []struct {
 		trigger spec.Trigger
 		current situations.Version
@@ -141,7 +141,7 @@ func TestAWatchFireIsAMaterialDeltaForTheTriggersThatNameIt(t *testing.T) {
 	} {
 		eval, err := rules.Evaluate(EvaluationInput{Trigger: tc.trigger, Current: tc.current, Previous: &previous, Now: time.Now(), DeploymentID: "dep"})
 		if err != nil || eval.Outcome != tc.want {
-			t.Errorf("trigger %s on a version woken %v = %s (%v), want %s", tc.trigger.Name, tc.current.WatchFired, eval.Outcome, err, tc.want)
+			t.Errorf("trigger %s on a version woken by %q = %s (%v), want %s", tc.trigger.Name, tc.current.WokenBy, eval.Outcome, err, tc.want)
 		}
 	}
 	if !rules.Material(current, &previous) {

@@ -89,7 +89,7 @@ type Version struct {
 	Evidence        []string
 	SnapshotJSON    []byte
 	SnapshotSHA256  string
-	WatchFired      bool
+	WokenBy         string
 }
 
 func (e *Engine) Restore(s Situation) error {

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"slices"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -155,8 +154,8 @@ func (p *Pipeline) advanceBatch(ctx context.Context, report *PipelineReport, bef
 		return fmt.Errorf("run live stream engine: %w", err)
 	}
 	report.EventsProcessed = processed
-	if err := p.fireRecentWatches(ctx, before, span); err != nil {
-		return fmt.Errorf("fire watches: %w", err)
+	if err := p.wakeWhatChanged(ctx, before, span); err != nil {
+		return err
 	}
 	return p.runGovernedBatch(ctx, report)
 }
@@ -210,56 +209,6 @@ func (p *Pipeline) currentEventPosition(ctx context.Context) (eventlog.LogPositi
 	return position, nil
 }
 
-func (p *Pipeline) fireRecentWatches(ctx context.Context, before eventlog.LogPosition, span trace.Span) error {
-	cursor := before
-	for {
-		read, lastPosition, err := p.fireWatchPage(ctx, cursor, span)
-		if err != nil {
-			return err
-		}
-		if read < p.watchPage() {
-			return nil
-		}
-		if lastPosition <= cursor {
-			return fmt.Errorf("event log page did not advance past position %d", cursor)
-		}
-		cursor = lastPosition
-	}
-}
-
-func (p *Pipeline) fireWatchPage(ctx context.Context, cursor eventlog.LogPosition, span trace.Span) (int, eventlog.LogPosition, error) {
-	read := 0
-	lastPosition := cursor
-	if err := p.log.Read(ctx, eventlog.ReadRequest{
-		TenantID:      p.tenantID,
-		PartitionID:   -1,
-		AfterPosition: cursor,
-		Limit:         p.watchPage(),
-	}, func(record eventlog.Record) error {
-		return p.fireWatchRecord(ctx, cursor, record, span, &read, &lastPosition)
-	}); err != nil {
-		return 0, 0, fmt.Errorf("read recent events after position %d: %w", cursor, err)
-	}
-	return read, lastPosition, nil
-}
-
-func (p *Pipeline) fireWatchRecord(ctx context.Context, cursor eventlog.LogPosition, record eventlog.Record, span trace.Span, read *int, lastPosition *eventlog.LogPosition) error {
-	if record.Position <= cursor {
-		return fmt.Errorf("event log did not advance past position %d", cursor)
-	}
-	(*read)++
-	*lastPosition = record.Position
-	telemetry.AddLinkFromW3C(span, record.Envelope.Traceparent, record.Envelope.Tracestate)
-	fired, err := p.watch.FireEvent(ctx, record.EventID, record.EntityID, p.situationFeatures)
-	if err != nil {
-		return fmt.Errorf("event %s: %w", record.EventID, err)
-	}
-	if err := p.wakeSituations(ctx, slices.Compact(fired)); err != nil {
-		return fmt.Errorf("wake the situations of event %s's watch fires: %w", record.EventID, err)
-	}
-	return nil
-}
-
 func (p *Pipeline) evaluatePendingIntents(ctx context.Context, report *PipelineReport) error {
 	for {
 		intentID, found, err := p.transactions.NextPendingIntent(ctx, p.tenantID)
@@ -275,13 +224,6 @@ func (p *Pipeline) evaluatePendingIntents(ctx context.Context, report *PipelineR
 
 func (p *Pipeline) evaluateIntent(ctx context.Context, intentID string) error {
 	return p.transactions.EvaluateIntent(ctx, intentID, p.clk.Now().UTC())
-}
-
-func (p *Pipeline) watchPage() int {
-	if p.watchPageSize > 0 {
-		return p.watchPageSize
-	}
-	return defaultWatchPageSize
 }
 
 func (p *Pipeline) recordBatchFailure(before eventlog.LogPosition, err error) {

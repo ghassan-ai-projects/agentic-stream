@@ -36,6 +36,7 @@ var DeltaKeys = struct {
 	NewFacts                 string
 	Novelty                  string
 	WatchFired               string
+	ReasoningFailed          string
 }{
 	PhaseChanged:             "phase_changed",
 	SeverityChange:           "severity_change",
@@ -46,6 +47,7 @@ var DeltaKeys = struct {
 	NewFacts:                 "new_facts",
 	Novelty:                  "novelty",
 	WatchFired:               "watch_fired",
+	ReasoningFailed:          "reasoning_failed",
 }
 
 type Metadata struct {
@@ -185,8 +187,14 @@ type Budget struct {
 }
 
 type Cognition struct {
-	Triggers []Trigger `json:"triggers" yaml:"triggers"`
-	Executor Executor  `json:"executor" yaml:"executor"`
+	Triggers             []Trigger    `json:"triggers" yaml:"triggers"`
+	Executor             Executor     `json:"executor" yaml:"executor"`
+	RetryFailedReasoning *RetryPolicy `json:"retryFailedReasoning,omitempty" yaml:"retryFailedReasoning,omitempty"`
+}
+
+type RetryPolicy struct {
+	After string `json:"after" yaml:"after"`
+	Max   int    `json:"max" yaml:"max"`
 }
 
 type Intent struct {

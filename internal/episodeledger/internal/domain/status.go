@@ -56,3 +56,8 @@ func CanTransitionAttempt(from, to AttemptStatus) bool {
 func IsTerminalAttempt(status AttemptStatus) bool {
 	return !status.Unfinished() && slices.Contains(attemptStatuses, status)
 }
+
+type Unanswered struct {
+	SituationID      string
+	SituationVersion int
+}

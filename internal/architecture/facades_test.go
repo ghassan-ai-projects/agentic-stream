@@ -156,7 +156,7 @@ var facadeSpecs = []facadeSpec{
 	{
 		module:       "internal/engine",
 		constructors: []string{"New", "applicationConfig", "ReplayOwnership"},
-		operations:   operations(to("app", "RunGlobal", "SituationFeatures", "WakeSituations", "ListSituations", "SituationVersion", "PruneHistory", "ResolvedAfter", "ReopenedAfter")),
+		operations:   operations(to("app", "RunGlobal", "SituationFeatures", "WakeSituations", "RetryFailedReasoning", "ListSituations", "SituationVersion", "PruneHistory", "ResolvedAfter", "ReopenedAfter")),
 	},
 	{
 		module: "internal/episodeledger",
@@ -165,7 +165,8 @@ var facadeSpecs = []facadeSpec{
 				"Rebind", "BindRequest", "AbandonRebind", "Abandon", "Conclude", "RetainForRetry", "SupersedeEpoch", "SupersedeCoalesced",
 				"UpsertSchedulerItem", "MarkSchedulerItemAdmitted", "CoalesceSchedulerItems", "CoalesceCostRejectedItem", "CoalesceSkippedItem",
 				"DueSchedulerItems", "PollSchedulerQueue", "ExpireSchedulerItem", "Scheduling", "Episode",
-				"ReadEpisodeFence", "ReadAttemptStatus", "ReadEpisodeLifecycle", "NextDispatchableEpisode", "ReadAdmission", "ReasoningInFlight"),
+				"ReadEpisodeFence", "ReadAttemptStatus", "ReadEpisodeLifecycle", "NextDispatchableEpisode", "ReadAdmission", "ReasoningInFlight",
+				"UnansweredReasoning"),
 			to("domain", "IsTerminalAttempt", "AttemptSQL"),
 		),
 	},

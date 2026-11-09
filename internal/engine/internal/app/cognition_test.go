@@ -2,7 +2,9 @@ package app_test
 
 import (
 	"testing"
+	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/engine/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
@@ -72,5 +74,31 @@ func TestAWokenSituationPublishesAVersionWhoseWatchDeltaAdmitsTheTriggerAgain(t 
 	}
 	if items := countRows(t, rig.db, "SELECT COUNT(*) FROM scheduler_items WHERE situation_version = 2"); items != 1 {
 		t.Fatalf("%d scheduler items on the woken version, want 1", items)
+	}
+}
+
+func TestAFailedReasoningWakesItsSituationOnceItsEventTimeBackoffHasPassed(t *testing.T) {
+	t.Parallel()
+	compiled := cognitionSpec()
+	compiled.Cognition.Triggers[0].MaterialDelta = "delta.phase_changed || delta.reasoning_failed"
+	compiled.Cognition.RetryFailedReasoning = &spec.RetryPolicy{After: "6m", Max: 2}
+	rig := newRigWithCognition(t, compiled, true)
+	appendEnvelope(t, rig.log, thingEnvelope("evt-1", "test.observed", 0, map[string]any{"level": 15.0}))
+	runGlobal(t, rig.service)
+	situationID := queryText(t, rig.db, "SELECT situation_id FROM situations")
+	failed := []domain.FailedReasoning{{SituationID: situationID, SituationVersion: 1}}
+	if err := rig.service.RetryFailedReasoning(t.Context(), failed); err != nil {
+		t.Fatal(err)
+	}
+	if versions := countRows(t, rig.db, "SELECT COUNT(*) FROM situation_versions"); versions != 1 {
+		t.Fatalf("%d situation versions before the backoff, want 1", versions)
+	}
+	appendEnvelope(t, rig.log, thingEnvelope("evt-2", "test.observed", 6*time.Minute, map[string]any{"level": 16.0}))
+	runGlobal(t, rig.service)
+	if err := rig.service.RetryFailedReasoning(t.Context(), failed); err != nil {
+		t.Fatal(err)
+	}
+	if admitted := countRows(t, rig.db, "SELECT COUNT(*) FROM trigger_evaluations WHERE outcome = 'admitted' AND situation_version = 2"); admitted != 1 {
+		t.Fatalf("%d admitted evaluations on the version woken after the backoff, want 1", admitted)
 	}
 }

@@ -136,6 +136,11 @@ type Budget = domain.Budget
 // Cognition groups trigger and executor configuration.
 type Cognition = domain.Cognition
 
+// RetryPolicy wakes an open Situation whose latest episode concluded without an
+// accepted decision once After of event time has passed since the version that
+// episode reasoned on, while its phase is unchanged, at most Max times per phase.
+type RetryPolicy = domain.RetryPolicy
+
 // Intent declares one action type and its authority: the EXACT risk class,
 // the parameter schema, the operator-authored presets, the model-writable
 // fields, and the policy/rate-limit/compensation metadata. P4: these compile
