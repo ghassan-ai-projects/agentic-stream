@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"math"
@@ -151,7 +152,7 @@ func conveyorCatalogOf(plant string) string {
 	return filepath.Join(conveyorPlantWire, "belt-conveyor-"+plant+".catalog.json")
 }
 
-func conveyorSiteOf(string) string { return conveyorSite }
+func conveyorSiteOf(plant string) string { return cmp.Or(plantSites[plant], conveyorSite) }
 
 func bootOf(device string) string {
 	if device == "F-1" {

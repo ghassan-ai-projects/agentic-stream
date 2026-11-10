@@ -1,0 +1,425 @@
+apiVersion: agentic-stream/v1
+kind: SituationSpec
+
+# Belt conveyor M4, story S6 (streams-simulator docs/belt-conveyor-drives/
+# M4-DESIGN.md section 7): the speed master D-1 of conveyor-1 trips. What
+# follows is the plant's, not the line's: with master_loss stop_all the
+# followers D-2 and D-3 lose their speed reference and stop within seconds, and
+# the loaded belt stands stranded (two drives cannot break it loose); with
+# promote D-2 takes the speed loop 2 s later and the two survivors carry the
+# belt, as after S2-A's lost drive. The line reads which from the evidence:
+# master_lost (D-1 at about 0 A one minute after it carried its share), then
+# stranded (every drive at about 0 A, the tail pulley stopped and the feed
+# high within the last minute) or followers_lead (both followers carry at
+# least 20 % more than the master's share for 5 s while the feed is high).
+#
+# followers_lead cuts the feed to the plant's limp feed (R1); stranded stops
+# the feeder (R2), the first step of an empty restart. The rest of that plan is
+# not the line's: the belt's load is not on the wire (the belt gives its tail
+# speed and run command only), so no evidence can say it is empty, and no
+# intent restarts the belt or a drive. A restart is refused because it is not
+# declared. Every window emits on close, because an R2 intent is denied on
+# provisional evidence. The site gives every reading of the line, so the spec
+# declares them all as inputs although no operator reads winding or vibration.
+
+metadata:
+  name: master_loss
+  version: 0.1.0
+  description: Detect the loss of the conveyor's speed master and stop the feeder of a stranded belt or cut the feed to the limp feed the promoted followers carry.
+  labels:
+    domain: belt-conveyor
+    safety: advisory
+
+inputs:
+  - name: drive1_current
+    eventType: conveyor.drive1_current.observed
+    schemaVersion: "1.0"
+    schema: conveyor.drive1_current.observed/1.0
+    partitionKey: entity.id
+    entityType: conveyor
+    classification: internal
+  - name: drive2_current
+    eventType: conveyor.drive2_current.observed
+    schemaVersion: "1.0"
+    schema: conveyor.drive2_current.observed/1.0
+    partitionKey: entity.id
+    entityType: conveyor
+    classification: internal
+  - name: drive3_current
+    eventType: conveyor.drive3_current.observed
+    schemaVersion: "1.0"
+    schema: conveyor.drive3_current.observed/1.0
+    partitionKey: entity.id
+    entityType: conveyor
+    classification: internal
+  - name: feed
+    eventType: conveyor.feed.observed
+    schemaVersion: "1.0"
+    schema: conveyor.feed.observed/1.0
+    partitionKey: entity.id
+    entityType: conveyor
+    classification: internal
+  - name: feed_setpoint
+    eventType: conveyor.feed_setpoint.observed
+    schemaVersion: "1.0"
+    schema: conveyor.feed_setpoint.observed/1.0
+    partitionKey: entity.id
+    entityType: conveyor
+    classification: internal
+  - name: tail_speed
+    eventType: conveyor.tail_speed.observed
+    schemaVersion: "1.0"
+    schema: conveyor.tail_speed.observed/1.0
+    partitionKey: entity.id
+    entityType: conveyor
+    classification: internal
+  - name: drive1_winding
+    eventType: conveyor.drive1_winding.observed
+    schemaVersion: "1.0"
+    schema: conveyor.drive1_winding.observed/1.0
+    partitionKey: entity.id
+    entityType: conveyor
+    classification: internal
+  - name: drive2_winding
+    eventType: conveyor.drive2_winding.observed
+    schemaVersion: "1.0"
+    schema: conveyor.drive2_winding.observed/1.0
+    partitionKey: entity.id
+    entityType: conveyor
+    classification: internal
+  - name: drive3_winding
+    eventType: conveyor.drive3_winding.observed
+    schemaVersion: "1.0"
+    schema: conveyor.drive3_winding.observed/1.0
+    partitionKey: entity.id
+    entityType: conveyor
+    classification: internal
+  - name: drive1_vibration
+    eventType: conveyor.drive1_vibration.observed
+    schemaVersion: "1.0"
+    schema: conveyor.drive1_vibration.observed/1.0
+    partitionKey: entity.id
+    entityType: conveyor
+    classification: internal
+  - name: drive2_vibration
+    eventType: conveyor.drive2_vibration.observed
+    schemaVersion: "1.0"
+    schema: conveyor.drive2_vibration.observed/1.0
+    partitionKey: entity.id
+    entityType: conveyor
+    classification: internal
+  - name: drive3_vibration
+    eventType: conveyor.drive3_vibration.observed
+    schemaVersion: "1.0"
+    schema: conveyor.drive3_vibration.observed/1.0
+    partitionKey: entity.id
+    entityType: conveyor
+    classification: internal
+
+time:
+  watermarkStrategy: bounded_out_of_orderness
+  maxOutOfOrderness: 2s
+  idleTimeout: 1m
+  allowedLateness: 10s
+  latePolicy: correct_and_reconsider
+  clockSkewTolerance: 5s
+
+windows:
+  - name: recent_10s
+    kind: sliding
+    size: 10s
+    slide: 5s
+    emit: on_close
+  - name: last_1m
+    kind: sliding
+    size: 1m
+    slide: 5s
+    emit: on_close
+
+operators:
+  - name: drive1_now
+    kind: aggregate
+    inputs: [drive1_current]
+    field: data.amps
+    window: recent_10s
+    aggregate: latest
+    output: drive1_amps
+    unit: ampere
+  - name: drive2_now
+    kind: aggregate
+    inputs: [drive2_current]
+    field: data.amps
+    window: recent_10s
+    aggregate: latest
+    output: drive2_amps
+    unit: ampere
+  - name: drive3_now
+    kind: aggregate
+    inputs: [drive3_current]
+    field: data.amps
+    window: recent_10s
+    aggregate: latest
+    output: drive3_amps
+    unit: ampere
+  - name: drive1_share
+    kind: aggregate
+    inputs: [drive1_current]
+    field: data.amps
+    window: last_1m
+    aggregate: max
+    output: drive1_peak_amps
+    unit: ampere
+  - name: feed_now
+    kind: aggregate
+    inputs: [feed]
+    field: data.kg_s
+    window: recent_10s
+    aggregate: latest
+    output: feed_kg_s
+    unit: kg_s
+  - name: feed_loaded
+    kind: aggregate
+    inputs: [feed]
+    field: data.kg_s
+    window: last_1m
+    aggregate: max
+    output: feed_peak_kg_s
+    unit: kg_s
+  - name: feed_setpoint_now
+    kind: aggregate
+    inputs: [feed_setpoint]
+    field: data.percent
+    window: recent_10s
+    aggregate: latest
+    output: feed_setpoint_percent
+    unit: percent
+  - name: tail_speed_now
+    kind: aggregate
+    inputs: [tail_speed]
+    field: data.rpm
+    window: recent_10s
+    aggregate: latest
+    output: tail_speed_rpm
+    unit: rpm
+
+situation:
+  type: master_loss
+  entityKey: entity.id
+  occurrence:
+    openWhen: >
+      cel.bind(belt_running_rpm, 1.0, features.tail_speed_rpm > belt_running_rpm)
+    closeWhen: >
+      cel.bind(master_running_amps, 2.0,
+        situation.phase != "running" && features.drive1_amps > master_running_amps)
+    reopenCooldown: 10m
+  initialPhase: running
+  phases:
+    - name: running
+      severity: 10
+    - name: master_lost
+      severity: 60
+    - name: stranded
+      severity: 90
+    - name: followers_lead
+      severity: 80
+    - name: resolved
+      severity: 0
+      terminal: true
+  transitions:
+    - from: running
+      to: master_lost
+      when: >
+        cel.bind(master_lost_amps, 0.5, cel.bind(master_ran_amps, 2.0,
+          features.drive1_amps < master_lost_amps && features.drive1_peak_amps > master_ran_amps))
+      minDuration: 5s
+    - from: master_lost
+      to: stranded
+      when: >
+        cel.bind(drive_stopped_amps, 0.5, cel.bind(belt_stopped_rpm, 1.0, cel.bind(loaded_feed_kg_s, 20.0,
+          features.drive1_amps < drive_stopped_amps && features.drive2_amps < drive_stopped_amps &&
+          features.drive3_amps < drive_stopped_amps && features.tail_speed_rpm < belt_stopped_rpm &&
+          features.feed_peak_kg_s > loaded_feed_kg_s)))
+    - from: master_lost
+      to: followers_lead
+      when: >
+        cel.bind(drive_stopped_amps, 0.5, cel.bind(share_rise, 0.2, cel.bind(loaded_feed_kg_s, 20.0,
+          features.drive1_amps < drive_stopped_amps && features.feed_kg_s > loaded_feed_kg_s &&
+          features.drive2_amps > features.drive1_peak_amps * (1.0 + share_rise) &&
+          features.drive3_amps > features.drive1_peak_amps * (1.0 + share_rise))))
+      minDuration: 5s
+  reducers:
+    - field: facts.drive1_amps
+      strategy: latest_event_time
+      input: drive1_amps
+    - field: facts.drive2_amps
+      strategy: latest_event_time
+      input: drive2_amps
+    - field: facts.drive3_amps
+      strategy: latest_event_time
+      input: drive3_amps
+    - field: facts.drive1_peak_amps
+      strategy: latest_event_time
+      input: drive1_peak_amps
+    - field: facts.feed_kg_s
+      strategy: latest_event_time
+      input: feed_kg_s
+    - field: facts.feed_peak_kg_s
+      strategy: latest_event_time
+      input: feed_peak_kg_s
+    - field: facts.feed_setpoint_percent
+      strategy: latest_event_time
+      input: feed_setpoint_percent
+    - field: facts.tail_speed_rpm
+      strategy: latest_event_time
+      input: tail_speed_rpm
+
+cognition:
+  triggers:
+    - name: stranded_belt_needs_its_feeder_stopped
+      when: situation.phase == "stranded"
+      score: double(situation.severity) * 0.5 + double(delta.novelty) * 25.0
+      threshold: 30
+      lane: fast
+      completeness: any
+      debounce: 100ms
+      cooldown: 1m
+      expiresAfter: 10m
+      materialDelta: delta.phase_changed
+    - name: promoted_followers_need_relief
+      when: situation.phase == "followers_lead"
+      score: double(situation.severity) * 0.5 + double(delta.novelty) * 25.0
+      threshold: 30
+      lane: fast
+      completeness: any
+      debounce: 100ms
+      cooldown: 1m
+      expiresAfter: 2m
+      materialDelta: delta.phase_changed
+  executor:
+    name: tamoz
+    dispatchPolicy: active
+    riskCeiling: R2
+    objective: |
+      The conveyor's speed master D-1 tripped: its current fell to about 0 A
+      while the belt ran loaded. Give the diagnosis drive_tripped and request
+      the one step of the situation's phase. Within seconds the plant either
+      stops the followers with their master or lets one of them take the speed
+      loop; the phase says which. Never restart the belt or a drive: two
+      drives cannot break a loaded belt loose, so a restart before the belt is
+      unloaded only stalls it again.
+      - phase master_lost: no step; the plant has not yet shown what it does
+        without its master.
+      - phase stranded: the followers stopped with the master and the loaded
+        belt stands; stop the feeder so that nothing more is loaded before
+        the belt is unloaded by hand and restarted empty - intent stop_feed
+        (preset empty). Ask in the summary for the manual unloading and the
+        empty restart; neither is a step of this line.
+      - phase followers_lead: a follower took the speed loop and the two
+        survivors carry the belt; cut the feed to the plant's limp feed they
+        carry - intent reduce_feed (preset limp).
+    prompt: >
+      Analyze the immutable snapshot (each drive's current, the master's
+      largest current in the last minute, the feed, its largest value in the
+      last minute, its setpoint and the belt's tail speed) and return a typed
+      decision with a diagnosis and at most one request for the phase's step.
+    modelPolicy: conveyor_reasoner
+    promptVersion: master-loss-v1
+    decisionSchema: schemas/maintenance-decision-v1.json
+    tools:
+      - features_query
+      - evidence_get
+    budget:
+      wallTime: 30s
+      modelCalls: 3
+      inputTokens: 16000
+      outputTokens: 2000
+      toolCalls: 4
+      toolResultBytes: 32768
+      totalToolResultBytes: 65536
+      providerRetries: 1
+      costMicrounits: 400000
+    diagnosisCatalog: '[{"code":"unknown","description":"no confident diagnosis"},{"code":"drive_tripped","description":"a drive stopped carrying load while the belt ran loaded: here the speed master D-1, whose current fell below 0.5 A within a minute of carrying more than 2 A. It names the cause, the master''s drive trip; what the plant did next (its followers stopped or one took the speed loop) is the phase"}]'
+
+actions:
+  intents:
+    - type: install_watch_condition
+      risk: R0
+      description: Keep watching the line when no step is due; Tamoz falls back to it when it recommends nothing. Its condition is the master carrying load again.
+      parameterSchema:
+        type: object
+        properties:
+          entity_id:
+            type: string
+          expires_at:
+            type: string
+          expression:
+            type: [string, number]
+          max_fires:
+            type: integer
+          metric:
+            type: [string, number]
+          situation_id:
+            type: string
+          situation_version:
+            type: integer
+          target:
+            type: string
+          threshold:
+            type: number
+        additionalProperties: false
+      presets:
+        default:
+          expression: features.drive1_amps > 2.0
+          max_fires: 1
+          metric: drive1_amps
+          threshold: 2.0
+      policy: automatic
+      rateLimitPerHour: 4
+    - type: reduce_feed
+      risk: R1
+      description: Set the feeder to a preset feed; limp is the feed this plant's two survivors carry (the plant's device catalog sets it), restore the full feed.
+      parameterSchema:
+        type: object
+        properties:
+          entity_id:
+            type: string
+          situation_id:
+            type: string
+          situation_version:
+            type: integer
+          level:
+            type: string
+            enum: [limp, restore]
+        required: [level]
+        additionalProperties: false
+      modelWritableFields: [level]
+      presets:
+        limp:
+          level: limp
+        restore:
+          level: restore
+      policy: automatic
+      rateLimitPerHour: 6
+    - type: stop_feed
+      risk: R2
+      description: Stop the feeder so that nothing more is loaded onto a stranded belt before it is unloaded and restarted empty.
+      parameterSchema:
+        type: object
+        properties:
+          entity_id:
+            type: string
+          situation_id:
+            type: string
+          situation_version:
+            type: integer
+          level:
+            type: string
+            enum: [empty]
+        required: [level]
+        additionalProperties: false
+      modelWritableFields: [level]
+      presets:
+        empty:
+          level: empty
+      policy: approval
+      rateLimitPerHour: 2

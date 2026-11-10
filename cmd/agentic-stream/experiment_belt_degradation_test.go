@@ -171,7 +171,7 @@ func startDegradationServe(t *testing.T, specPath, plant string, reasoner worker
 	applyPrincipalsFile(t, run.db, conveyorPrincipals)
 	workerSocket := filepath.Join(dir, "worker.sock")
 	serveWorker(t, workerSocket, reasoner)
-	run.stop = servePlantWire(t, run.plantWireServe, run.address, specPath, conveyorKinds, conveyorSite, "--device-catalog", conveyorCatalogOf(plant),
+	run.stop = servePlantWire(t, run.plantWireServe, run.address, specPath, conveyorKinds, conveyorSiteOf(plant), "--device-catalog", conveyorCatalogOf(plant),
 		"--dispatch-lease", conveyorRouteLease, "--worker-socket", workerSocket, "--worker-name", "tamoz", "--event-schemas", conveyorEventSchemas)
 	return run
 }
