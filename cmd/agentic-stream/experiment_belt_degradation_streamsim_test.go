@@ -129,7 +129,7 @@ func (c conveyorTwin) playBarrierPaced(t *testing.T, play twinPlay, story twinSt
 	}
 	horizon := time.Duration(readJSONFile(t, plan)["horizon_s"].(float64) * float64(time.Second))
 	c.scoreVerdict(t, run.db, runDir, campaign.Window{From: ran.start(), Until: ran.start().Add(horizon)},
-		campaign.Verdict{Version: "belt-m4", Arm: "planned-stop", Subjects: story.subjects(c.subjects(t, play.story.Plant, map[string]string{story.diagnosis: story.fault}))})
+		campaign.Verdict{Version: "belt-m4", Arm: "planned-stop", Subjects: story.subjects(c.subjects(t, play.story.Plant, "D-3", map[string]string{story.diagnosis: story.fault}))})
 	if quarantined := countRows(t, run.db, "event_quarantine"); quarantined != 0 {
 		t.Fatalf("%d events quarantined, want none", quarantined)
 	}

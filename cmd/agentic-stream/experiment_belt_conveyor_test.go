@@ -151,6 +151,8 @@ func conveyorCatalogOf(plant string) string {
 	return filepath.Join(conveyorPlantWire, "belt-conveyor-"+plant+".catalog.json")
 }
 
+func conveyorSiteOf(string) string { return conveyorSite }
+
 func bootOf(device string) string {
 	if device == "F-1" {
 		return benchBoot
