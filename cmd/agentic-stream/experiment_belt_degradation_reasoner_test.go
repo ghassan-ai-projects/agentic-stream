@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/testsupport/workerfake"
 	runtimev1 "github.com/ghassan-ai-projects/agentic-stream/proto/agenticstream/runtime/v1"
 )
@@ -122,7 +123,7 @@ func (s lineSnapshot) cause(coverage lineCoverage) string {
 	case !lost && s.gearboxByWinding(coverage):
 		return "gearbox_seizing"
 	case lost && s.Phase == "watch":
-		return s.lostReading()
+		return s.lostReading(coverage)
 	}
 	return untoldCause
 }
@@ -143,7 +144,12 @@ func (s lineSnapshot) bearingByWinding(coverage lineCoverage) bool {
 }
 
 func (s lineSnapshot) vibrationLost(coverage lineCoverage) bool {
-	return s.vibrationStuck(coverage)
+	return s.vibrationStuck(coverage) || s.stale("drive1_vibration") || s.stale("drive2_vibration") || s.stale("drive3_vibration")
+}
+
+func (s lineSnapshot) stale(input string) bool {
+	stale, _ := s.Facts[spec.InputStaleFact(input)].(bool)
+	return stale
 }
 
 func (s lineSnapshot) vibrationStuck(coverage lineCoverage) bool {
@@ -156,8 +162,14 @@ func (s lineSnapshot) vibrationRange(drive string) float64 {
 	return s.fact(drive+"_vibration_max_15m") - s.fact(drive+"_vibration_min_15m")
 }
 
-func (s lineSnapshot) lostReading() string {
-	return stuckVibration.diagnosis
+func (s lineSnapshot) lostReading(coverage lineCoverage) string {
+	switch {
+	case s.stale("drive3_vibration"):
+		return droppedVibration.diagnosis
+	case s.vibrationStuck(coverage):
+		return stuckVibration.diagnosis
+	}
+	return spec.UnknownDiagnosis
 }
 
 func (s lineSnapshot) leastReadings(feature string) float64 {

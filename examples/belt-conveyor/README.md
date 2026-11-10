@@ -45,6 +45,13 @@ master, of kind `drive_master`, and D-2, D-3 its followers, of kind
   vibration); and on the empty belt the bearing is judged by the winding:
   D-3's residual at least 3 K and its 30 minute slope residual from 0.5 up to
   below 2 K/h, a winding that still rises, slower than a seizing gearbox's.
+  A reading that stops arriving (story S5b: the vibration channel drops out)
+  is lost too. The three vibration inputs are `completenessRole: advisory`
+  ([advisory inputs](../../documentation/design/advisory-inputs.md)): a
+  15 minute `missing_heartbeat` on each, judged in event time, sets the fact
+  `input_stale.<input>` instead of making the line uncertain, so the line
+  keeps its R2 steps; they rest on the winding and the currents, which stay
+  required. The reasoner reports D-3's lost reading as `sensor_lost`.
 
 - `drive_degradation_planned_stop` (M4, story S1-B on plant `belt-conveyor-drives-b`,
   whose survivors have no margin and whose limp feed, 18 %, earns too little to
@@ -109,7 +116,7 @@ The tests are in `cmd/agentic-stream/experiment_belt_conveyor*_test.go` (M2) and
 `experiment_belt_degradation*_test.go` (M3): against a fake plant wire node that
 replays backdated readings at the sensors' cadences and obeys the host's
 commands, and against the streams-simulator twin (skipped without
-`STREAMSIM_BIN`; M3's stories S1-A, S3-A and S4-A and M4's S5-A run barrier-paced, and the
+`STREAMSIM_BIN`; M3's stories S1-A, S3-A and S4-A and M4's S5-A and S5b-A run barrier-paced, and the
 planned-stop spec plays S1-B, S4-B, and S4-A and S0-A on plant A's catalog, where
 nothing degrades), graded by `streamsim outcome` and `streamsim score`. On the
 planned-stop story the verdict carries D-3's predicted trip

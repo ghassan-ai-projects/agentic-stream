@@ -58,14 +58,15 @@ type Metadata struct {
 }
 
 type Input struct {
-	Name            string `json:"name" yaml:"name"`
-	EventType       string `json:"eventType" yaml:"eventType"`
-	SchemaVersion   string `json:"schemaVersion" yaml:"schemaVersion"`
-	SchemaRef       string `json:"schema" yaml:"schema"`
-	PartitionKey    string `json:"partitionKey" yaml:"partitionKey"`
-	EntityType      string `json:"entityType" yaml:"entityType"`
-	Classification  string `json:"classification,omitempty" yaml:"classification,omitempty"`
-	MaxPayloadBytes int    `json:"maxPayloadBytes,omitempty" yaml:"maxPayloadBytes,omitempty"`
+	Name             string `json:"name" yaml:"name"`
+	EventType        string `json:"eventType" yaml:"eventType"`
+	SchemaVersion    string `json:"schemaVersion" yaml:"schemaVersion"`
+	SchemaRef        string `json:"schema" yaml:"schema"`
+	PartitionKey     string `json:"partitionKey" yaml:"partitionKey"`
+	EntityType       string `json:"entityType" yaml:"entityType"`
+	Classification   string `json:"classification,omitempty" yaml:"classification,omitempty"`
+	MaxPayloadBytes  int    `json:"maxPayloadBytes,omitempty" yaml:"maxPayloadBytes,omitempty"`
+	CompletenessRole string `json:"completenessRole,omitempty" yaml:"completenessRole,omitempty"`
 }
 
 type TimePolicy struct {

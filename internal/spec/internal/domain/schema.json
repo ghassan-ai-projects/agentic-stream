@@ -163,6 +163,9 @@
           "minimum": 256,
           "maximum": 16777216,
           "default": 1048576
+        },
+        "completenessRole": {
+          "enum": ["required", "advisory"]
         }
       }
     },

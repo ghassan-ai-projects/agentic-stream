@@ -214,6 +214,15 @@ type Promotion = domain.Promotion
 // within a relative tolerance of the baseline feature frozen at decision time.
 type Recovery = domain.Recovery
 
+// InputStaleFacts is the situation fact group that holds, per advisory input,
+// whether its loss has been detected (input_stale.<name>); CEL reads it as
+// features.input_stale.<name>.
+const InputStaleFacts = domain.InputStaleFacts
+
+// InputStaleFact names the situation fact that holds whether the advisory
+// input has been lost.
+func InputStaleFact(input string) string { return domain.InputStaleFact(input) }
+
 // UnknownDiagnosis is the diagnosis code that never becomes a rule.
 const UnknownDiagnosis = domain.UnknownDiagnosis
 

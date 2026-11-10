@@ -11,7 +11,8 @@
 | Facts | The reduced values of a situation. | `Situation.Facts` | `situations.state_json` (canonical reducer state) |
 | Evidence | The identifiers of the events and features a situation rests on. | `Situation.Evidence` | `lineage_sets` (owned by `engine`) |
 | Engine | Applies features to situations for one partition and keeps its in-memory index. | `Engine`, `ApplyFeature`, `Restore`, `Reset` | — |
-| CEL features | The `features` view shared with cognition: facts and evidence with every missing operator output defaulted. | `CELFeatures` | — |
+| CEL features | The `features` view shared with cognition: facts and evidence with every missing operator output defaulted, and `input_stale.<input>` for each advisory input. | `CELFeatures` | — |
+| Input staleness | The fact `input_stale.<input>` that an advisory input's heartbeat sets instead of the situation's completeness; its flip publishes a version. | `recordInputStaleness` | `situations.state_json` |
 
 ## Retired words
 

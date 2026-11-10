@@ -43,6 +43,8 @@ Its first diagram has four stages. The pages below add one boundary at a time;
   audits them and keeps their circuits, fires and verified cases.
 - [Extrapolate operator](extrapolate-operator.md) — the time until a
   fitted quantity reaches a limit, with its calibration on a bearing failure.
+- [Advisory inputs](advisory-inputs.md) — an input whose loss is a fact the
+  rules read, not uncertainty that denies every consequential step.
 
 ## Drift rule
 

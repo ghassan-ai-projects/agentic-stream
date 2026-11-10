@@ -50,6 +50,7 @@ var (
 		"s3-a": {routes: []string{"reduce_feed", "stop_feed", "stop_belt"}, readBacks: beltStopRun.readBacks,
 			unharmed: []string{"D-1", "D-2"}, device: "B-1", diagnosis: "gearbox_seizing", fault: "conveyor_drive__gear_oil_loss", faulted: "D-3"},
 		"s5-a":              bearingIsolation.withLost(stuckVibration),
+		"s5b-a":             bearingIsolation.withLost(droppedVibration),
 		"s4-a":              {faulted: "F-1"},
 		"s4-b":              plannedStopUnmoved,
 		"s4-a-planned-stop": plannedStopUnmoved.of("s4-a"),

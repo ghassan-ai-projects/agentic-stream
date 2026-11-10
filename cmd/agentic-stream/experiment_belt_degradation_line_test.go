@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"testing"
 	"time"
 
@@ -72,8 +73,8 @@ func (l *beltLine) advance(t *testing.T) {
 	at := l.now().UnixNano()
 	l.node.Send(beltData("F-1", at, l.plant.setpoint, l.plant.feed()))
 	l.node.Send(beltData("B-1", at, beltTailRPM*onOff(l.plant.beltRunning), onOff(l.plant.beltRunning)))
-	for i, drive := range beltDrives {
-		l.node.Send(beltData(drive, at, l.plant.driveReadings(i)...))
+	for i := range beltDrives {
+		l.node.Send(l.driveData(i, at))
 	}
 	l.node.Send(map[string]any{"type": "NSYNC", "lane": "control", "through_seq": 0, "world_time_ns": at})
 	l.awaitBarrier(t)
@@ -86,6 +87,14 @@ func (l *beltLine) sendWindingBetweenMinutes() {
 			l.node.Send(map[string]any{"type": "DDATA", "lane": "data", "device": drive, "boot_id": bootOf(drive), "historical": false, "metrics": []any{winding}})
 		}
 	}
+}
+
+func (l *beltLine) driveData(drive int, atNS int64) map[string]any {
+	data := beltData(beltDrives[drive], atNS, l.plant.driveReadings(drive)...)
+	if l.plant.dropped && beltDrives[drive] == "D-3" {
+		data["metrics"] = slices.Delete(data["metrics"].([]any), 2, 3)
+	}
+	return data
 }
 
 func beltData(device string, atNS int64, values ...float64) map[string]any {

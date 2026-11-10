@@ -26,7 +26,7 @@ type beltStory func(minute int) beltDisturbance
 
 type beltDisturbance struct {
 	wear, heat, surge, drag float64
-	frozen                  bool
+	frozen, dropped         bool
 }
 
 type beltPlant struct {

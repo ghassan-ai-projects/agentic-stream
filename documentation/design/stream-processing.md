@@ -64,7 +64,10 @@ state under any policy. The engine records every late or skewed event's disposit
 `clock_skew`) in the `event_time_dispositions` table, and the event itself stays in the event log.
 
 Missing heartbeat and source-health signals can make completeness uncertain.
-Incomplete evidence is explicit state, not a silent default.
+Incomplete evidence is explicit state, not a silent default. An input declared
+`completenessRole: advisory` is the exception: its loss, judged in event time,
+becomes the fact `input_stale.<input>` instead of uncertainty
+([advisory inputs](advisory-inputs.md)).
 
 When applying an event fails the same way on every attempt (an operator or a
 Situation rule refuses it), the engine records the failure in

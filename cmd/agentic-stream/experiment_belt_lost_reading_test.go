@@ -10,9 +10,14 @@ import (
 
 type lostReading struct{ diagnosis, fault string }
 
-var lostReadingEdits = map[string]string{"minDuration: " + undecidedCauseWait: "minDuration: 15m"}
+const lostReadingLead = 4
 
-var stuckVibration = lostReading{diagnosis: "sensor_stuck", fault: "conveyor_drive__vibration__frozen"}
+var lostReadingEdits = map[string]string{"duration: 15m": "duration: 3m", "minDuration: " + undecidedCauseWait: "minDuration: 15m"}
+
+var (
+	stuckVibration   = lostReading{diagnosis: "sensor_stuck", fault: "conveyor_drive__vibration__frozen"}
+	droppedVibration = lostReading{diagnosis: "sensor_lost", fault: "conveyor_drive__vibration__dropout"}
+)
 
 func (s twinStory) withLost(lost lostReading) twinStory {
 	s.lost = lost
@@ -83,4 +88,27 @@ func assertDiagnosedFirst(t *testing.T, dbPath string, first, then string) {
 	if len(diagnoses) == 0 || diagnoses[0] != first || !slices.Contains(diagnoses, then) {
 		t.Fatalf("accepted diagnoses in event time = %v, want %s first and %s later", diagnoses, first, then)
 	}
+}
+
+//nolint:paralleltest // serve reads the approval token and relay from the process environment (t.Setenv)
+func TestADroppedAdvisoryVibrationReadingKeepsTheLinesR2StepsAndTheBearingIsJudgedByItsWinding(t *testing.T) {
+	t.Setenv("AGENTIC_STREAM_APPROVAL_TOKEN", conveyorApprovalToken)
+	t.Setenv("AGENTIC_STREAM_APPROVAL_RELAY", conveyorRelay)
+	run := startDegradationServe(t, compressedSpec(t, lostReadingEdits), "a", reasonAboutTheLine(compressedCoverage))
+	desk := approvalDesk(run.address, conveyorApprovalToken, conveyorApprover, campaign.ApproveAll{})
+	line := connectBeltLine(t, run, droppedBearing)
+	if !line.runUntil(t, degradationTicks, run.approvingUntilSettled(t, desk, len(isolationRun.order), "isolated")) || !slices.Equal(line.obeyed, isolationRun.order) {
+		t.Fatalf("after %d minutes the host commanded %v, want %v", line.minutes(), line.obeyed, isolationRun.order)
+	}
+	assertDiagnosedFirst(t, run.db, droppedVibration.diagnosis, "bearing")
+	assertR2PassedOnSettledFeatures(t, run.db, 2)
+	if uncertain := columnValues(t, run.db, "SELECT version FROM situation_versions WHERE completeness = 'uncertain'"); len(uncertain) != 0 {
+		t.Fatalf("uncertain versions %v, want none: the lost reading is advisory", uncertain)
+	}
+}
+
+func droppedBearing(minute int) beltDisturbance {
+	disturbance := stuckBearing(minute - lostReadingLead)
+	disturbance.frozen, disturbance.dropped = false, minute >= 2
+	return disturbance
 }

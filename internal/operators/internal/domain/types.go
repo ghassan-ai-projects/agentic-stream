@@ -55,6 +55,7 @@ type HeartbeatState struct {
 	LastProcessingTime *time.Time `json:"last_processing_time,omitempty"`
 	Traceparent        string     `json:"traceparent,omitempty"`
 	Tracestate         string     `json:"tracestate,omitempty"`
+	Stale              bool       `json:"stale,omitempty"`
 }
 
 type RuntimeState struct {

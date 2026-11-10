@@ -198,7 +198,7 @@ func (r *OperatorRuntime) ApplyEventAt(ctx context.Context, ps *PartitionState, 
 	if !ok {
 		return nil, ps, nil
 	}
-	features, err := r.applyInput(ctx, ps, inputName, env, watermark, processingTime)
+	features, err := r.applyArrival(ctx, ps, inputName, env, watermark, processingTime)
 	if err != nil {
 		return nil, ps, err
 	}
