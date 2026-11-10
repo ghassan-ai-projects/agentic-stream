@@ -22,9 +22,9 @@ const (
 	masterLostAmps    = 0.5
 	masterShareAmps   = 3.05
 	survivorShareAmps = 4.35
-	masterLossTripAt  = time.Minute
+	masterLossTripAt  = 30 * time.Second
 	masterLossCoast   = 15 * time.Second
-	masterLossHistory = 2 * time.Minute
+	masterLossHistory = 80 * time.Second
 )
 
 var (
@@ -75,39 +75,45 @@ func TestTheMasterLossSpecSettlesEveryWindowAndDeclaresNoRestart(t *testing.T) {
 	}
 }
 
+var (
+	strandedBelt     = masterLoss{plant: "s6-stop", stopAll: true, setpoint: "0", route: "stop_feed", phases: []string{"running", "master_lost", "stranded"}}
+	promotedFollower = masterLoss{plant: "s6-promote", setpoint: "54", route: "reduce_feed", phases: []string{"running", "master_lost", "followers_lead"}}
+)
+
 //nolint:paralleltest // serve reads the approval token and relay from the process environment (t.Setenv)
-func TestALostSpeedMasterStopsTheFeederOfAStrandedBeltOrCutsTheFeedForThePromotedFollowers(t *testing.T) {
+func TestALostSpeedMasterWhoseFollowersStopWithItStopsTheFeederOfTheStrandedBelt(t *testing.T) {
 	t.Setenv("AGENTIC_STREAM_APPROVAL_TOKEN", conveyorApprovalToken)
 	t.Setenv("AGENTIC_STREAM_APPROVAL_RELAY", conveyorRelay)
-	for name, loss := range map[string]masterLoss{
-		"the followers stop with their master": {plant: "s6-stop", stopAll: true, setpoint: "0", route: "stop_feed",
-			phases: []string{"running", "master_lost", "stranded"}},
-		"a follower takes the speed loop": {plant: "s6-promote", setpoint: "54", route: "reduce_feed",
-			phases: []string{"running", "master_lost", "followers_lead"}},
-	} {
-		t.Run(name, func(t *testing.T) {
-			run := startDegradationServe(t, masterLossSpec, loss.plant, answerTheMastersTrip(masterLossSteps))
-			t.Cleanup(func() { logCommandOutcomes(t, run.db) })
-			stopApproving := approveWhileRunning(t, run)
-			node := masterLossNode(t, run.socket)
-			loss.play(node, time.Now().Add(-masterLossHistory))
-			command := awaitCommand(t, node)
-			if args, _ := command["args"].(map[string]any); command["device"] != "F-1" || command["command"] != "set_feed" || args["feed_setpoint"] != json.Number(loss.setpoint) {
-				t.Fatalf("DCMD = %v, want set_feed {feed_setpoint: %s} on F-1", command, loss.setpoint)
-			}
-			answer(node, command, "DRECEIPT", "status", "accepted")
-			answer(node, command, "DRESULT", "reported_outcome", "succeeded")
-			node.Send(outputReading("F-1", json.Number(loss.setpoint)))
-			waitForRow(t, run.db, "SELECT COUNT(*) FROM commands WHERE effector_route = '"+loss.route+"' AND status = 'succeeded'", loopTimeout)
-			stopApproving()
-			assertTwinReadBack(t, run.db, "set_feed", "feed_setpoint", loss.setpoint)
-			assertPhases(t, run.db, loss.phases)
-			assertRoutes(t, run.db, []string{loss.route})
-			assertEveryStepNames(t, run.db, masterTripped)
-			if quarantined := countRows(t, run.db, "event_quarantine"); quarantined != 0 {
-				t.Fatalf("%d events quarantined, want none", quarantined)
-			}
-		})
+	strandedBelt.assertTheLineTakesItsStep(t)
+}
+
+func TestALostSpeedMasterWhoseFollowerTakesTheSpeedLoopCutsTheFeedToTheLimpFeed(t *testing.T) {
+	t.Parallel()
+	promotedFollower.assertTheLineTakesItsStep(t)
+}
+
+func (l masterLoss) assertTheLineTakesItsStep(t *testing.T) {
+	t.Helper()
+	run := startDegradationServe(t, masterLossSpec, l.plant, answerTheMastersTrip(masterLossSteps))
+	t.Cleanup(func() { logCommandOutcomes(t, run.db) })
+	stopApproving := approveWhileRunning(t, run)
+	node := masterLossNode(t, run.socket)
+	l.play(node, time.Now().Add(-masterLossHistory))
+	command := awaitCommand(t, node)
+	if args, _ := command["args"].(map[string]any); command["device"] != "F-1" || command["command"] != "set_feed" || args["feed_setpoint"] != json.Number(l.setpoint) {
+		t.Fatalf("DCMD = %v, want set_feed {feed_setpoint: %s} on F-1", command, l.setpoint)
+	}
+	answer(node, command, "DRECEIPT", "status", "accepted")
+	answer(node, command, "DRESULT", "reported_outcome", "succeeded")
+	node.Send(outputReading("F-1", json.Number(l.setpoint)))
+	waitForRow(t, run.db, "SELECT COUNT(*) FROM commands WHERE effector_route = '"+l.route+"' AND status = 'succeeded'", loopTimeout)
+	stopApproving()
+	assertTwinReadBack(t, run.db, "set_feed", "feed_setpoint", l.setpoint)
+	assertPhases(t, run.db, l.phases)
+	assertRoutes(t, run.db, []string{l.route})
+	assertEveryStepNames(t, run.db, masterTripped)
+	if quarantined := countRows(t, run.db, "event_quarantine"); quarantined != 0 {
+		t.Fatalf("%d events quarantined, want none", quarantined)
 	}
 }
 
@@ -152,7 +158,7 @@ func (l masterLoss) play(node *plantwirefake.Node, from time.Time) {
 		node.Send(beltData("F-1", atNS, 100, conveyorFullFeed*onOff(running)))
 		node.Send(beltData("B-1", atNS, beltTailRPM*onOff(running), 1))
 		for i, amps := range l.currents(tripped) {
-			node.Send(beltData(beltDrives[i], atNS, amps, beltWindingC, beltVibrationMmS, 1))
+			node.Send(beltData(beltDrives[i], atNS, amps))
 		}
 	}
 }
