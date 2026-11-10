@@ -142,8 +142,12 @@ start or reset call and the same trips as doing nothing (a restart of the loaded
 belt would stall it again). An S6 plant steps about 2.6 times slower than plant
 A: a 3 h row plays in about 4 min.
 
-`experiment_belt_live_*_test.go` plays S1-A, S2-B and S3-A with the real Tamoz
-worker as the reasoner instead (arm B: Tamoz reasons, the specs act). It calls a
+`experiment_belt_live_*_test.go` plays S1-A, S1-B, S2-B, S3-A, S5-A, S5B-A,
+S6-A-promote and S6-A-stop with the real Tamoz worker as the reasoner instead
+(arm B: Tamoz reasons, the specs act). Each live story takes its spec, routes,
+read-backs, faulted device and verdict subjects from the scripted twin's story
+and is judged by the same bar; `TestEveryLiveStoryHasACompleteLiveConfiguration`
+checks each one's spec, catalog and site without a model. It calls a
 real model and runs only when asked: `CONVEYOR_LIVE_MODEL=1`,
 `CONVEYOR_TAMOZ_DIR` (a Tamoz checkout, run under `rbenv`), `ZAI_API_KEY` in the
 environment, `STREAMSIM_BIN`, and optionally `CONVEYOR_LIVE_ROWS` (seed rows of
