@@ -94,7 +94,11 @@ func TestALostSpeedMasterWhoseFollowerTakesTheSpeedLoopCutsTheFeedToTheLimpFeed(
 
 func (l masterLoss) assertTheLineTakesItsStep(t *testing.T) {
 	t.Helper()
-	run := startDegradationServe(t, masterLossSpec, l.plant, answerTheMastersTrip(masterLossSteps))
+	l.assertTheLineTakesItsStepOn(t, startDegradationServe(t, masterLossSpec, l.plant, answerTheMastersTrip(masterLossSteps)))
+}
+
+func (l masterLoss) assertTheLineTakesItsStepOn(t *testing.T, run degradationServe) {
+	t.Helper()
 	t.Cleanup(func() { logCommandOutcomes(t, run.db) })
 	stopApproving := approveWhileRunning(t, run)
 	node := masterLossNode(t, run.socket)
