@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"math"
@@ -150,6 +151,8 @@ func conveyorNode(t *testing.T, socket string) *plantwirefake.Node {
 func conveyorCatalogOf(plant string) string {
 	return filepath.Join(conveyorPlantWire, "belt-conveyor-"+plant+".catalog.json")
 }
+
+func conveyorSiteOf(plant string) string { return cmp.Or(plantSites[plant], conveyorSite) }
 
 func bootOf(device string) string {
 	if device == "F-1" {

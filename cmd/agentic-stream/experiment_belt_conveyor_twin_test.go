@@ -93,6 +93,7 @@ func (r twinRun) onsetOf(t *testing.T, entity string) time.Time {
 
 type outcomeGrade struct {
 	Valid    bool             `json:"valid"`
+	Easy     bool             `json:"easy"`
 	Runs     []outcomeRun     `json:"runs"`
 	Verdicts []outcomeVerdict `json:"verdicts"`
 }
@@ -101,6 +102,9 @@ type outcomeRun struct {
 	Mode  string `json:"mode"`
 	Facts struct {
 		Entities []outcomeEntity `json:"entities"`
+		Calls    []struct {
+			Effector string `json:"effector"`
+		} `json:"calls"`
 	} `json:"facts"`
 }
 
@@ -127,17 +131,23 @@ type outcomeVerdict struct {
 
 func (c conveyorTwin) assertTheLineIsSaved(t *testing.T, runDir string, unharmed ...string) outcomeGrade {
 	t.Helper()
-	output := c.run(t, "outcome", "--run", runDir, "--domains-dir", c.examples(), "--adapters-dir", c.adapters())
-	var grade outcomeGrade
-	if err := json.Unmarshal(output, &grade); err != nil {
-		t.Fatalf("decode the outcome %s: %v", output, err)
-	}
-	t.Logf("outcome verdicts %+v", grade.Verdicts)
+	grade, output := c.outcome(t, runDir)
 	if !grade.Valid || !slices.ContainsFunc(grade.Verdicts, func(v outcomeVerdict) bool { return v.Baseline == "do_nothing" && v.Verdict == "beats" }) {
 		t.Fatalf("outcome %s: want a valid story whose run beats doing nothing", output)
 	}
 	assertNoTripNorStrandedBelt(t, grade, output, unharmed)
 	return grade
+}
+
+func (c conveyorTwin) outcome(t *testing.T, runDir string) (outcomeGrade, []byte) {
+	t.Helper()
+	output := c.run(t, "outcome", "--run", runDir, "--domains-dir", c.examples(), "--adapters-dir", c.adapters())
+	var grade outcomeGrade
+	if err := json.Unmarshal(output, &grade); err != nil {
+		t.Fatalf("decode the outcome %s: %v", output, err)
+	}
+	t.Logf("outcome valid %t, easy %t, verdicts %+v", grade.Valid, grade.Easy, grade.Verdicts)
+	return grade, output
 }
 
 func assertNoTripNorStrandedBelt(t *testing.T, grade outcomeGrade, output []byte, unharmed []string) {
@@ -163,24 +173,36 @@ func (c conveyorTwin) scoreVerdict(t *testing.T, dbPath, runDir string, window c
 	t.Logf("score:\n%s", output)
 }
 
-func (c conveyorTwin) subjects(t *testing.T, plant string, faults map[string]string) campaign.Subjects {
+func TestTheTwinNamesEachActionByTheRawCommandOfItsDevicesKind(t *testing.T) {
+	t.Parallel()
+	binary, repository := streamsimNode(t)
+	subjects := conveyorTwin{binary: binary, repository: repository}.subjects(t, "a", "D-3", nil)
+	for route, want := range map[string][2]string{"isolate_drive": {"D-3", "conveyor_drive__stop_drive"}, "reduce_feed": {"F-1", "bulk_feeder__set_feed"}} {
+		if device, raw := subjects.Acted(route, "conveyor-1"); device != want[0] || raw != want[1] {
+			t.Errorf("%s acts on %s with %s, want %v: a role kind's board names the same command", route, device, raw, want)
+		}
+	}
+}
+
+func (c conveyorTwin) subjects(t *testing.T, plant, faulted string, faults map[string]string) campaign.Subjects {
 	t.Helper()
-	routes, raw := readConveyorRoutes(t, plant), c.rawCommands(t)
+	routes, kinds, raw := readConveyorRoutes(t, plant), siteKinds(t, conveyorSiteOf(plant)), c.rawCommands(t)
 	return campaign.Subjects{
 		Detected: func(entityID, diagnosed string) (string, string) {
 			if fault, known := faults[diagnosed]; known {
-				return "D-3", fault
+				return faulted, fault
 			}
 			switch diagnosed {
 			case untoldCause:
-				return "D-3", ""
+				return faulted, ""
 			case spec.UnknownDiagnosis:
 				return "", ""
 			}
 			return entityID, diagnosed
 		},
 		Acted: func(route, target string) (string, string) {
-			return routes[route].TargetBindings[target], raw[routes[route].Operation]
+			device := routes[route].TargetBindings[target]
+			return device, raw[kinds[device]][routes[route].Operation]
 		},
 	}
 }
@@ -200,13 +222,13 @@ func readConveyorRoutes(t *testing.T, plant string) map[string]conveyorRoute {
 	return catalog.Routes
 }
 
-func (c conveyorTwin) rawCommands(t *testing.T) map[string]string {
+func (c conveyorTwin) rawCommands(t *testing.T) map[string]map[string]string {
 	t.Helper()
 	boards, err := filepath.Glob(filepath.Join(c.kinds(), "*.board.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw := map[string]string{}
+	raw := map[string]map[string]string{}
 	for _, path := range boards {
 		var board struct {
 			Kinds map[string]struct {
@@ -216,13 +238,29 @@ func (c conveyorTwin) rawCommands(t *testing.T) map[string]string {
 			} `json:"kinds"`
 		}
 		decodeFile(t, path, &board)
-		for _, kind := range board.Kinds {
-			for name, command := range kind.Commands {
-				raw[name] = command.Raw
+		for name, kind := range board.Kinds {
+			raw[name] = map[string]string{}
+			for command, mapped := range kind.Commands {
+				raw[name][command] = mapped.Raw
 			}
 		}
 	}
 	return raw
+}
+
+func siteKinds(t *testing.T, sitePath string) map[string]string {
+	t.Helper()
+	var site struct {
+		Devices map[string]struct {
+			Kind string `json:"kind"`
+		} `json:"devices"`
+	}
+	decodeFile(t, sitePath, &site)
+	kinds := map[string]string{}
+	for device, declared := range site.Devices {
+		kinds[device] = declared.Kind
+	}
+	return kinds
 }
 
 func (c conveyorTwin) run(t *testing.T, args ...string) []byte {

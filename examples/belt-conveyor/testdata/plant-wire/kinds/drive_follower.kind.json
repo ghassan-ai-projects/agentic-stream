@@ -1,0 +1,40 @@
+{
+  "kind": "drive_follower",
+  "metrics": [
+    {"name": "current", "data_type": "number", "unit": "A", "eu_range": {"min": 0, "max": 15}, "resolution": 0.1, "writable": false},
+    {"name": "winding", "data_type": "number", "unit": "degC", "eu_range": {"min": 0, "max": 200}, "resolution": 0.1, "writable": false},
+    {"name": "vibration", "data_type": "number", "unit": "mm/s", "eu_range": {"min": 0, "max": 45}, "resolution": 0.01, "writable": false},
+    {"name": "run_status", "data_type": "boolean", "eu_range": {"min": 0, "max": 1}, "resolution": 1, "writable": false},
+    {"name": "run_command", "data_type": "number", "unit": "on", "eu_range": {"min": 0, "max": 1}, "resolution": 0.1, "writable": true}
+  ],
+  "commands": [
+    {
+      "name": "start_drive",
+      "args_schema": {
+        "additionalProperties": false,
+        "properties": {"run_command": {"maximum": 1, "minimum": 1, "type": "number"}},
+        "required": ["run_command"],
+        "type": "object"
+      },
+      "risk_class": "medium",
+      "safe_stop": false
+    },
+    {
+      "name": "stop_drive",
+      "args_schema": {
+        "additionalProperties": false,
+        "properties": {"run_command": {"maximum": 0, "minimum": 0, "type": "number"}},
+        "required": ["run_command"],
+        "type": "object"
+      },
+      "risk_class": "medium",
+      "safe_stop": false
+    },
+    {
+      "name": "reset_trip",
+      "args_schema": {"additionalProperties": false, "properties": {}, "type": "object"},
+      "risk_class": "low",
+      "safe_stop": false
+    }
+  ]
+}

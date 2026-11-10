@@ -138,7 +138,7 @@ func (c conveyorTwin) keepEvidence(t *testing.T, plant, runDir, out string, wind
 	t.Helper()
 	outcome := c.run(t, "outcome", "--run", runDir, "--domains-dir", c.examples(), "--adapters-dir", c.adapters())
 	writePrivateFile(t, filepath.Join(out, "outcome.json"), string(outcome))
-	subjects := c.subjects(t, plant, liveFaults)
+	subjects := c.subjects(t, plant, "D-3", liveFaults)
 	db := openReadOnly(t, filepath.Join(out, "stream.db"))
 	if err := campaign.WriteVerdictOf(t.Context(), db, runDir, window, campaign.Verdict{Version: "belt-m4-live", Arm: "tamoz", Subjects: subjects}); err != nil {
 		t.Fatal(err)

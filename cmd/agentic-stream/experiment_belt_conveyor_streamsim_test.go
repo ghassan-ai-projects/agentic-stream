@@ -36,7 +36,7 @@ func TestTheLimpFeedSavesTheSurvivorsOfALostDriveOnAPacedStreamsimTwin(t *testin
 			twin.assertTheLineIsSaved(t, runDir, "D-1", "D-2")
 			window := campaign.Window{From: ran.start(), Until: ran.start().Add(conveyorHorizonS * time.Second)}
 			twin.scoreVerdict(t, run.db, runDir, window, campaign.Verdict{Version: "belt-m2", Arm: "limp-feed",
-				Subjects: twin.subjects(t, "b", map[string]string{"drive_tripped": "conveyor_drive__vfd_fault"})})
+				Subjects: twin.subjects(t, "b", "D-3", map[string]string{"drive_tripped": "conveyor_drive__vfd_fault"})})
 			if quarantined := countRows(t, run.db, "event_quarantine"); quarantined != 0 {
 				t.Fatalf("%d events quarantined, want none", quarantined)
 			}
