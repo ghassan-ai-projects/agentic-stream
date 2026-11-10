@@ -50,12 +50,12 @@ func (c conveyorTwin) playLive(t *testing.T, live liveModel, name string, row in
 	stopApproving()
 	meter.report(t, out, time.Since(started))
 	ran := readTwinRun(t, runDir)
+	horizon := time.Duration(readJSONFile(t, plan)["horizon_s"].(float64) * float64(time.Second))
+	runDir, output := c.keepEvidence(t, runDir, out, campaign.Window{From: ran.start(), Until: ran.start().Add(horizon)}, story.subjects(t, c))
 	ran.assertSeed(t, seed)
 	onset := ran.onsetOf(t, story.planned.faulted)
 	logPhasesSince(t, run.db, onset)
 	logCommandsSince(t, run.db, onset)
-	horizon := time.Duration(readJSONFile(t, plan)["horizon_s"].(float64) * float64(time.Second))
-	output := c.keepEvidence(t, runDir, out, campaign.Window{From: ran.start(), Until: ran.start().Add(horizon)}, story.subjects(t, c))
 	if quarantined := countRows(t, run.db, "event_quarantine"); quarantined != 0 {
 		t.Errorf("%d events quarantined, want none", quarantined)
 	}
@@ -93,19 +93,20 @@ func (c conveyorTwin) livePlan(t *testing.T, story liveStory, played tableStory,
 	return seed, c.sessionPlan(t, played.ID, socket, policyDigest, played.planOf(values))
 }
 
-func (c conveyorTwin) keepEvidence(t *testing.T, runDir, out string, window campaign.Window, subjects campaign.Subjects) []byte {
+func (c conveyorTwin) keepEvidence(t *testing.T, runDir, out string, window campaign.Window, subjects campaign.Subjects) (string, []byte) {
 	t.Helper()
-	outcome := c.run(t, "outcome", "--run", runDir, "--domains-dir", c.examples(), "--adapters-dir", c.adapters())
-	writePrivateFile(t, filepath.Join(out, "outcome.json"), string(outcome))
-	db := openReadOnly(t, filepath.Join(out, "stream.db"))
-	if err := campaign.WriteVerdictOf(t.Context(), db, runDir, window, campaign.Verdict{Version: "belt-m4-live", Arm: "tamoz", Subjects: subjects}); err != nil {
-		t.Fatal(err)
-	}
-	score := c.run(t, "score", "--run", filepath.Join(runDir, "run.json"), "--domains-dir", c.examples(), "--adapters-dir", c.adapters())
-	writePrivateFile(t, filepath.Join(out, "score.txt"), string(score))
-	t.Logf("score:\n%s", score)
-	if err := os.CopyFS(filepath.Join(out, "run"), os.DirFS(runDir)); err != nil {
+	kept := filepath.Join(out, "run")
+	if err := os.CopyFS(kept, os.DirFS(runDir)); err != nil {
 		t.Fatalf("keep the twin's run folder: %v", err)
 	}
-	return outcome
+	outcome := c.run(t, "outcome", "--run", kept, "--domains-dir", c.examples(), "--adapters-dir", c.adapters())
+	writePrivateFile(t, filepath.Join(out, "outcome.json"), string(outcome))
+	db := openReadOnly(t, filepath.Join(out, "stream.db"))
+	if err := campaign.WriteVerdictOf(t.Context(), db, kept, window, campaign.Verdict{Version: "belt-m4-live", Arm: "tamoz", Subjects: subjects}); err != nil {
+		t.Fatal(err)
+	}
+	score := c.run(t, "score", "--run", filepath.Join(kept, "run.json"), "--domains-dir", c.examples(), "--adapters-dir", c.adapters())
+	writePrivateFile(t, filepath.Join(out, "score.txt"), string(score))
+	t.Logf("score:\n%s", score)
+	return kept, outcome
 }
