@@ -33,6 +33,7 @@ type twinStory struct {
 	faulted   string
 	prognosis string
 	lost      lostReading
+	watchAt   string
 }
 
 var (
@@ -46,11 +47,11 @@ var (
 	plannedStopUnmoved = twinStory{spec: plannedStopSpec, steps: plannedStopSteps, faulted: "F-1"}
 	twinStories        = map[string]twinStory{
 		"s1-a": bearingIsolation,
-		"s1-b": plannedBearingStop,
+		"s1-b": plannedBearingStop.watchingAt("degrading"),
 		"s3-a": {routes: []string{"reduce_feed", "stop_feed", "stop_belt"}, readBacks: beltStopRun.readBacks,
 			unharmed: []string{"D-1", "D-2"}, device: "B-1", diagnosis: "gearbox_seizing", fault: "conveyor_drive__gear_oil_loss", faulted: "D-3"},
 		"s5-a":              bearingIsolation.withLost(stuckVibration),
-		"s5b-a":             bearingIsolation.withLost(droppedVibration),
+		"s5b-a":             bearingIsolation.withLost(droppedVibration).watchingAt("watch"),
 		"s4-a":              {faulted: "F-1"},
 		"s4-b":              plannedStopUnmoved,
 		"s4-a-planned-stop": plannedStopUnmoved.of("s4-a"),
@@ -67,11 +68,22 @@ func storyOf(name string) string { return cmp.Or(twinStories[name].story, name) 
 
 func (s twinStory) specPath() string { return cmp.Or(s.spec, degradationSpec) }
 
-func (s twinStory) reasoner() workerfake.ExecuteFunc {
-	if s.steps == nil {
-		return reasonAboutTheLine(shippedCoverage)
+func (s twinStory) watchingAt(phase string) twinStory {
+	s.watchAt = phase
+	return s
+}
+
+func (s twinStory) reasoner(t *testing.T) workerfake.ExecuteFunc {
+	t.Helper()
+	reasoner := lineReasoner{coverage: shippedCoverage, steps: s.steps, watchAt: s.watchAt}
+	if reasoner.steps == nil {
+		reasoner.steps = lineSteps
 	}
-	return takeTheSteps(shippedCoverage, s.steps)
+	if s.watchAt != "" {
+		watch := causeWatch(t, s.specPath())
+		reasoner.watch = &watch
+	}
+	return reasoner.execute()
 }
 
 type twinPlay struct {
@@ -108,7 +120,7 @@ func (c conveyorTwin) playBarrierPaced(t *testing.T, play twinPlay, story twinSt
 	t.Cleanup(func() {
 		t.Logf("%s seed %d played in %s of wall time", play.name, play.seed(), time.Since(started).Round(time.Second))
 	})
-	run := startDegradationServe(t, story.specPath(), play.story.Plant, story.reasoner())
+	run := startDegradationServe(t, story.specPath(), play.story.Plant, story.reasoner(t))
 	t.Cleanup(func() { logCommandOutcomes(t, run.db) })
 	plan := c.sessionPlan(t, play.story.ID, run.socket, conveyorPolicyDigest(t, story.specPath()), play.story.planOf(play.row))
 	stopApproving := approveWhileRunning(t, run)

@@ -57,9 +57,11 @@ type lineSnapshot struct {
 }
 
 type lineReasoner struct {
-	coverage lineCoverage
-	steps    map[string]proposal
-	unsure   *proposal
+	coverage    lineCoverage
+	steps       map[string]proposal
+	watch       *proposal
+	whileUnsure bool
+	watchAt     string
 }
 
 func reasonAboutTheLine(coverage lineCoverage) workerfake.ExecuteFunc {
@@ -71,7 +73,7 @@ func takeTheSteps(coverage lineCoverage, steps map[string]proposal) workerfake.E
 }
 
 func watchWhileUnsure(coverage lineCoverage, watch proposal) workerfake.ExecuteFunc {
-	return lineReasoner{coverage: coverage, steps: lineSteps, unsure: &watch}.execute()
+	return lineReasoner{coverage: coverage, steps: lineSteps, watch: &watch, whileUnsure: true}.execute()
 }
 
 func (r lineReasoner) execute() workerfake.ExecuteFunc {
@@ -92,6 +94,10 @@ func (r lineReasoner) execute() workerfake.ExecuteFunc {
 		answer.Intents = r.intents(diagnosis, snapshot.Phase)
 		if r.watching(diagnosis) {
 			answer.ValidUntil, answer.Intents = r.watchUntil(time.Now().Add(time.Hour))
+		} else if r.watch != nil && snapshot.Phase == r.watchAt {
+			var watch []proposal
+			answer.ValidUntil, watch = r.watchUntil(time.Now().Add(time.Hour))
+			answer.Intents = append(answer.Intents, watch...)
 		}
 		return workerfake.Propose(req, emit, answer)
 	}
@@ -105,12 +111,12 @@ func (r lineReasoner) intents(diagnosis, phase string) []proposal {
 }
 
 func (r lineReasoner) watching(diagnosis string) bool {
-	return r.unsure != nil && diagnosis == untoldCause
+	return r.watch != nil && r.whileUnsure && diagnosis == untoldCause
 }
 
 func (r lineReasoner) watchUntil(validUntil time.Time) (time.Time, []proposal) {
 	validUntil = validUntil.UTC().Truncate(time.Second)
-	watch := proposal{Type: r.unsure.Type, Risk: r.unsure.Risk, Parameters: maps.Clone(r.unsure.Parameters)}
+	watch := proposal{Type: r.watch.Type, Risk: r.watch.Risk, Parameters: maps.Clone(r.watch.Parameters)}
 	watch.Parameters["expires_at"] = validUntil.Format(time.RFC3339)
 	return validUntil, []proposal{watch}
 }
