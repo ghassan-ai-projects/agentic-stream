@@ -207,13 +207,21 @@ func logPhasesSince(t *testing.T, dbPath string, onset time.Time) {
 
 func logCommandsSince(t *testing.T, dbPath string, onset time.Time) {
 	t.Helper()
-	rows, err := openReadOnly(t, dbPath).QueryContext(t.Context(), `SELECT c.effector_route, COALESCE(json_extract(CAST(c.command_json AS TEXT), '$.payload.level'), json_extract(CAST(c.command_json AS TEXT), '$.payload.mode')), c.status, v.phase, v.event_horizon
+	for _, line := range commandLog(t, dbPath, onset) {
+		t.Log(line)
+	}
+}
+
+func commandLog(t *testing.T, dbPath string, onset time.Time) []string {
+	t.Helper()
+	rows, err := openReadOnly(t, dbPath).QueryContext(t.Context(), `SELECT c.effector_route, COALESCE(json_extract(CAST(c.command_json AS TEXT), '$.payload.level'), json_extract(CAST(c.command_json AS TEXT), '$.payload.mode'), ''), c.status, v.phase, v.event_horizon
 		FROM commands c JOIN intents i ON i.intent_id = c.intent_id
 		JOIN situation_versions v ON v.situation_id = i.situation_id AND v.version = i.situation_version ORDER BY c.created_at, c.command_id`)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = rows.Close() }()
+	var lines []string
 	for rows.Next() {
 		var route, command, status, phase, horizon string
 		if err := rows.Scan(&route, &command, &status, &phase, &horizon); err != nil {
@@ -223,11 +231,12 @@ func logCommandsSince(t *testing.T, dbPath string, onset time.Time) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		t.Logf("command %s(%s) %s on %s at onset %+.2f h", route, command, status, phase, at.Sub(onset).Hours())
+		lines = append(lines, fmt.Sprintf("command %s(%s) %s on %s at onset %+.2f h", route, command, status, phase, at.Sub(onset).Hours()))
 	}
 	if err := rows.Err(); err != nil {
 		t.Fatal(err)
 	}
+	return lines
 }
 
 func assertRoutes(t *testing.T, dbPath string, want []string) {

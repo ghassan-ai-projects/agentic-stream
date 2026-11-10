@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/testsupport/campaign"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/testsupport/workerfake"
@@ -32,6 +33,9 @@ func TestAReasonerThatOnlyWatchesWhileTheCauseIsUnknownTakesTheStepWhenTheWatchF
 	query := `SELECT COUNT(*) FROM situation_versions WHERE phase = 'degrading'`
 	if versions := columnValues(t, run.db, query); len(versions) != 1 || versions[0] != "2" {
 		t.Fatalf("degrading versions = %v, want 2: the phase change and the version the watch woke", versions)
+	}
+	if lines := commandLog(t, run.db, time.Time{}); !slices.ContainsFunc(lines, func(line string) bool { return strings.HasPrefix(line, "command install_watch_condition() ") }) {
+		t.Fatalf("the command log %v has no watch: a watch carries neither a level nor a mode", lines)
 	}
 }
 
