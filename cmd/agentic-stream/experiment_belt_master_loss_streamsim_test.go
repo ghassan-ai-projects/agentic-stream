@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"maps"
 	"slices"
@@ -37,6 +38,16 @@ type twinOutcome struct {
 	ran        twinRun
 	grade      outcomeGrade
 	output     []byte
+}
+
+func decodeOutcome(t *testing.T, output []byte) outcomeGrade {
+	t.Helper()
+	var grade outcomeGrade
+	if err := json.Unmarshal(output, &grade); err != nil {
+		t.Fatalf("decode the outcome %s: %v", output, err)
+	}
+	t.Logf("outcome valid %t, easy %t, verdicts %+v", grade.Valid, grade.Easy, grade.Verdicts)
+	return grade
 }
 
 func (m masterLossTwin) assertTheOutcome(t *testing.T, played twinOutcome) {

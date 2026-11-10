@@ -147,12 +147,7 @@ func assertTheOutcomeSavesTheLine(t *testing.T, grade outcomeGrade, output []byt
 func (c conveyorTwin) outcome(t *testing.T, runDir string) (outcomeGrade, []byte) {
 	t.Helper()
 	output := c.run(t, "outcome", "--run", runDir, "--domains-dir", c.examples(), "--adapters-dir", c.adapters())
-	var grade outcomeGrade
-	if err := json.Unmarshal(output, &grade); err != nil {
-		t.Fatalf("decode the outcome %s: %v", output, err)
-	}
-	t.Logf("outcome valid %t, easy %t, verdicts %+v", grade.Valid, grade.Easy, grade.Verdicts)
-	return grade, output
+	return decodeOutcome(t, output), output
 }
 
 func assertNoTripNorStrandedBelt(t *testing.T, grade outcomeGrade, output []byte, unharmed []string) {
