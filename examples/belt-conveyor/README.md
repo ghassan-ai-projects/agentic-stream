@@ -62,7 +62,7 @@ gates, because the specs need their own event schemas:
 | `testdata/drive-degradation.situation.yaml` | The M3 spec; compile it the same way |
 | `testdata/drive-degradation-planned-stop.situation.yaml` | The M4 planned-stop spec for plant B; compile it the same way |
 | `testdata/event-schemas/conveyor.json` | One event type per drive's current, winding and vibration, the feed, its setpoint and the belt's tail speed |
-| `testdata/plant-wire/kinds/` | Byte copies of streams-simulator's `examples/belt-conveyor/kinds/*.kind.json` (guarded by `TestTheConveyorKindFilesAreByteCopiesOfStreamsims`) |
+| `testdata/plant-wire/kinds/` | Byte copies of streams-simulator's `examples/belt-conveyor/kinds/*.kind.json` (guarded by `TestTheConveyorKindFilesAreByteCopiesOfStreamsims`): the feeder, the belt, the drive, and the drive's two roles on the S6 plants, `drive_master` and `drive_follower` (the drive's metrics and commands under the role's name) |
 | `testdata/plant-wire/belt-conveyor.site.json` | Every device on `conveyor-1`; per-device current, winding and vibration readings for the drives |
 | `testdata/plant-wire/belt-conveyor-{a,b}.catalog.json` | One device catalog per plant, as each plant's deployment has its own: `reduce_feed` (presets `limp`, the plant's safe limp feed, 54 % on plant A and 18 % on plant B, and `restore` 100 %; the specs name only `limp`, because nothing in a snapshot tells the plants apart) and `stop_feed` (0 %) to `set_feed` on `F-1`, `isolate_drive` to `stop_drive` on `D-3`, `stop_belt` to `stop_belt` on `B-1`; a command lives 180 s, longer than a barrier-paced world step (60 s), so `serve` takes `--dispatch-lease 5m` |
 | `testdata/principals.yaml` | A test approver for R1 and R2 on `conveyor-1` (the all-zero-seed test key) |

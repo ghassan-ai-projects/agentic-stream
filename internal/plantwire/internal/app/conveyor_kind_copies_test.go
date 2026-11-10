@@ -20,8 +20,8 @@ func TestTheConveyorKindFilesAreByteCopiesOfStreamsims(t *testing.T) {
 	}
 	defer func() { _ = root.Close() }()
 	mine, err := filepath.Glob(filepath.Join(conveyorKinds, "*.kind.json"))
-	if err != nil || len(mine) != 3 {
-		t.Fatalf("kind files in %s = %v (%v), want the feeder, the belt and the drive", conveyorKinds, mine, err)
+	if err != nil || len(mine) != 5 {
+		t.Fatalf("kind files in %s = %v (%v), want the feeder, the belt, the drive and its master and follower roles", conveyorKinds, mine, err)
 	}
 	for _, path := range mine {
 		name := filepath.Base(path)
