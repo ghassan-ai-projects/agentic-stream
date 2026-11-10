@@ -112,6 +112,18 @@ which does not depend on its diagnosis. The verdict maps `drive_degrading` to
 D-3 without a label, a symptom that dates the later cause's detection, and
 leaves `unknown` out.
 
+`experiment_belt_master_loss*_test.go` (M4, S6) plays both master-loss branches
+against the fake node (abrupt currents, the stopped belt coasting 15 s) and both
+S6 stories barrier-paced against the twin, on the S6 site and each plant's
+catalog. Its stand-in names `drive_tripped` while D-1 reads below 0.5 A and takes
+the phase's step; the verdict maps `drive_tripped` to `drive_master__vfd_fault`
+on D-1. S6-A-promote must beat every baseline with no trip beyond doing nothing's
+(the outcome counts D-2's promotion latch, `ref_held`, as a trip state) and no
+stranded belt; S6-A-stop must tie doing nothing exactly and be `easy`, with no
+start or reset call and the same trips as doing nothing (a restart of the loaded
+belt would stall it again). An S6 plant steps about 2.6 times slower than plant
+A: a 3 h row plays in about 4 min.
+
 `experiment_belt_live_*_test.go` plays S1-A, S2-B and S3-A with the real Tamoz
 worker as the reasoner instead (arm B: Tamoz reasons, the specs act). It calls a
 real model and runs only when asked: `CONVEYOR_LIVE_MODEL=1`,

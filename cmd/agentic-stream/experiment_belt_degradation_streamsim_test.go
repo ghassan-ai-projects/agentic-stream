@@ -89,7 +89,7 @@ func TestTheDriveDegradationLoopPlaysItsStoriesOnABarrierPacedStreamsimTwin(t *t
 	table, rows := twin.storyTable(t), twinRows(t)
 	for _, name := range slices.Sorted(maps.Keys(twinStories)) {
 		story := table.story(t, storyOf(name))
-		limp := twin.limpSetpoint(t, table, story.Plant)
+		limp := twin.limpSetpoint(t, table, story)
 		t.Run(name, func(t *testing.T) {
 			for i, row := range story.firstRows(rows) {
 				play := twinPlay{name: name, story: story, row: row, limp: limp}

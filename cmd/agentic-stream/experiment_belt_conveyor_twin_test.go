@@ -93,6 +93,7 @@ func (r twinRun) onsetOf(t *testing.T, entity string) time.Time {
 
 type outcomeGrade struct {
 	Valid    bool             `json:"valid"`
+	Easy     bool             `json:"easy"`
 	Runs     []outcomeRun     `json:"runs"`
 	Verdicts []outcomeVerdict `json:"verdicts"`
 }
@@ -101,6 +102,9 @@ type outcomeRun struct {
 	Mode  string `json:"mode"`
 	Facts struct {
 		Entities []outcomeEntity `json:"entities"`
+		Calls    []struct {
+			Effector string `json:"effector"`
+		} `json:"calls"`
 	} `json:"facts"`
 }
 
@@ -127,17 +131,23 @@ type outcomeVerdict struct {
 
 func (c conveyorTwin) assertTheLineIsSaved(t *testing.T, runDir string, unharmed ...string) outcomeGrade {
 	t.Helper()
-	output := c.run(t, "outcome", "--run", runDir, "--domains-dir", c.examples(), "--adapters-dir", c.adapters())
-	var grade outcomeGrade
-	if err := json.Unmarshal(output, &grade); err != nil {
-		t.Fatalf("decode the outcome %s: %v", output, err)
-	}
-	t.Logf("outcome verdicts %+v", grade.Verdicts)
+	grade, output := c.outcome(t, runDir)
 	if !grade.Valid || !slices.ContainsFunc(grade.Verdicts, func(v outcomeVerdict) bool { return v.Baseline == "do_nothing" && v.Verdict == "beats" }) {
 		t.Fatalf("outcome %s: want a valid story whose run beats doing nothing", output)
 	}
 	assertNoTripNorStrandedBelt(t, grade, output, unharmed)
 	return grade
+}
+
+func (c conveyorTwin) outcome(t *testing.T, runDir string) (outcomeGrade, []byte) {
+	t.Helper()
+	output := c.run(t, "outcome", "--run", runDir, "--domains-dir", c.examples(), "--adapters-dir", c.adapters())
+	var grade outcomeGrade
+	if err := json.Unmarshal(output, &grade); err != nil {
+		t.Fatalf("decode the outcome %s: %v", output, err)
+	}
+	t.Logf("outcome valid %t, easy %t, verdicts %+v", grade.Valid, grade.Easy, grade.Verdicts)
+	return grade, output
 }
 
 func assertNoTripNorStrandedBelt(t *testing.T, grade outcomeGrade, output []byte, unharmed []string) {

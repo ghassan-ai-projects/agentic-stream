@@ -47,13 +47,18 @@ func (s twinStory) judge(t *testing.T, grade outcomeGrade, ran twinRun) {
 	if s.spec != plannedStopSpec {
 		return
 	}
+	assertBeatsEveryBaseline(t, grade)
+	trip, stop := doNothingTrip(grade, s.device), ran.firstCall(s.device, "stop_drive")
+	t.Logf("%s stopped %.2f h before its do-nothing trip (stop at %s, trip at %s)", s.device, trip.Sub(stop).Hours(), stop, trip)
+}
+
+func assertBeatsEveryBaseline(t *testing.T, grade outcomeGrade) {
+	t.Helper()
 	for _, verdict := range grade.Verdicts {
 		if verdict.Verdict != "beats" {
 			t.Errorf("against %s the run %s by %+.2f equivalent hours, want it to beat every baseline", verdict.Baseline, verdict.Verdict, verdict.Delta)
 		}
 	}
-	trip, stop := doNothingTrip(grade, s.device), ran.firstCall(s.device, "stop_drive")
-	t.Logf("%s stopped %.2f h before its do-nothing trip (stop at %s, trip at %s)", s.device, trip.Sub(stop).Hours(), stop, trip)
 }
 
 func doNothingTrip(grade outcomeGrade, device string) time.Time {

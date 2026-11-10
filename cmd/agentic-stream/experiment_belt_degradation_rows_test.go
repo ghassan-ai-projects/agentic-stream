@@ -24,9 +24,12 @@ type storyTable struct {
 type tableStory struct {
 	ID           string             `json:"id"`
 	Plant        string             `json:"plant"`
+	Regime       string             `json:"regime"`
 	Disturbances []tableDisturbance `json:"disturbances"`
 	Rows         []map[string]any   `json:"rows"`
 }
+
+func (s tableStory) regime() string { return cmp.Or(s.Regime, s.Plant) }
 
 type tableDisturbance struct {
 	Instance  string   `json:"instance"`
@@ -117,11 +120,11 @@ func rowNumbers(row map[string]any, field string) []float64 {
 	return numbers
 }
 
-func (c conveyorTwin) limpSetpoint(t *testing.T, table storyTable, plant string) string {
+func (c conveyorTwin) limpSetpoint(t *testing.T, table storyTable, story tableStory) string {
 	t.Helper()
-	setpoint := readConveyorRoutes(t, plant)[limpFeed.Type].Presets[limpFeed.Parameters["level"].(string)]["feed_setpoint"]
-	if setpoint != table.SafeLimpFeedPct[plant] {
-		t.Fatalf("the catalog's limp feed of plant %s is %v %%, the story table's safe limp feed %v %%", plant, setpoint, table.SafeLimpFeedPct[plant])
+	setpoint := readConveyorRoutes(t, story.Plant)[limpFeed.Type].Presets[limpFeed.Parameters["level"].(string)]["feed_setpoint"]
+	if safe := table.SafeLimpFeedPct[story.regime()]; setpoint != safe {
+		t.Fatalf("the catalog's limp feed of plant %s is %v %%, the story table's safe limp feed of regime %s %v %%", story.Plant, setpoint, story.regime(), safe)
 	}
 	return strconv.FormatFloat(setpoint, 'f', -1, 64)
 }
@@ -131,7 +134,7 @@ func TestTheTwinBuildsEachStorysCommittedSessionPlanFromItsFirstRow(t *testing.T
 	binary, repository := streamsimNode(t)
 	twin := conveyorTwin{binary: binary, repository: repository}
 	table := twin.storyTable(t)
-	for _, name := range slices.Sorted(maps.Keys(twinStories)) {
+	for _, name := range slices.Concat(slices.Sorted(maps.Keys(twinStories)), slices.Sorted(maps.Keys(masterLossTwins))) {
 		story := table.story(t, storyOf(name))
 		committed := readJSONFile(t, filepath.Join(twin.examples(), "belt-conveyor", "sessions", story.ID+".session-plan.json"))
 		built := readJSONFile(t, twin.sessionPlan(t, story.ID, "host.sock", "policy", story.planOf(story.Rows[0])))
