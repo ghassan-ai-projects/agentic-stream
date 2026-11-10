@@ -57,6 +57,8 @@ type twinRun struct {
 		Args struct {
 			EntityID string `json:"entity_id"`
 			OnsetNS  int64  `json:"onset_ns"`
+			Effector string `json:"effector"`
+			AtNS     int64  `json:"at_ns"`
 		} `json:"args"`
 	} `json:"command_log"`
 }
@@ -109,7 +111,8 @@ type outcomeEntity struct {
 }
 
 type outcomeTrip struct {
-	State string `json:"state"`
+	State   string `json:"state"`
+	FirstNS int64  `json:"first_ns"`
 }
 
 type outcomeBound struct {
@@ -122,7 +125,7 @@ type outcomeVerdict struct {
 	Verdict  string  `json:"verdict"`
 }
 
-func (c conveyorTwin) assertTheLineIsSaved(t *testing.T, runDir string, unharmed ...string) {
+func (c conveyorTwin) assertTheLineIsSaved(t *testing.T, runDir string, unharmed ...string) outcomeGrade {
 	t.Helper()
 	output := c.run(t, "outcome", "--run", runDir, "--domains-dir", c.examples(), "--adapters-dir", c.adapters())
 	var grade outcomeGrade
@@ -134,6 +137,7 @@ func (c conveyorTwin) assertTheLineIsSaved(t *testing.T, runDir string, unharmed
 		t.Fatalf("outcome %s: want a valid story whose run beats doing nothing", output)
 	}
 	assertNoTripNorStrandedBelt(t, grade, output, unharmed)
+	return grade
 }
 
 func assertNoTripNorStrandedBelt(t *testing.T, grade outcomeGrade, output []byte, unharmed []string) {

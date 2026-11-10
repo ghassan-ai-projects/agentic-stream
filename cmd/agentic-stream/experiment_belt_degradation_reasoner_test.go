@@ -25,6 +25,8 @@ var (
 	stopTheBelt     = proposal{Type: "stop_belt", Risk: "R2", Parameters: map[string]any{"mode": "planned_stop"}}
 	lineSteps       = map[string]proposal{"degrading": limpFeed, "shedding": emptyTheBelt, "cause_bearing": isolateTheDrive, "cause_gearbox": stopTheBelt,
 		"cause_undecided": stopTheBelt, "isolated": limpFeed}
+	plannedStopSteps = map[string]proposal{"shedding": emptyTheBelt, "cause_bearing": isolateTheDrive, "cause_gearbox": stopTheBelt,
+		"cause_undecided": stopTheBelt, "isolated": limpFeed}
 	plannedSteps = map[string]bool{"degrading": true, "shedding": true, "cause_bearing": true, "cause_gearbox": true, "cause_undecided": true,
 		"isolated": true}
 )
@@ -48,15 +50,20 @@ type lineSnapshot struct {
 
 type lineReasoner struct {
 	coverage lineCoverage
+	steps    map[string]proposal
 	unsure   *proposal
 }
 
 func reasonAboutTheLine(coverage lineCoverage) workerfake.ExecuteFunc {
-	return lineReasoner{coverage: coverage}.execute()
+	return takeTheSteps(coverage, lineSteps)
+}
+
+func takeTheSteps(coverage lineCoverage, steps map[string]proposal) workerfake.ExecuteFunc {
+	return lineReasoner{coverage: coverage, steps: steps}.execute()
 }
 
 func watchWhileUnsure(coverage lineCoverage, watch proposal) workerfake.ExecuteFunc {
-	return lineReasoner{coverage: coverage, unsure: &watch}.execute()
+	return lineReasoner{coverage: coverage, steps: lineSteps, unsure: &watch}.execute()
 }
 
 func (r lineReasoner) execute() workerfake.ExecuteFunc {
@@ -83,7 +90,7 @@ func (r lineReasoner) execute() workerfake.ExecuteFunc {
 }
 
 func (r lineReasoner) intents(diagnosis, phase string) []proposal {
-	if step, planned := lineSteps[phase]; planned && !r.watching(diagnosis) {
+	if step, planned := r.steps[phase]; planned && !r.watching(diagnosis) {
 		return []proposal{step}
 	}
 	return nil

@@ -132,9 +132,9 @@ func TestTheTwinBuildsEachStorysCommittedSessionPlanFromItsFirstRow(t *testing.T
 	twin := conveyorTwin{binary: binary, repository: repository}
 	table := twin.storyTable(t)
 	for _, name := range slices.Sorted(maps.Keys(twinStories)) {
-		story := table.story(t, name)
-		committed := readJSONFile(t, filepath.Join(twin.examples(), "belt-conveyor", "sessions", name+".session-plan.json"))
-		built := readJSONFile(t, twin.sessionPlan(t, name, "host.sock", "policy", story.planOf(story.Rows[0])))
+		story := table.story(t, storyOf(name))
+		committed := readJSONFile(t, filepath.Join(twin.examples(), "belt-conveyor", "sessions", story.ID+".session-plan.json"))
+		built := readJSONFile(t, twin.sessionPlan(t, story.ID, "host.sock", "policy", story.planOf(story.Rows[0])))
 		if !reflect.DeepEqual(built["disturbances"], committed["disturbances"]) || built["seed"] != committed["seed"] {
 			t.Errorf("%s row 1: seed %v disturbances %v, want the committed plan's %v %v", name, built["seed"], built["disturbances"],
 				committed["seed"], committed["disturbances"])

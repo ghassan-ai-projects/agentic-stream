@@ -2,7 +2,7 @@
 
 Test inputs for the belt conveyor's closed loops (streams-simulator
 `docs/belt-conveyor-drives/`): three drives `D-1`..`D-3` of one kind share the
-belt `B-1` of `conveyor-1`, fed by `F-1`. Two specs, one per `serve`:
+belt `B-1` of `conveyor-1`, fed by `F-1`. Three specs, one per `serve`:
 
 - `line_overload` (M2, story S2-B on plant `belt-conveyor-drives-b`): when one
   drive's current drops to about 0 A while the feed is still high, the decision
@@ -36,6 +36,23 @@ belt `B-1` of `conveyor-1`, fed by `F-1`. Two specs, one per `serve`:
   1.0 h after the degrading rule at full feed, takes up to about 4.2 h on an
   empty belt; the twin measured 1.9 h (S1-A) and 3.6 h (S1-B) on row 1.
 
+- `drive_degradation_planned_stop` (M4, story S1-B on plant `belt-conveyor-drives-b`,
+  whose survivors have no margin and whose limp feed, 18 %, earns too little to
+  pay for an early isolation): the same readings, rules and thresholds, but the
+  line keeps its full feed after the drive starts degrading (`degrading`) and
+  after its bearing is named (`bearing_loaded`, no step), and takes the planned
+  isolation (`shedding`: stop the feed, R2; on the empty belt `cause_bearing`:
+  stop the drive, R2; `isolated`: the limp feed, R1) when D-3's winding is
+  predicted to reach its 150 C trip within 1.5 h plus the 3 min the belt takes
+  to empty. The prediction is the operator kind `extrapolate`: a quadratic fit
+  of D-3's winding over 60 min (`documentation/design/extrapolate-operator.md`,
+  calibrated on S1-B's ten do-nothing rows). A gearbox named at full feed
+  empties the belt at once; a cause still untold when the trip is predicted
+  empties the belt and waits there for it (O34). Each plant's deployment runs
+  its own spec, as it runs its own device catalog: nothing in a snapshot tells
+  the plants apart, and a hold command at full feed would be an effector call
+  that ends the prognosis window.
+
 Everything lives under `testdata/`, outside the `examples/*/*.situation.yaml`
 gates, because the specs need their own event schemas:
 
@@ -43,6 +60,7 @@ gates, because the specs need their own event schemas:
 | --- | --- |
 | `testdata/line-overload.situation.yaml` | The M2 spec; compile it with `--event-schemas testdata/event-schemas`. It declares every reading the shared site gives as an input, also those no operator reads: a deployment registers only its inputs' event schemas and quarantines the rest |
 | `testdata/drive-degradation.situation.yaml` | The M3 spec; compile it the same way |
+| `testdata/drive-degradation-planned-stop.situation.yaml` | The M4 planned-stop spec for plant B; compile it the same way |
 | `testdata/event-schemas/conveyor.json` | One event type per drive's current, winding and vibration, the feed, its setpoint and the belt's tail speed |
 | `testdata/plant-wire/kinds/` | Byte copies of streams-simulator's `examples/belt-conveyor/kinds/*.kind.json` (guarded by `TestTheConveyorKindFilesAreByteCopiesOfStreamsims`) |
 | `testdata/plant-wire/belt-conveyor.site.json` | Every device on `conveyor-1`; per-device current, winding and vibration readings for the drives |
@@ -53,8 +71,11 @@ The tests are in `cmd/agentic-stream/experiment_belt_conveyor*_test.go` (M2) and
 `experiment_belt_degradation*_test.go` (M3): against a fake plant wire node that
 replays backdated readings at the sensors' cadences and obeys the host's
 commands, and against the streams-simulator twin (skipped without
-`STREAMSIM_BIN`; M3's stories S1-A, S3-A and S4-A run barrier-paced), graded by
-`streamsim outcome` and `streamsim score`. Their reasoner is a stand-in that
+`STREAMSIM_BIN`; M3's stories S1-A, S3-A and S4-A run barrier-paced, and the
+planned-stop spec plays S1-B, S4-B, and S4-A and S0-A on plant A's catalog, where
+nothing degrades), graded by `streamsim outcome` and `streamsim score`. On the
+planned-stop story the verdict carries D-3's predicted trip
+(`predicted_failure_at`) and the run must beat every baseline. Their reasoner is a stand-in that
 diagnoses by the catalog's rules (`drive_degrading` while neither the bearing
 nor the gearbox rule holds; the cause refines it) and takes the phase's step,
 which does not depend on its diagnosis. The verdict maps `drive_degrading` to

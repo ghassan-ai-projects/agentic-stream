@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"maps"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/testsupport/campaign"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/testsupport/workerfake"
 )
 
 const (
@@ -19,6 +21,9 @@ const (
 )
 
 type twinStory struct {
+	story     string
+	spec      string
+	steps     map[string]proposal
 	routes    []string
 	readBacks [][3]string
 	unharmed  []string
@@ -26,20 +31,45 @@ type twinStory struct {
 	diagnosis string
 	fault     string
 	faulted   string
+	prognosis string
 }
 
 var (
 	isolationReadBacks = [][3]string{{"set_feed", "feed_setpoint", plantLimp}, {"set_feed", "feed_setpoint", "0"}, {"stop_drive", "run_command", "0"}}
 	bearingIsolation   = twinStory{routes: []string{"reduce_feed", "stop_feed", "isolate_drive", "reduce_feed"}, readBacks: isolationReadBacks,
 		unharmed: []string{"D-1", "D-2", "D-3"}, device: "D-3", diagnosis: "bearing", fault: "conveyor_drive__lube_loss", faulted: "D-3"}
-	twinStories = map[string]twinStory{
+	plannedBearingStop = twinStory{spec: plannedStopSpec, steps: plannedStopSteps, routes: []string{"stop_feed", "isolate_drive", "reduce_feed"},
+		readBacks: [][3]string{{"set_feed", "feed_setpoint", "0"}, {"stop_drive", "run_command", "0"}, {"set_feed", "feed_setpoint", plantLimp}},
+		unharmed:  bearingIsolation.unharmed, device: "D-3", diagnosis: "bearing", fault: bearingIsolation.fault, faulted: "D-3",
+		prognosis: "drive3_winding_to_trip_s"}
+	plannedStopUnmoved = twinStory{spec: plannedStopSpec, steps: plannedStopSteps, faulted: "F-1"}
+	twinStories        = map[string]twinStory{
 		"s1-a": bearingIsolation,
-		"s1-b": bearingIsolation,
+		"s1-b": plannedBearingStop,
 		"s3-a": {routes: []string{"reduce_feed", "stop_feed", "stop_belt"}, readBacks: beltStopRun.readBacks,
 			unharmed: []string{"D-1", "D-2"}, device: "B-1", diagnosis: "gearbox_seizing", fault: "conveyor_drive__gear_oil_loss", faulted: "D-3"},
-		"s4-a": {faulted: "F-1"},
+		"s4-a":              {faulted: "F-1"},
+		"s4-b":              plannedStopUnmoved,
+		"s4-a-planned-stop": plannedStopUnmoved.of("s4-a"),
+		"s0-a-planned-stop": plannedStopUnmoved.of("s0-a"),
 	}
 )
+
+func (s twinStory) of(story string) twinStory {
+	s.story = story
+	return s
+}
+
+func storyOf(name string) string { return cmp.Or(twinStories[name].story, name) }
+
+func (s twinStory) specPath() string { return cmp.Or(s.spec, degradationSpec) }
+
+func (s twinStory) reasoner() workerfake.ExecuteFunc {
+	if s.steps == nil {
+		return reasonAboutTheLine(shippedCoverage)
+	}
+	return takeTheSteps(shippedCoverage, s.steps)
+}
 
 type twinPlay struct {
 	name  string
@@ -58,7 +88,7 @@ func TestTheDriveDegradationLoopPlaysItsStoriesOnABarrierPacedStreamsimTwin(t *t
 	t.Setenv("AGENTIC_STREAM_APPROVAL_RELAY", conveyorRelay)
 	table, rows := twin.storyTable(t), twinRows(t)
 	for _, name := range slices.Sorted(maps.Keys(twinStories)) {
-		story := table.story(t, name)
+		story := table.story(t, storyOf(name))
 		limp := twin.limpSetpoint(t, table, story.Plant)
 		t.Run(name, func(t *testing.T) {
 			for i, row := range story.firstRows(rows) {
@@ -75,9 +105,9 @@ func (c conveyorTwin) playBarrierPaced(t *testing.T, play twinPlay, story twinSt
 	t.Cleanup(func() {
 		t.Logf("%s seed %d played in %s of wall time", play.name, play.seed(), time.Since(started).Round(time.Second))
 	})
-	run := startDegradationServe(t, degradationSpec, play.story.Plant, reasonAboutTheLine(shippedCoverage))
+	run := startDegradationServe(t, story.specPath(), play.story.Plant, story.reasoner())
 	t.Cleanup(func() { logCommandOutcomes(t, run.db) })
-	plan := c.sessionPlan(t, play.name, run.socket, conveyorPolicyDigest(t, degradationSpec), play.story.planOf(play.row))
+	plan := c.sessionPlan(t, play.story.ID, run.socket, conveyorPolicyDigest(t, story.specPath()), play.story.planOf(play.row))
 	stopApproving := approveWhileRunning(t, run)
 	runDir := c.connect(t, play.name, plan, "--slice-s", barrierSliceS, "--barrier-cap-ms", barrierCapMS)
 	stopApproving()
@@ -95,11 +125,11 @@ func (c conveyorTwin) playBarrierPaced(t *testing.T, play twinPlay, story twinSt
 	}
 	assertR2PassedOnSettledFeatures(t, run.db, len(slices.DeleteFunc(slices.Clone(story.routes), func(route string) bool { return route == "reduce_feed" })))
 	if len(story.routes) > 0 {
-		c.assertTheLineIsSaved(t, runDir, story.unharmed...)
+		story.judge(t, c.assertTheLineIsSaved(t, runDir, story.unharmed...), ran)
 	}
 	horizon := time.Duration(readJSONFile(t, plan)["horizon_s"].(float64) * float64(time.Second))
 	c.scoreVerdict(t, run.db, runDir, campaign.Window{From: ran.start(), Until: ran.start().Add(horizon)},
-		campaign.Verdict{Version: "belt-m3", Arm: "planned-stop", Subjects: c.subjects(t, play.story.Plant, map[string]string{story.diagnosis: story.fault})})
+		campaign.Verdict{Version: "belt-m4", Arm: "planned-stop", Subjects: story.subjects(c.subjects(t, play.story.Plant, map[string]string{story.diagnosis: story.fault}))})
 	if quarantined := countRows(t, run.db, "event_quarantine"); quarantined != 0 {
 		t.Fatalf("%d events quarantined, want none", quarantined)
 	}
