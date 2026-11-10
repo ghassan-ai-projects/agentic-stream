@@ -44,7 +44,9 @@ as behavior qualified for a production deployment.
   episode installed wakes its Situation when it fires: the engine publishes the
   Situation's current state as a new version in the same phase, and
   `delta.watch_fired` is true on it, so a trigger whose `materialDelta` names it
-  is evaluated again (still under its cooldown and coalescing).
+  is evaluated again (still under its cooldown and coalescing). The woken version
+  is material only while such a trigger applies (its `when` holds), so a pending
+  approval survives a fire in a phase whose trigger does not name the watch.
 - **Failed reasoning:** with `cognition.retryFailedReasoning` (`after`, `max`), a
   Situation whose latest episode concluded without an accepted decision (it
   failed, timed out or its decision was rejected) is woken once `after` of event

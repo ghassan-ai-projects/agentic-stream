@@ -102,3 +102,21 @@ func TestAFailedReasoningWakesItsSituationOnceItsEventTimeBackoffHasPassed(t *te
 		t.Fatalf("%d admitted evaluations on the version woken after the backoff, want 1", admitted)
 	}
 }
+
+func TestAWatchWakeIsNoMaterialChangeWhenNoTriggerThatNamesTheWatchApplies(t *testing.T) {
+	t.Parallel()
+	compiled := cognitionSpec()
+	compiled.Cognition.Triggers = append(compiled.Cognition.Triggers, spec.Trigger{
+		Name: "low", When: "features.level < 0", Score: "situation.severity", Threshold: 5, Lane: "fast", MaterialDelta: "delta.phase_changed || delta.watch_fired",
+	})
+	rig := newRigWithCognition(t, compiled, true)
+	appendEnvelope(t, rig.log, thingEnvelope("evt-1", "test.observed", 0, map[string]any{"level": 15.0}))
+	runGlobal(t, rig.service)
+	situationID := queryText(t, rig.db, "SELECT situation_id FROM situations")
+	if err := rig.service.WakeSituations(t.Context(), []string{situationID}); err != nil {
+		t.Fatal(err)
+	}
+	if current := queryText(t, rig.db, "SELECT current_version || ' ' || last_material_version FROM situations"); current != "2 1" {
+		t.Fatalf("current and last material version = %s, want 2 1: a pending approval of version 1 survives the wake", current)
+	}
+}

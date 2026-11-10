@@ -7,8 +7,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/spec"
 )
 
-// zone-thermal's declaration: a phase change or a large severity change is
-// material; a completeness flip or new facts are not.
 const thermalMaterialDelta = "delta.phase_changed || delta.severity_change >= 10"
 
 func materialityRules(t *testing.T, triggers ...spec.Trigger) *Rules {
@@ -26,8 +24,8 @@ func materialityRules(t *testing.T, triggers ...spec.Trigger) *Rules {
 
 func TestMaterialityFollowsTheSpecsDeclaration(t *testing.T) {
 	t.Parallel()
-	declared := spec.Trigger{Name: "overtemp", When: "false", Score: "1.0", Threshold: 1, MaterialDelta: thermalMaterialDelta}
-	// Stored versions carry no occurrence id, as cognition loads them.
+	declared := spec.Trigger{Name: "overtemp", When: "true", Score: "1.0", Threshold: 1, MaterialDelta: thermalMaterialDelta}
+	idle := spec.Trigger{Name: "idle", When: "false", Score: "1.0", Threshold: 1, MaterialDelta: thermalMaterialDelta}
 	previous := situations.Version{SituationID: "s", Version: 7, Phase: "cooling", Severity: 55, Completeness: "provisional", Facts: map[string]any{"temp_mean": 33.0}}
 	resolved := previous
 	resolved.Phase = situations.PhaseResolved
@@ -41,8 +39,9 @@ func TestMaterialityFollowsTheSpecsDeclaration(t *testing.T) {
 		{"completeness flip and new facts are not material", materialityRules(t, declared), &previous, func(v *situations.Version) {
 			v.Completeness, v.Facts = "on_time", map[string]any{"temp_mean": 33.1}
 		}, false},
-		{"a phase change is material even when the trigger does not fire", materialityRules(t, declared), &previous, func(v *situations.Version) { v.Phase = "recovering" }, true},
-		{"a severity jump is material", materialityRules(t, declared), &previous, func(v *situations.Version) { v.Severity = 85 }, true},
+		{"a phase change is material even when no trigger applies", materialityRules(t, idle), &previous, func(v *situations.Version) { v.Phase = "recovering" }, true},
+		{"a severity jump is material to a trigger that applies", materialityRules(t, declared), &previous, func(v *situations.Version) { v.Severity = 85 }, true},
+		{"a severity jump is not material to a trigger that does not apply", materialityRules(t, idle), &previous, func(v *situations.Version) { v.Severity = 85 }, false},
 		{"the closing phase is always material", materialityRules(t, declared), &previous, func(v *situations.Version) { v.Phase = situations.PhaseResolved }, true},
 		{"a terminal phase is always material", materialityRules(t, declared), &previous, func(v *situations.Version) { v.Phase = "done" }, true},
 		{"the version after the occurrence ended is material", materialityRules(t, declared), &resolved, func(*situations.Version) {}, true},
@@ -63,8 +62,27 @@ func TestMaterialityFollowsTheSpecsDeclaration(t *testing.T) {
 	}
 }
 
-// primary_hypothesis_changed is a defined constant, not a tracked value: true
-// for a Situation's first reasoned version, false for every later one.
+func TestAWatchFireIsMaterialOnlyWhileATriggerThatNamesItApplies(t *testing.T) {
+	t.Parallel()
+	rules := materialityRules(t,
+		spec.Trigger{Name: "cooling_needs_relief", When: `situation.phase == "cooling"`, Score: "1.0", Threshold: 1, MaterialDelta: "delta.phase_changed || delta.watch_fired"},
+		spec.Trigger{Name: "recovering_needs_its_step", When: `situation.phase == "recovering"`, Score: "1.0", Threshold: 1, MaterialDelta: "delta.phase_changed"})
+	for _, tc := range []struct {
+		phase string
+		want  bool
+	}{{"cooling", true}, {"recovering", false}} {
+		t.Run(tc.phase, func(t *testing.T) {
+			t.Parallel()
+			previous := situations.Version{SituationID: "s", Version: 7, Phase: tc.phase, Severity: 55, Completeness: "final_by_policy", Facts: map[string]any{"temp_mean": 33.0}}
+			woken := previous
+			woken.Version, woken.WokenBy, woken.Facts = 8, situations.WokenByWatch, map[string]any{"temp_mean": 33.1}
+			if got := rules.Material(woken, &previous); got != tc.want {
+				t.Fatalf("a watch fire in phase %s: Material = %v, want %v", tc.phase, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestPrimaryHypothesisChangedIsTrueOnlyForTheFirstVersion(t *testing.T) {
 	t.Parallel()
 	rules := materialityRules(t)
