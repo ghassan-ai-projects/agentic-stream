@@ -245,7 +245,7 @@ func assertR2PassedOnSettledFeatures(t *testing.T, dbPath string, want int) {
 
 func assertTheDegradingStepNames(t *testing.T, dbPath, diagnosis string) {
 	t.Helper()
-	query := `SELECT d.validation_status || ' ' || json_extract(d.raw_json, '$.diagnosis_code') || ' ' || i.intent_type FROM decisions d
+	query := `SELECT d.validation_status || ' ' || COALESCE(json_extract(d.raw_json, '$.diagnosis_code'), '') || ' ' || i.intent_type FROM decisions d
 		JOIN situation_versions v ON v.situation_id = d.situation_id AND v.version = d.situation_version
 		JOIN intents i ON i.decision_id = d.decision_id WHERE v.phase = 'degrading'`
 	if got := columnValues(t, dbPath, query); !slices.Equal(got, []string{"accepted " + diagnosis + " reduce_feed"}) {

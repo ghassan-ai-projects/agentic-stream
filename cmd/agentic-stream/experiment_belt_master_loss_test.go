@@ -175,7 +175,7 @@ func (l masterLoss) currents(tripped bool) []float64 {
 
 func assertEveryStepNames(t *testing.T, dbPath, diagnosis string) {
 	t.Helper()
-	query := `SELECT DISTINCT d.validation_status || ' ' || json_extract(d.raw_json, '$.diagnosis_code') FROM decisions d
+	query := `SELECT DISTINCT d.validation_status || ' ' || COALESCE(json_extract(d.raw_json, '$.diagnosis_code'), '') FROM decisions d
 		JOIN intents i ON i.decision_id = d.decision_id WHERE i.intent_type != 'install_watch_condition'`
 	if got := columnValues(t, dbPath, query); !slices.Equal(got, []string{"accepted " + diagnosis}) {
 		t.Fatalf("the steps' decisions = %v, want each accepted with the diagnosis %s", got, diagnosis)

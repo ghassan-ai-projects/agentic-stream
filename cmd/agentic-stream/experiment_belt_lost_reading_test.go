@@ -82,7 +82,7 @@ func stuckBearing(minute int) beltDisturbance {
 
 func assertDiagnosedFirst(t *testing.T, dbPath string, first, then string) {
 	t.Helper()
-	query := `SELECT json_extract(d.raw_json, '$.diagnosis_code') FROM decisions d JOIN situation_versions v
+	query := `SELECT COALESCE(json_extract(d.raw_json, '$.diagnosis_code'), '') FROM decisions d JOIN situation_versions v
 		ON v.situation_id = d.situation_id AND v.version = d.situation_version WHERE d.validation_status = 'accepted' ORDER BY v.event_horizon, d.created_at`
 	diagnoses := slices.Compact(columnValues(t, dbPath, query))
 	if len(diagnoses) == 0 || diagnoses[0] != first || !slices.Contains(diagnoses, then) {
