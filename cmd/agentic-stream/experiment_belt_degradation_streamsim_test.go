@@ -120,13 +120,8 @@ func (c conveyorTwin) playBarrierPaced(t *testing.T, play twinPlay, story twinSt
 	logPhasesSince(t, run.db, onset)
 	logCommandsSince(t, run.db, onset)
 	assertRoutes(t, run.db, story.routes)
-	for _, readBack := range story.readBacks {
-		if readBack[2] == plantLimp {
-			readBack[2] = play.limp
-		}
-		assertTwinReadBack(t, run.db, readBack[0], readBack[1], readBack[2])
-	}
-	assertR2PassedOnSettledFeatures(t, run.db, len(slices.DeleteFunc(slices.Clone(story.routes), func(route string) bool { return route == "reduce_feed" })))
+	story.assertReadBacks(t, run.db, play.limp)
+	assertR2PassedOnSettledFeatures(t, run.db, story.settledSteps())
 	if len(story.routes) > 0 {
 		story.judge(t, c.assertTheLineIsSaved(t, runDir, story.unharmed...), ran)
 	}
@@ -139,6 +134,20 @@ func (c conveyorTwin) playBarrierPaced(t *testing.T, play twinPlay, story twinSt
 	}
 	run.stop()
 	assertRunArtifactVerifies(t, experimentRun{dir: run.dir, db: run.db}, exportDevice(story.device)...)
+}
+
+func (s twinStory) assertReadBacks(t *testing.T, dbPath, limp string) {
+	t.Helper()
+	for _, readBack := range s.readBacks {
+		if readBack[2] == plantLimp {
+			readBack[2] = limp
+		}
+		assertTwinReadBack(t, dbPath, readBack[0], readBack[1], readBack[2])
+	}
+}
+
+func (s twinStory) settledSteps() int {
+	return len(slices.DeleteFunc(slices.Clone(s.routes), func(route string) bool { return route == "reduce_feed" }))
 }
 
 func exportDevice(device string) []string {

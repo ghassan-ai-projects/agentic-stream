@@ -14,18 +14,36 @@ import (
 const masterFault = "drive_master__vfd_fault"
 
 type masterLossTwin struct {
-	route     string
-	readBack  string
-	approvals int
-	phases    []string
-	judge     func(c conveyorTwin, t *testing.T, runDir string)
+	route    string
+	readBack string
+	phases   []string
+	judge    func(t *testing.T, grade outcomeGrade, output []byte)
 }
 
 var masterLossTwins = map[string]masterLossTwin{
-	"s6-a-stop": {route: "stop_feed", readBack: "0", approvals: 1, phases: []string{"running", "master_lost", "stranded"},
-		judge: conveyorTwin.assertNoRestartWhileLoaded},
+	"s6-a-stop": {route: "stop_feed", readBack: "0", phases: []string{"running", "master_lost", "stranded"},
+		judge: assertNoRestartWhileLoaded},
 	"s6-a-promote": {route: "reduce_feed", readBack: plantLimp, phases: []string{"running", "master_lost", "followers_lead"},
-		judge: conveyorTwin.assertThePromotedFollowersAreSaved},
+		judge: assertThePromotedFollowersAreSaved},
+}
+
+func (m masterLossTwin) planned() twinStory {
+	return twinStory{spec: masterLossSpec, routes: []string{m.route}, readBacks: [][3]string{{"set_feed", "feed_setpoint", m.readBack}},
+		device: "F-1", diagnosis: masterTripped, fault: masterFault, faulted: "D-1"}
+}
+
+type twinOutcome struct {
+	db, runDir string
+	ran        twinRun
+	grade      outcomeGrade
+	output     []byte
+}
+
+func (m masterLossTwin) assertTheOutcome(t *testing.T, played twinOutcome) {
+	t.Helper()
+	assertPhases(t, played.db, m.phases)
+	assertEveryStepNames(t, played.db, masterTripped)
+	m.judge(t, played.grade, played.output)
 }
 
 //nolint:paralleltest // serve reads the approval token and relay from the process environment (t.Setenv)
@@ -53,36 +71,35 @@ func (c conveyorTwin) playMasterLoss(t *testing.T, play twinPlay, story masterLo
 	t.Cleanup(func() {
 		t.Logf("%s seed %d played in %s of wall time", play.name, play.seed(), time.Since(started).Round(time.Second))
 	})
-	run := startDegradationServe(t, masterLossSpec, play.story.Plant, answerTheMastersTrip(masterLossSteps))
+	planned := story.planned()
+	run := startDegradationServe(t, planned.specPath(), play.story.Plant, answerTheMastersTrip(masterLossSteps))
 	t.Cleanup(func() { logCommandOutcomes(t, run.db) })
-	plan := c.sessionPlan(t, play.story.ID, run.socket, conveyorPolicyDigest(t, masterLossSpec), play.story.planOf(play.row))
+	plan := c.sessionPlan(t, play.story.ID, run.socket, conveyorPolicyDigest(t, planned.specPath()), play.story.planOf(play.row))
 	stopApproving := approveWhileRunning(t, run)
 	runDir := c.connect(t, play.name, plan, "--slice-s", barrierSliceS, "--barrier-cap-ms", barrierCapMS)
 	stopApproving()
 	ran := readTwinRun(t, runDir)
 	ran.assertSeed(t, play.seed())
-	trip := ran.onsetOf(t, "D-1")
+	trip := ran.onsetOf(t, planned.faulted)
 	logPhasesSince(t, run.db, trip)
 	logCommandsSince(t, run.db, trip)
-	assertPhases(t, run.db, story.phases)
-	assertRoutes(t, run.db, []string{story.route})
-	assertTwinReadBack(t, run.db, "set_feed", "feed_setpoint", strings.Replace(story.readBack, plantLimp, play.limp, 1))
-	assertR2PassedOnSettledFeatures(t, run.db, story.approvals)
-	assertEveryStepNames(t, run.db, masterTripped)
-	story.judge(c, t, runDir)
+	assertRoutes(t, run.db, planned.routes)
+	planned.assertReadBacks(t, run.db, play.limp)
+	assertR2PassedOnSettledFeatures(t, run.db, planned.settledSteps())
+	grade, output := c.outcome(t, runDir)
+	story.assertTheOutcome(t, twinOutcome{db: run.db, runDir: runDir, ran: ran, grade: grade, output: output})
 	horizon := time.Duration(readJSONFile(t, plan)["horizon_s"].(float64) * float64(time.Second))
 	c.scoreVerdict(t, run.db, runDir, campaign.Window{From: ran.start(), Until: ran.start().Add(horizon)},
-		campaign.Verdict{Version: "belt-m4", Arm: "master-loss", Subjects: c.subjects(t, play.story.Plant, "D-1", map[string]string{masterTripped: masterFault})})
+		campaign.Verdict{Version: "belt-m4", Arm: "master-loss", Subjects: planned.subjects(c.subjects(t, play.story.Plant, planned.faulted, planned.faults()))})
 	if quarantined := countRows(t, run.db, "event_quarantine"); quarantined != 0 {
 		t.Fatalf("%d events quarantined, want none", quarantined)
 	}
 	run.stop()
-	assertRunArtifactVerifies(t, experimentRun{dir: run.dir, db: run.db}, "--device-id", "F-1")
+	assertRunArtifactVerifies(t, experimentRun{dir: run.dir, db: run.db}, exportDevice(planned.device)...)
 }
 
-func (c conveyorTwin) assertThePromotedFollowersAreSaved(t *testing.T, runDir string) {
+func assertThePromotedFollowersAreSaved(t *testing.T, grade outcomeGrade, output []byte) {
 	t.Helper()
-	grade, output := c.outcome(t, runDir)
 	if !grade.Valid {
 		t.Fatalf("outcome %s: want a valid story", output)
 	}
@@ -100,9 +117,8 @@ func (c conveyorTwin) assertThePromotedFollowersAreSaved(t *testing.T, runDir st
 	}
 }
 
-func (c conveyorTwin) assertNoRestartWhileLoaded(t *testing.T, runDir string) {
+func assertNoRestartWhileLoaded(t *testing.T, grade outcomeGrade, output []byte) {
 	t.Helper()
-	grade, output := c.outcome(t, runDir)
 	if !grade.Valid || !grade.Easy || !slices.Contains(grade.Verdicts, outcomeVerdict{Baseline: "do_nothing", Delta: 0, Verdict: "ties"}) {
 		t.Fatalf("outcome %s: want a valid, easy story whose run ties doing nothing exactly", output)
 	}

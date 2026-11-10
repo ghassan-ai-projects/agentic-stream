@@ -132,11 +132,16 @@ type outcomeVerdict struct {
 func (c conveyorTwin) assertTheLineIsSaved(t *testing.T, runDir string, unharmed ...string) outcomeGrade {
 	t.Helper()
 	grade, output := c.outcome(t, runDir)
+	assertTheOutcomeSavesTheLine(t, grade, output, unharmed)
+	return grade
+}
+
+func assertTheOutcomeSavesTheLine(t *testing.T, grade outcomeGrade, output []byte, unharmed []string) {
+	t.Helper()
 	if !grade.Valid || !slices.ContainsFunc(grade.Verdicts, func(v outcomeVerdict) bool { return v.Baseline == "do_nothing" && v.Verdict == "beats" }) {
 		t.Fatalf("outcome %s: want a valid story whose run beats doing nothing", output)
 	}
 	assertNoTripNorStrandedBelt(t, grade, output, unharmed)
-	return grade
 }
 
 func (c conveyorTwin) outcome(t *testing.T, runDir string) (outcomeGrade, []byte) {

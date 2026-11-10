@@ -17,7 +17,11 @@ const (
 	conveyorReactionTime = 98 * time.Second
 )
 
-var conveyorSeeds = []int64{144108226, 1816007955, 1936376588}
+var (
+	conveyorSeeds = []int64{144108226, 1816007955, 1936376588}
+	lostDriveLimp = twinStory{spec: conveyorSpec, routes: []string{"reduce_feed"}, readBacks: [][3]string{{"set_feed", "feed_setpoint", conveyorSetpointLimp}},
+		unharmed: []string{"D-1", "D-2"}, diagnosis: "drive_tripped", fault: "conveyor_drive__vfd_fault", faulted: "D-3"}
+)
 
 func TestTheLimpFeedSavesTheSurvivorsOfALostDriveOnAPacedStreamsimTwin(t *testing.T) {
 	t.Parallel()
@@ -29,14 +33,14 @@ func TestTheLimpFeedSavesTheSurvivorsOfALostDriveOnAPacedStreamsimTwin(t *testin
 			run := startConveyorServe(t)
 			runDir := twin.connect(t, "seed "+strconv.FormatInt(seed, 10), twin.plan(t, seed, run.socket, conveyorPolicyDigest(t, conveyorSpec)))
 			t.Cleanup(func() { logCommandOutcomes(t, run.db) })
-			assertTwinReadBack(t, run.db, "set_feed", "feed_setpoint", conveyorSetpointLimp)
+			lostDriveLimp.assertReadBacks(t, run.db, conveyorSetpointLimp)
 			ran := readTwinRun(t, runDir)
 			ran.assertSeed(t, seed)
-			assertLimpFeedInTime(t, run.db, ran.onsetOf(t, "D-3"))
-			twin.assertTheLineIsSaved(t, runDir, "D-1", "D-2")
+			assertLimpFeedInTime(t, run.db, ran.onsetOf(t, lostDriveLimp.faulted))
+			twin.assertTheLineIsSaved(t, runDir, lostDriveLimp.unharmed...)
 			window := campaign.Window{From: ran.start(), Until: ran.start().Add(conveyorHorizonS * time.Second)}
 			twin.scoreVerdict(t, run.db, runDir, window, campaign.Verdict{Version: "belt-m2", Arm: "limp-feed",
-				Subjects: twin.subjects(t, "b", "D-3", map[string]string{"drive_tripped": "conveyor_drive__vfd_fault"})})
+				Subjects: twin.subjects(t, "b", lostDriveLimp.faulted, lostDriveLimp.faults())})
 			if quarantined := countRows(t, run.db, "event_quarantine"); quarantined != 0 {
 				t.Fatalf("%d events quarantined, want none", quarantined)
 			}
