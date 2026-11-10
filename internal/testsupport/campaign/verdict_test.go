@@ -165,6 +165,26 @@ func TestAVerdictReportsTheSubjectsItIsGiven(t *testing.T) {
 	}
 }
 
+func TestAVerdictLeavesOutACommandThatReachesNoInstance(t *testing.T) {
+	t.Parallel()
+	loaded := twoRunCampaign(t)
+	db := storagetest.OpenTempWithoutForeignKeys(t).DB
+	decide(t, db, decided{pump: "pump-3", diagnosis: "drive_tripped", at: "2026-01-01T00:40:00.000000000Z", version: 1})
+	runDir := t.TempDir()
+	write(t, runDir, "run.json", `{"run_id":"run-1"}`)
+	window, err := loaded.Window(loaded.Runs[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	subjects := Subjects{Detected: SameNames.Detected, Acted: func(string, string) (string, string) { return "", "" }}
+	if err := WriteVerdictOf(t.Context(), db, runDir, window, Verdict{Version: "m2", Arm: "watch", Subjects: subjects}); err != nil {
+		t.Fatal(err)
+	}
+	if v := decodeVerdict(t, runDir); len(v.Detections) != 1 || len(v.Actions) != 0 {
+		t.Fatalf("verdict = %+v, want the detection and no action: a command that reaches no instance is no action", v)
+	}
+}
+
 func TestAVerdictFoldsASymptomIntoTheLaterCauseOfItsInstanceAndLeavesOutWhatNamesNothing(t *testing.T) {
 	t.Parallel()
 	db := storagetest.OpenTempWithoutForeignKeys(t).DB

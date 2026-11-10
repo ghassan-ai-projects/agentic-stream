@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
@@ -64,7 +65,8 @@ type action struct {
 // instance and label of a detection from its Situation's entity and the
 // decision's diagnosis, and the instance and effector an action reached from
 // its route and normalized target. A detection mapped to no instance is left
-// out (a diagnosis that names nothing). One mapped to an instance without a
+// out (a diagnosis that names nothing), and so is an action (a command that
+// reaches no instance, as the runtime's own watch). One mapped to an instance without a
 // label is a symptom. Refines declares, per diagnosis, the symptom diagnosis
 // it refines: a labeled detection that refines a symptom of its instance takes
 // the symptom's earlier time, and that symptom is no row of its own; a symptom
@@ -147,6 +149,7 @@ func (s Subjects) place(v *verdict) {
 	for i, a := range v.Actions {
 		v.Actions[i].EntityID, v.Actions[i].Effector = s.Acted(a.Effector, a.EntityID)
 	}
+	v.Actions = slices.DeleteFunc(v.Actions, func(a action) bool { return a.EntityID == "" })
 }
 
 func (s Subjects) detections(decided []detection) []detection {
