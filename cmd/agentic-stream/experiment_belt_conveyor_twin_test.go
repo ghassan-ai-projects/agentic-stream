@@ -204,6 +204,7 @@ func (c conveyorTwin) subjects(t *testing.T, plant, faulted string, faults map[s
 			device := routes[route].TargetBindings[target]
 			return device, raw[kinds[device]][routes[route].Operation]
 		},
+		Refines: causesRefiningTheSymptom,
 	}
 }
 

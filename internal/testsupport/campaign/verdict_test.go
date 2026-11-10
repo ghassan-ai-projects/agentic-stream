@@ -167,19 +167,43 @@ func TestAVerdictReportsTheSubjectsItIsGiven(t *testing.T) {
 
 func TestAVerdictFoldsASymptomIntoTheLaterCauseOfItsInstanceAndLeavesOutWhatNamesNothing(t *testing.T) {
 	t.Parallel()
-	loaded := twoRunCampaign(t)
 	db := storagetest.OpenTempWithoutForeignKeys(t).DB
 	decide(t, db, decided{pump: "pump-3", diagnosis: "unknown", at: "2026-01-01T00:30:00.000000000Z", version: 1})
 	decide(t, db, decided{pump: "pump-3", diagnosis: "degrading", at: "2026-01-01T00:40:00.000000000Z", version: 2})
 	decide(t, db, decided{pump: "pump-3", diagnosis: "bearing_wear", at: "2026-01-01T01:30:00.000000000Z", version: 3})
 	decide(t, db, decided{pump: "pump-5", diagnosis: "degrading", at: "2026-01-01T00:50:00.000000000Z", version: 1})
+	got := foldedDetections(t, db, map[string]string{"degrading": "", "bearing_wear": "pump__bearing"}, map[string]string{"bearing_wear": "degrading"})
+	want := []detection{{EntityID: "site-a:pump-3", DetectedAt: "2026-01-01T00:40:00.000000000Z", Label: "pump__bearing"},
+		{EntityID: "site-a:pump-5", DetectedAt: "2026-01-01T00:50:00.000000000Z"}}
+	if !slices.Equal(got, want) {
+		t.Fatalf("detections = %+v, want %+v: the symptom dates pump-3's bearing, stands alone on pump-5, and unknown is left out", got, want)
+	}
+}
+
+func TestAVerdictFoldsASymptomOnlyIntoTheCausesThatRefineIt(t *testing.T) {
+	t.Parallel()
+	db := storagetest.OpenTempWithoutForeignKeys(t).DB
+	decide(t, db, decided{pump: "pump-3", diagnosis: "drive_degrading", at: "2026-01-01T00:40:00.000000000Z", version: 1})
+	decide(t, db, decided{pump: "pump-3", diagnosis: "sensor_stuck", at: "2026-01-01T01:00:00.000000000Z", version: 2})
+	decide(t, db, decided{pump: "pump-3", diagnosis: "bearing", at: "2026-01-01T01:30:00.000000000Z", version: 3})
+	labels := map[string]string{"drive_degrading": "", "bearing": "pump__lube_loss", "sensor_stuck": "pump__vibration__frozen"}
+	got := foldedDetections(t, db, labels, map[string]string{"bearing": "drive_degrading", "gearbox_seizing": "drive_degrading"})
+	want := []detection{{EntityID: "site-a:pump-3", DetectedAt: "2026-01-01T00:40:00.000000000Z", Label: "pump__lube_loss"},
+		{EntityID: "site-a:pump-3", DetectedAt: "2026-01-01T01:00:00.000000000Z", Label: "pump__vibration__frozen"}}
+	if !slices.Equal(got, want) {
+		t.Fatalf("detections = %+v, want %+v: the bearing refines drive_degrading and takes its time, sensor_stuck refines nothing and keeps its own", got, want)
+	}
+}
+
+func foldedDetections(t *testing.T, db *sql.DB, labels, refines map[string]string) []detection {
+	t.Helper()
+	loaded := twoRunCampaign(t)
 	runDir := t.TempDir()
 	write(t, runDir, "run.json", `{"run_id":"run-1"}`)
 	window, err := loaded.Window(loaded.Runs[0])
 	if err != nil {
 		t.Fatal(err)
 	}
-	labels := map[string]string{"degrading": "", "bearing_wear": "pump__bearing"}
 	subjects := Subjects{
 		Detected: func(entityID, diagnosis string) (string, string) {
 			if label, known := labels[diagnosis]; known {
@@ -187,14 +211,11 @@ func TestAVerdictFoldsASymptomIntoTheLaterCauseOfItsInstanceAndLeavesOutWhatName
 			}
 			return "", ""
 		},
-		Acted: func(route, _ string) (string, string) { return route, route },
+		Acted:   func(route, _ string) (string, string) { return route, route },
+		Refines: refines,
 	}
 	if err := WriteVerdictOf(t.Context(), db, runDir, window, Verdict{Version: "v", Arm: "a", Subjects: subjects}); err != nil {
 		t.Fatal(err)
 	}
-	want := []detection{{EntityID: "site-a:pump-3", DetectedAt: "2026-01-01T00:40:00.000000000Z", Label: "pump__bearing"},
-		{EntityID: "site-a:pump-5", DetectedAt: "2026-01-01T00:50:00.000000000Z"}}
-	if got := decodeVerdict(t, runDir).Detections; !slices.Equal(got, want) {
-		t.Fatalf("detections = %+v, want %+v: the symptom dates pump-3's bearing, stands alone on pump-5, and unknown is left out", got, want)
-	}
+	return decodeVerdict(t, runDir).Detections
 }

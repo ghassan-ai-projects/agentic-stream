@@ -5,11 +5,17 @@ import (
 	"slices"
 )
 
-func withSymptomsFolded(placed []detection) []detection {
-	firstSymptom, labeled := symptomsOf(placed)
+type symptomKey struct {
+	instance, diagnosis string
+}
+
+func (s Subjects) withSymptomsFolded(placed []detection) []detection {
+	firstSymptom := symptomsOf(placed)
+	refined := s.refinedSymptoms(placed)
+	reported := map[symptomKey]bool{}
 	folded := []detection{}
 	for _, d := range placed {
-		if kept, keep := foldSymptom(d, firstSymptom, labeled); keep {
+		if kept, keep := s.foldSymptom(d, firstSymptom, refined, reported); keep {
 			folded = append(folded, kept)
 		}
 	}
@@ -19,31 +25,49 @@ func withSymptomsFolded(placed []detection) []detection {
 	return folded
 }
 
-func foldSymptom(d detection, firstSymptom map[string]string, labeled map[string]bool) (detection, bool) {
-	symptom, hasSymptom := firstSymptom[d.EntityID]
-	switch {
-	case d.Label != "":
-		if hasSymptom && symptom < d.DetectedAt {
-			d.DetectedAt = symptom
-		}
-		return d, true
-	case !labeled[d.EntityID] && d.DetectedAt == symptom:
-		labeled[d.EntityID] = true
-		return d, true
+func (s Subjects) foldSymptom(d detection, firstSymptom map[symptomKey]string, refined, reported map[symptomKey]bool) (detection, bool) {
+	if d.Label != "" {
+		return s.datedBySymptom(d, firstSymptom), true
 	}
-	return d, false
+	key := symptomKey{d.EntityID, d.diagnosis}
+	if refined[key] || reported[key] || d.DetectedAt != firstSymptom[key] {
+		return d, false
+	}
+	reported[key] = true
+	return d, true
 }
 
-func symptomsOf(placed []detection) (map[string]string, map[string]bool) {
-	firstSymptom, labeled := map[string]string{}, map[string]bool{}
+func (s Subjects) datedBySymptom(d detection, firstSymptom map[symptomKey]string) detection {
+	symptom, refines := s.Refines[d.diagnosis]
+	if !refines {
+		return d
+	}
+	if at, seen := firstSymptom[symptomKey{d.EntityID, symptom}]; seen && at < d.DetectedAt {
+		d.DetectedAt = at
+	}
+	return d
+}
+
+func (s Subjects) refinedSymptoms(placed []detection) map[symptomKey]bool {
+	refined := map[symptomKey]bool{}
 	for _, d := range placed {
-		if d.Label != "" {
-			labeled[d.EntityID] = true
-			continue
-		}
-		if at, seen := firstSymptom[d.EntityID]; !seen || d.DetectedAt < at {
-			firstSymptom[d.EntityID] = d.DetectedAt
+		if symptom, refines := s.Refines[d.diagnosis]; refines && d.Label != "" {
+			refined[symptomKey{d.EntityID, symptom}] = true
 		}
 	}
-	return firstSymptom, labeled
+	return refined
+}
+
+func symptomsOf(placed []detection) map[symptomKey]string {
+	firstSymptom := map[symptomKey]string{}
+	for _, d := range placed {
+		if d.Label != "" {
+			continue
+		}
+		key := symptomKey{d.EntityID, d.diagnosis}
+		if at, seen := firstSymptom[key]; !seen || d.DetectedAt < at {
+			firstSymptom[key] = d.DetectedAt
+		}
+	}
+	return firstSymptom
 }

@@ -19,6 +19,8 @@ const (
 	untoldCause                 = "drive_degrading"
 )
 
+var causesRefiningTheSymptom = map[string]string{"bearing": untoldCause, "gearbox_seizing": untoldCause}
+
 var (
 	emptyTheBelt    = proposal{Type: "stop_feed", Risk: "R2", Parameters: map[string]any{"level": "empty"}}
 	isolateTheDrive = proposal{Type: "isolate_drive", Risk: "R2", Parameters: map[string]any{"mode": "planned_stop"}}

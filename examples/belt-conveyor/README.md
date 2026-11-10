@@ -109,8 +109,11 @@ planned-stop story the verdict carries D-3's predicted trip
 diagnoses by the catalog's rules (`drive_degrading` while neither the bearing
 nor the gearbox rule holds; the cause refines it) and takes the phase's step,
 which does not depend on its diagnosis. The verdict maps `drive_degrading` to
-D-3 without a label, a symptom that dates the later cause's detection, and
-leaves `unknown` out.
+D-3 without a label, a symptom that dates the detection of a later cause that
+refines it, and leaves `unknown` out. Which code refines which is declared in
+the tests' verdict subjects (`bearing` and `gearbox_seizing` refine
+`drive_degrading`), not in the diagnosis catalog: Tamoz refuses a catalog entry
+with any key but `code` and `description`, and only grading reads the relation.
 
 `experiment_belt_master_loss*_test.go` (M4, S6) plays both master-loss branches
 against the fake node (abrupt currents, the stopped belt coasting 15 s) and both

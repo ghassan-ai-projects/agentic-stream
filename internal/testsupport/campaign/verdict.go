@@ -49,6 +49,7 @@ type detection struct {
 	Label              string `json:"label,omitempty"`
 	PredictedFailureAt string `json:"predicted_failure_at,omitempty"`
 	situationEntity    string
+	diagnosis          string
 }
 
 type action struct {
@@ -64,9 +65,11 @@ type action struct {
 // decision's diagnosis, and the instance and effector an action reached from
 // its route and normalized target. A detection mapped to no instance is left
 // out (a diagnosis that names nothing). One mapped to an instance without a
-// label is a symptom: it is not a row of its own while a labeled detection of
-// that instance exists, whose detection time it moves earlier; otherwise its
-// earliest occurrence is reported without a label. Prognosis names, per
+// label is a symptom. Refines declares, per diagnosis, the symptom diagnosis
+// it refines: a labeled detection that refines a symptom of its instance takes
+// the symptom's earlier time, and that symptom is no row of its own; a symptom
+// nothing refines is reported once, at its earliest, without a label; a label
+// that refines nothing keeps its own time. Prognosis names, per
 // label, the Situation fact that holds the seconds until the detected
 // instance fails if nobody acts (an extrapolate operator's output): a
 // detection of that label carries the failure time its Situation predicted
@@ -75,6 +78,7 @@ type action struct {
 type Subjects struct {
 	Detected  func(entityID, diagnosis string) (instance, label string)
 	Acted     func(route, target string) (instance, effector string)
+	Refines   map[string]string
 	Prognosis map[string]string
 }
 
@@ -139,7 +143,7 @@ func (v *verdict) read(ctx context.Context, db *sql.DB, window Window) error {
 }
 
 func (s Subjects) place(v *verdict) {
-	v.Detections = withSymptomsFolded(s.detections(v.Detections))
+	v.Detections = s.withSymptomsFolded(s.detections(v.Detections))
 	for i, a := range v.Actions {
 		v.Actions[i].EntityID, v.Actions[i].Effector = s.Acted(a.Effector, a.EntityID)
 	}
@@ -150,7 +154,7 @@ func (s Subjects) detections(decided []detection) []detection {
 	for _, d := range decided {
 		instance, label := s.Detected(d.EntityID, d.Label)
 		if instance != "" {
-			placed = append(placed, detection{EntityID: instance, DetectedAt: d.DetectedAt, Label: label, situationEntity: d.EntityID})
+			placed = append(placed, detection{EntityID: instance, DetectedAt: d.DetectedAt, Label: label, situationEntity: d.EntityID, diagnosis: d.Label})
 		}
 	}
 	return placed
