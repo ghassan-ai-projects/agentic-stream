@@ -59,11 +59,7 @@ func TestTheMasterLossSpecSettlesEveryWindowAndDeclaresNoRestart(t *testing.T) {
 			t.Errorf("window %s emits %q, want on_close: an R2 intent is denied on provisional features", window.Name, window.Emit)
 		}
 	}
-	intents := make([]string, len(compiled.Actions.Intents))
-	for i, intent := range compiled.Actions.Intents {
-		intents[i] = intent.Type
-	}
-	if want := []string{"install_watch_condition", "reduce_feed", "stop_feed"}; !slices.Equal(intents, want) {
+	if intents, want := intentTypes(compiled), []string{"install_watch_condition", "reduce_feed", "stop_feed"}; !slices.Equal(intents, want) {
 		t.Errorf("intents = %v, want %v: nothing restarts the belt or a drive", intents, want)
 	}
 	for _, plant := range slices.Sorted(maps.Keys(plantSites)) {

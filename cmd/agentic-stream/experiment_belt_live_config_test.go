@@ -30,10 +30,23 @@ func TestEveryLiveStoryHasACompleteLiveConfiguration(t *testing.T) {
 
 func (s liveStory) assertTheSpecPlansIt(t *testing.T, compiled *spec.CompiledSpec) {
 	t.Helper()
+	assertAllIn(t, "the spec's intents", intentTypes(compiled), s.planned.routes...)
+	assertAllIn(t, "the spec's diagnosis codes", diagnosisCodes(t, compiled), slices.Collect(maps.Keys(s.planned.faults()))...)
+	if s.planned.prognosis != "" && !slices.ContainsFunc(compiled.Operators, func(op spec.Operator) bool { return op.Output == s.planned.prognosis }) {
+		t.Errorf("no operator of the spec outputs the prognosis %s", s.planned.prognosis)
+	}
+}
+
+func intentTypes(compiled *spec.CompiledSpec) []string {
 	intents := make([]string, len(compiled.Actions.Intents))
 	for i, intent := range compiled.Actions.Intents {
 		intents[i] = intent.Type
 	}
+	return intents
+}
+
+func diagnosisCodes(t *testing.T, compiled *spec.CompiledSpec) []string {
+	t.Helper()
 	var catalog []struct {
 		Code string `json:"code"`
 	}
@@ -44,11 +57,7 @@ func (s liveStory) assertTheSpecPlansIt(t *testing.T, compiled *spec.CompiledSpe
 	for i, entry := range catalog {
 		codes[i] = entry.Code
 	}
-	assertAllIn(t, "the spec's intents", intents, s.planned.routes...)
-	assertAllIn(t, "the spec's diagnosis codes", codes, slices.Collect(maps.Keys(s.planned.faults()))...)
-	if s.planned.prognosis != "" && !slices.ContainsFunc(compiled.Operators, func(op spec.Operator) bool { return op.Output == s.planned.prognosis }) {
-		t.Errorf("no operator of the spec outputs the prognosis %s", s.planned.prognosis)
-	}
+	return codes
 }
 
 func (s liveStory) assertThePlantCarriesIt(t *testing.T, lease time.Duration) {
