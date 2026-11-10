@@ -32,6 +32,7 @@ type twinStory struct {
 	fault     string
 	faulted   string
 	prognosis string
+	lost      lostReading
 }
 
 var (
@@ -48,6 +49,7 @@ var (
 		"s1-b": plannedBearingStop,
 		"s3-a": {routes: []string{"reduce_feed", "stop_feed", "stop_belt"}, readBacks: beltStopRun.readBacks,
 			unharmed: []string{"D-1", "D-2"}, device: "B-1", diagnosis: "gearbox_seizing", fault: "conveyor_drive__gear_oil_loss", faulted: "D-3"},
+		"s5-a":              bearingIsolation.withLost(stuckVibration),
 		"s4-a":              {faulted: "F-1"},
 		"s4-b":              plannedStopUnmoved,
 		"s4-a-planned-stop": plannedStopUnmoved.of("s4-a"),
@@ -129,7 +131,8 @@ func (c conveyorTwin) playBarrierPaced(t *testing.T, play twinPlay, story twinSt
 	}
 	horizon := time.Duration(readJSONFile(t, plan)["horizon_s"].(float64) * float64(time.Second))
 	c.scoreVerdict(t, run.db, runDir, campaign.Window{From: ran.start(), Until: ran.start().Add(horizon)},
-		campaign.Verdict{Version: "belt-m4", Arm: "planned-stop", Subjects: story.subjects(c.subjects(t, play.story.Plant, "D-3", map[string]string{story.diagnosis: story.fault}))})
+		campaign.Verdict{Version: "belt-m4", Arm: "planned-stop", Subjects: story.subjects(c.subjects(t, play.story.Plant, "D-3", story.faults()))})
+	story.lost.assertReportedBeforeTheCause(t, runDir, story.fault)
 	if quarantined := countRows(t, run.db, "event_quarantine"); quarantined != 0 {
 		t.Fatalf("%d events quarantined, want none", quarantined)
 	}

@@ -37,6 +37,14 @@ master, of kind `drive_master`, and D-2, D-3 its followers, of kind
   cubed, about 4.5 times slower than at full feed, so the bearing rule, 0.6 to
   1.0 h after the degrading rule at full feed, takes up to about 4.2 h on an
   empty belt; the twin measured 1.9 h (S1-A) and 3.6 h (S1-B) on row 1.
+  A lost vibration reading (M4, story S5: D-3's accelerometer stuck at its
+  last value with good quality) is read by no vibration rule: D-3's 15 minute
+  readings within 0.005 mm/s while each peer's move by at least 0.02 mm/s
+  (the drive running) moves the line to `watch`, where the reasoner reports
+  `sensor_stuck`; the gearbox rule waits (a stuck reading fakes its quiet
+  vibration); and on the empty belt the bearing is judged by the winding:
+  D-3's residual at least 3 K and its 30 minute slope residual from 0.5 up to
+  below 2 K/h, a winding that still rises, slower than a seizing gearbox's.
 
 - `drive_degradation_planned_stop` (M4, story S1-B on plant `belt-conveyor-drives-b`,
   whose survivors have no margin and whose limp feed, 18 %, earns too little to
@@ -101,7 +109,7 @@ The tests are in `cmd/agentic-stream/experiment_belt_conveyor*_test.go` (M2) and
 `experiment_belt_degradation*_test.go` (M3): against a fake plant wire node that
 replays backdated readings at the sensors' cadences and obeys the host's
 commands, and against the streams-simulator twin (skipped without
-`STREAMSIM_BIN`; M3's stories S1-A, S3-A and S4-A run barrier-paced, and the
+`STREAMSIM_BIN`; M3's stories S1-A, S3-A and S4-A and M4's S5-A run barrier-paced, and the
 planned-stop spec plays S1-B, S4-B, and S4-A and S0-A on plant A's catalog, where
 nothing degrades), graded by `streamsim outcome` and `streamsim score`. On the
 planned-stop story the verdict carries D-3's predicted trip

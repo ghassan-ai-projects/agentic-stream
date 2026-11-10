@@ -32,6 +32,16 @@ kind: SituationSpec
 # load change biases a residual. The diagnosis catalog states the same rules,
 # and the watch preset holds when either rule does: a reasoner that only installs
 # the watch is woken (delta.watch_fired) when the evidence can tell the cause.
+# A lost vibration reading (S5: D-3's accelerometer stuck at its last value,
+# quality good) is evidence of nothing: D-3's reading is stuck while it runs
+# and its 15 minute readings lie within stuck_range_mm_s while each peer's
+# move by at least moving_range_mm_s. A lost reading moves the line to watch,
+# where it is reported (sensor_stuck); no vibration rule reads it, so the
+# gearbox rule, whose quiet vibration a stuck reading would fake, waits, and
+# on the empty belt the bearing is judged by the winding instead: D-3's
+# residual at least bearing_winding_k and its slope residual from
+# bearing_slope_floor_k_per_h up to below gearbox_slope_k_per_h, a winding
+# still rising but slower than a seizing gearbox's.
 # An episode that gives no accepted decision (it failed, timed out or its
 # decision was rejected) is retried as a new episode once 6 minutes of event
 # time passed while the phase holds (delta.reasoning_failed), at most twice per
@@ -260,6 +270,54 @@ operators:
     window: trend_15m
     aggregate: count
     output: drive3_vibration_readings_15m
+  - name: drive1_vibration_low
+    kind: aggregate
+    inputs: [drive1_vibration]
+    field: data.mm_s
+    window: trend_15m
+    aggregate: min
+    output: drive1_vibration_min_15m
+    unit: mm_s
+  - name: drive1_vibration_high
+    kind: aggregate
+    inputs: [drive1_vibration]
+    field: data.mm_s
+    window: trend_15m
+    aggregate: max
+    output: drive1_vibration_max_15m
+    unit: mm_s
+  - name: drive2_vibration_low
+    kind: aggregate
+    inputs: [drive2_vibration]
+    field: data.mm_s
+    window: trend_15m
+    aggregate: min
+    output: drive2_vibration_min_15m
+    unit: mm_s
+  - name: drive2_vibration_high
+    kind: aggregate
+    inputs: [drive2_vibration]
+    field: data.mm_s
+    window: trend_15m
+    aggregate: max
+    output: drive2_vibration_max_15m
+    unit: mm_s
+  - name: drive3_vibration_low
+    kind: aggregate
+    inputs: [drive3_vibration]
+    field: data.mm_s
+    window: trend_15m
+    aggregate: min
+    output: drive3_vibration_min_15m
+    unit: mm_s
+  - name: drive3_vibration_high
+    kind: aggregate
+    inputs: [drive3_vibration]
+    field: data.mm_s
+    window: trend_15m
+    aggregate: max
+    output: drive3_vibration_max_15m
+    unit: mm_s
   - name: drive1_winding_trend
     kind: aggregate
     inputs: [drive1_winding]
@@ -400,7 +458,16 @@ situation:
           (features.drive1_winding_readings_15m >= winding_readings_15m && features.drive2_winding_readings_15m >= winding_readings_15m && features.drive3_winding_readings_15m >= winding_readings_15m &&
             features.drive3_winding_15m - peer_winding >= winding_watch_k) ||
           (features.drive1_vibration_readings_15m >= vibration_readings_15m && features.drive2_vibration_readings_15m >= vibration_readings_15m && features.drive3_vibration_readings_15m >= vibration_readings_15m &&
-            features.drive3_vibration_15m - peer_vibration >= vibration_watch_mm_s)))))))
+            features.drive3_vibration_15m - peer_vibration >= vibration_watch_mm_s))))))) ||
+        (cel.bind(stuck_range_mm_s, 0.005,
+        cel.bind(moving_range_mm_s, 0.02,
+        cel.bind(drive_running_amps, 1.0,
+        cel.bind(vibration_readings_15m, 14.0,
+          features.drive3_amps > drive_running_amps &&
+          features.drive1_vibration_readings_15m >= vibration_readings_15m && features.drive2_vibration_readings_15m >= vibration_readings_15m && features.drive3_vibration_readings_15m >= vibration_readings_15m &&
+          features.drive3_vibration_max_15m - features.drive3_vibration_min_15m < stuck_range_mm_s &&
+          features.drive1_vibration_max_15m - features.drive1_vibration_min_15m >= moving_range_mm_s &&
+          features.drive2_vibration_max_15m - features.drive2_vibration_min_15m >= moving_range_mm_s)))))
     - from: watch
       to: degrading
       when: >
@@ -428,11 +495,41 @@ situation:
     - from: belt_empty
       to: cause_bearing
       when: >
+        !(cel.bind(stuck_range_mm_s, 0.005,
+        cel.bind(moving_range_mm_s, 0.02,
+        cel.bind(drive_running_amps, 1.0,
+        cel.bind(vibration_readings_15m, 14.0,
+          features.drive3_amps > drive_running_amps &&
+          features.drive1_vibration_readings_15m >= vibration_readings_15m && features.drive2_vibration_readings_15m >= vibration_readings_15m && features.drive3_vibration_readings_15m >= vibration_readings_15m &&
+          features.drive3_vibration_max_15m - features.drive3_vibration_min_15m < stuck_range_mm_s &&
+          features.drive1_vibration_max_15m - features.drive1_vibration_min_15m >= moving_range_mm_s &&
+          features.drive2_vibration_max_15m - features.drive2_vibration_min_15m >= moving_range_mm_s))))) &&
         cel.bind(bearing_vibration_mm_s, 0.3,
         cel.bind(vibration_readings_15m, 14.0,
         cel.bind(peer_vibration, features.drive1_vibration_15m > features.drive2_vibration_15m ? features.drive1_vibration_15m : features.drive2_vibration_15m,
           features.drive1_vibration_readings_15m >= vibration_readings_15m && features.drive2_vibration_readings_15m >= vibration_readings_15m && features.drive3_vibration_readings_15m >= vibration_readings_15m &&
-          features.drive3_vibration_15m - peer_vibration >= bearing_vibration_mm_s)))
+          features.drive3_vibration_15m - peer_vibration >= bearing_vibration_mm_s))) ||
+        cel.bind(bearing_winding_k, 3.0,
+        cel.bind(bearing_slope_floor_k_per_h, 0.5,
+        cel.bind(gearbox_slope_k_per_h, 2.0,
+        cel.bind(winding_readings_15m, 81.0,
+        cel.bind(slope_readings_30m, 162.0,
+        cel.bind(peer_winding, features.drive1_winding_15m > features.drive2_winding_15m ? features.drive1_winding_15m : features.drive2_winding_15m,
+        cel.bind(peer_slope, features.drive1_winding_slope_30m > features.drive2_winding_slope_30m ? features.drive1_winding_slope_30m : features.drive2_winding_slope_30m,
+          features.drive1_winding_readings_15m >= winding_readings_15m && features.drive2_winding_readings_15m >= winding_readings_15m && features.drive3_winding_readings_15m >= winding_readings_15m &&
+          features.drive1_winding_readings_30m >= slope_readings_30m && features.drive2_winding_readings_30m >= slope_readings_30m && features.drive3_winding_readings_30m >= slope_readings_30m &&
+          features.drive3_winding_15m - peer_winding >= bearing_winding_k &&
+          features.drive3_winding_slope_30m - peer_slope >= bearing_slope_floor_k_per_h &&
+          features.drive3_winding_slope_30m - peer_slope < gearbox_slope_k_per_h))))))) &&
+        (cel.bind(stuck_range_mm_s, 0.005,
+        cel.bind(moving_range_mm_s, 0.02,
+        cel.bind(drive_running_amps, 1.0,
+        cel.bind(vibration_readings_15m, 14.0,
+          features.drive3_amps > drive_running_amps &&
+          features.drive1_vibration_readings_15m >= vibration_readings_15m && features.drive2_vibration_readings_15m >= vibration_readings_15m && features.drive3_vibration_readings_15m >= vibration_readings_15m &&
+          features.drive3_vibration_max_15m - features.drive3_vibration_min_15m < stuck_range_mm_s &&
+          features.drive1_vibration_max_15m - features.drive1_vibration_min_15m >= moving_range_mm_s &&
+          features.drive2_vibration_max_15m - features.drive2_vibration_min_15m >= moving_range_mm_s)))))
     - from: belt_empty
       to: cause_gearbox
       when: >
@@ -445,7 +542,16 @@ situation:
           features.drive1_winding_readings_30m >= slope_readings_30m && features.drive2_winding_readings_30m >= slope_readings_30m && features.drive3_winding_readings_30m >= slope_readings_30m &&
           features.drive1_vibration_readings_15m >= vibration_readings_15m && features.drive2_vibration_readings_15m >= vibration_readings_15m && features.drive3_vibration_readings_15m >= vibration_readings_15m &&
           features.drive3_winding_slope_30m - peer_slope >= gearbox_slope_k_per_h &&
-          features.drive3_vibration_15m - peer_vibration < gearbox_quiet_vibration_mm_s))))))
+          features.drive3_vibration_15m - peer_vibration < gearbox_quiet_vibration_mm_s)))))) &&
+        !(cel.bind(stuck_range_mm_s, 0.005,
+        cel.bind(moving_range_mm_s, 0.02,
+        cel.bind(drive_running_amps, 1.0,
+        cel.bind(vibration_readings_15m, 14.0,
+          features.drive3_amps > drive_running_amps &&
+          features.drive1_vibration_readings_15m >= vibration_readings_15m && features.drive2_vibration_readings_15m >= vibration_readings_15m && features.drive3_vibration_readings_15m >= vibration_readings_15m &&
+          features.drive3_vibration_max_15m - features.drive3_vibration_min_15m < stuck_range_mm_s &&
+          features.drive1_vibration_max_15m - features.drive1_vibration_min_15m >= moving_range_mm_s &&
+          features.drive2_vibration_max_15m - features.drive2_vibration_min_15m >= moving_range_mm_s)))))
     - from: belt_empty
       to: cause_undecided
       when: >
@@ -501,6 +607,24 @@ situation:
     - field: facts.drive3_vibration_readings_15m
       strategy: latest_event_time
       input: drive3_vibration_readings_15m
+    - field: facts.drive1_vibration_min_15m
+      strategy: latest_event_time
+      input: drive1_vibration_min_15m
+    - field: facts.drive1_vibration_max_15m
+      strategy: latest_event_time
+      input: drive1_vibration_max_15m
+    - field: facts.drive2_vibration_min_15m
+      strategy: latest_event_time
+      input: drive2_vibration_min_15m
+    - field: facts.drive2_vibration_max_15m
+      strategy: latest_event_time
+      input: drive2_vibration_max_15m
+    - field: facts.drive3_vibration_min_15m
+      strategy: latest_event_time
+      input: drive3_vibration_min_15m
+    - field: facts.drive3_vibration_max_15m
+      strategy: latest_event_time
+      input: drive3_vibration_max_15m
     - field: facts.drive1_winding_15m
       strategy: latest_event_time
       input: drive1_winding_15m
@@ -540,6 +664,26 @@ situation:
 
 cognition:
   triggers:
+    - name: lost_reading_needs_its_report
+      when: >
+        situation.phase == "watch" &&
+        (cel.bind(stuck_range_mm_s, 0.005,
+        cel.bind(moving_range_mm_s, 0.02,
+        cel.bind(drive_running_amps, 1.0,
+        cel.bind(vibration_readings_15m, 14.0,
+          features.drive3_amps > drive_running_amps &&
+          features.drive1_vibration_readings_15m >= vibration_readings_15m && features.drive2_vibration_readings_15m >= vibration_readings_15m && features.drive3_vibration_readings_15m >= vibration_readings_15m &&
+          features.drive3_vibration_max_15m - features.drive3_vibration_min_15m < stuck_range_mm_s &&
+          features.drive1_vibration_max_15m - features.drive1_vibration_min_15m >= moving_range_mm_s &&
+          features.drive2_vibration_max_15m - features.drive2_vibration_min_15m >= moving_range_mm_s)))))
+      score: double(situation.severity) * 0.5 + double(delta.novelty) * 25.0
+      threshold: 20
+      lane: fast
+      completeness: any
+      debounce: 100ms
+      cooldown: 1m
+      expiresAfter: 10m
+      materialDelta: delta.phase_changed || delta.reasoning_failed
     - name: degraded_drive_needs_relief
       when: situation.phase == "degrading"
       score: double(situation.severity) * 0.5 + double(delta.novelty) * 25.0
@@ -602,6 +746,10 @@ cognition:
       - phase shedding: run the belt empty by stopping the feeder - intent
         stop_feed (preset empty), with the diagnosis drive_degrading, or the
         cause when its rule already holds. Do not shed the feed again.
+      - phase watch: no step. When D-3's vibration reading is stuck (its
+        15 minute readings all within 0.005 mm/s while each peer's move by at
+        least 0.02 mm/s), give the diagnosis sensor_stuck: the vibration rules
+        cannot be read while it lasts.
       - phase belt_empty: no step; the evidence has not named the cause yet.
       - phase cause_bearing: stop the degraded drive by plan - intent
         isolate_drive (preset planned_stop).
@@ -634,7 +782,7 @@ cognition:
       totalToolResultBytes: 65536
       providerRetries: 1
       costMicrounits: 400000
-    diagnosisCatalog: '[{"code":"unknown","description":"no confident diagnosis"},{"code":"drive_degrading","description":"a drive degrades against its peers at equal current (winding or vibration residual); the cause is not told yet: neither the bearing rule nor the gearbox rule holds. bearing and gearbox_seizing refine it"},{"code":"bearing","description":"a dry drive bearing: the drive''s 15 minute vibration mean is at least 0.3 mm/s above the larger of its peers'' (each window holding at least 14 of its 15 readings); its winding temperature rises with it at equal current"},{"code":"gearbox_seizing","description":"a drive gearbox losing oil, which will seize and drag the belt: in the same minute its 30 minute winding slope is at least 2 K/h above the larger of its peers'' (each holding at least 162 of its 180 readings) while its vibration mean is less than 0.05 mm/s above theirs; stop the empty belt rather than the drive"},{"code":"transient_none","description":"a rise every drive shares, such as a feed surge"}]'
+    diagnosisCatalog: '[{"code":"unknown","description":"no confident diagnosis"},{"code":"drive_degrading","description":"a drive degrades against its peers at equal current (winding or vibration residual); the cause is not told yet: neither the bearing rule nor the gearbox rule holds. bearing and gearbox_seizing refine it"},{"code":"bearing","description":"a dry drive bearing: the drive''s 15 minute vibration mean is at least 0.3 mm/s above the larger of its peers'' (each window holding at least 14 of its 15 readings); its winding temperature rises with it at equal current. While its vibration reading is stuck, on the empty belt: its 15 minute winding mean at least 3 K above the larger of its peers'' and still rising, its 30 minute winding slope 0.5 to 2 K/h above theirs (slower than a gearbox)"},{"code":"gearbox_seizing","description":"a drive gearbox losing oil, which will seize and drag the belt: in the same minute its 30 minute winding slope is at least 2 K/h above the larger of its peers'' (each holding at least 162 of its 180 readings) while its vibration mean is less than 0.05 mm/s above theirs, its vibration reading live (a stuck reading is no quiet vibration); stop the empty belt rather than the drive"},{"code":"transient_none","description":"a rise every drive shares, such as a feed surge"},{"code":"sensor_stuck","description":"the degraded drive''s vibration reading is stuck: its 15 minute readings lie within 0.005 mm/s while each peer''s move by at least 0.02 mm/s, the drive running; its vibration rules cannot be read while it lasts"}]'
 
 actions:
   intents:
@@ -675,8 +823,24 @@ actions:
             cel.bind(peer_slope, features.drive1_winding_slope_30m > features.drive2_winding_slope_30m ? features.drive1_winding_slope_30m : features.drive2_winding_slope_30m,
             cel.bind(vibration_counted, features.drive1_vibration_readings_15m >= vibration_readings_15m && features.drive2_vibration_readings_15m >= vibration_readings_15m && features.drive3_vibration_readings_15m >= vibration_readings_15m,
             cel.bind(slope_counted, features.drive1_winding_readings_30m >= slope_readings_30m && features.drive2_winding_readings_30m >= slope_readings_30m && features.drive3_winding_readings_30m >= slope_readings_30m,
-              vibration_counted && (features.drive3_vibration_15m - peer_vibration >= bearing_vibration_mm_s ||
-                slope_counted && features.drive3_winding_slope_30m - peer_slope >= gearbox_slope_k_per_h && features.drive3_vibration_15m - peer_vibration < gearbox_quiet_vibration_mm_s))))))))))
+            cel.bind(bearing_winding_k, 3.0,
+            cel.bind(bearing_slope_floor_k_per_h, 0.5,
+            cel.bind(winding_readings_15m, 81.0,
+            cel.bind(peer_winding, features.drive1_winding_15m > features.drive2_winding_15m ? features.drive1_winding_15m : features.drive2_winding_15m,
+            cel.bind(winding_counted, features.drive1_winding_readings_15m >= winding_readings_15m && features.drive2_winding_readings_15m >= winding_readings_15m && features.drive3_winding_readings_15m >= winding_readings_15m,
+            cel.bind(lost, (cel.bind(stuck_range_mm_s, 0.005,
+            cel.bind(moving_range_mm_s, 0.02,
+            cel.bind(drive_running_amps, 1.0,
+            cel.bind(vibration_readings_15m, 14.0,
+              features.drive3_amps > drive_running_amps &&
+              features.drive1_vibration_readings_15m >= vibration_readings_15m && features.drive2_vibration_readings_15m >= vibration_readings_15m && features.drive3_vibration_readings_15m >= vibration_readings_15m &&
+              features.drive3_vibration_max_15m - features.drive3_vibration_min_15m < stuck_range_mm_s &&
+              features.drive1_vibration_max_15m - features.drive1_vibration_min_15m >= moving_range_mm_s &&
+              features.drive2_vibration_max_15m - features.drive2_vibration_min_15m >= moving_range_mm_s))))),
+              !lost && vibration_counted && (features.drive3_vibration_15m - peer_vibration >= bearing_vibration_mm_s ||
+                slope_counted && features.drive3_winding_slope_30m - peer_slope >= gearbox_slope_k_per_h && features.drive3_vibration_15m - peer_vibration < gearbox_quiet_vibration_mm_s) ||
+              lost && winding_counted && slope_counted && features.drive3_winding_15m - peer_winding >= bearing_winding_k &&
+                features.drive3_winding_slope_30m - peer_slope >= bearing_slope_floor_k_per_h && features.drive3_winding_slope_30m - peer_slope < gearbox_slope_k_per_h)))))))))))))))
           max_fires: 3
           metric: drive3_vibration_15m
           threshold: 0.3

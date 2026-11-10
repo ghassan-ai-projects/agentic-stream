@@ -67,7 +67,7 @@ func (l *beltLine) minutes() int { return int(time.Duration(l.tick) * beltTick /
 
 func (l *beltLine) advance(t *testing.T) {
 	t.Helper()
-	l.plant.beltDisturbance = l.story(l.minutes())
+	l.plant.beltDisturbance, l.plant.minute = l.story(l.minutes()), l.minutes()
 	l.sendWindingBetweenMinutes()
 	at := l.now().UnixNano()
 	l.node.Send(beltData("F-1", at, l.plant.setpoint, l.plant.feed()))

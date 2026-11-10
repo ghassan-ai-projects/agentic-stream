@@ -13,6 +13,7 @@ const (
 	beltStoppedC     = 40.0
 	beltVibrationMmS = 1.45
 	beltTailRPM      = 76.4
+	beltJitterMmS    = 0.02
 )
 
 var (
@@ -23,12 +24,17 @@ var (
 
 type beltStory func(minute int) beltDisturbance
 
-type beltDisturbance struct{ wear, heat, surge, drag float64 }
+type beltDisturbance struct {
+	wear, heat, surge, drag float64
+	frozen                  bool
+}
 
 type beltPlant struct {
 	setpoint    float64
 	beltRunning bool
 	running     []bool
+	minute      int
+	held        *float64
 	beltDisturbance
 }
 
@@ -61,11 +67,25 @@ func (p *beltPlant) driveReadings(drive int) []float64 {
 		return []float64{0, beltStoppedC, 0, p.runCommand(drive)}
 	}
 	winding := beltWindingC + beltWindingPerA*(amps-beltLoadedAmps) + beltWindingSpread[drive]
-	vibration := beltVibrationMmS*(0.7+0.3*p.feed()/conveyorFullFeed) + beltVibrationSpread[drive]
+	vibration := beltVibrationMmS*(0.7+0.3*p.feed()/conveyorFullFeed) + beltVibrationSpread[drive] + p.jitter()
 	if beltDrives[drive] == "D-3" {
-		winding, vibration = winding+p.heat, vibration+p.wear
+		winding, vibration = winding+p.heat, p.sensed(vibration+p.wear)
 	}
 	return []float64{amps, winding, vibration, p.runCommand(drive)}
+}
+
+func (p *beltPlant) jitter() float64 {
+	return beltJitterMmS * float64(1-2*(p.minute%2))
+}
+
+func (p *beltPlant) sensed(vibration float64) float64 {
+	if !p.frozen {
+		return vibration
+	}
+	if p.held == nil {
+		p.held = &vibration
+	}
+	return *p.held
 }
 
 func (p *beltPlant) runCommand(drive int) float64 { return onOff(p.running[drive]) }

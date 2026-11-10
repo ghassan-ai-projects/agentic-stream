@@ -17,6 +17,11 @@ const (
 	gearboxSlopeResidualKPerH   = 2.0
 	gearboxQuietVibrationMmS    = 0.05
 	untoldCause                 = "drive_degrading"
+	stuckVibrationRangeMmS      = 0.005
+	movingVibrationRangeMmS     = 0.02
+	runningDriveAmps            = 1.0
+	bearingWindingResidualK     = 3.0
+	bearingSlopeFloorKPerH      = 0.5
 )
 
 var causesRefiningTheSymptom = map[string]string{"bearing": untoldCause, "gearbox_seizing": untoldCause}
@@ -33,11 +38,11 @@ var (
 		"isolated": true}
 )
 
-type lineCoverage struct{ slopeReadings, vibrationReadings float64 }
+type lineCoverage struct{ windingReadings, slopeReadings, vibrationReadings float64 }
 
 var (
-	shippedCoverage    = lineCoverage{slopeReadings: 162, vibrationReadings: 14}
-	compressedCoverage = lineCoverage{slopeReadings: 33, vibrationReadings: 3}
+	shippedCoverage    = lineCoverage{windingReadings: 81, slopeReadings: 162, vibrationReadings: 14}
+	compressedCoverage = lineCoverage{windingReadings: 17, slopeReadings: 33, vibrationReadings: 3}
 	compressedWindows  = map[string]string{"size: 15m": "size: 3m", "size: 30m": "size: 6m",
 		"winding_readings_15m, 81.0": "winding_readings_15m, 17.0", "vibration_readings_15m, 14.0": "vibration_readings_15m, 3.0",
 		"slope_readings_30m, 162.0": "slope_readings_30m, 33.0", "minDuration: " + undecidedCauseWait: "minDuration: 5m",
@@ -77,7 +82,7 @@ func (r lineReasoner) execute() workerfake.ExecuteFunc {
 			return fmt.Errorf("decode the snapshot: %w", err)
 		}
 		mu.Lock()
-		if named[snapshot.SituationID] == "" || named[snapshot.SituationID] == untoldCause {
+		if _, settled := causesRefiningTheSymptom[named[snapshot.SituationID]]; !settled {
 			named[snapshot.SituationID] = snapshot.cause(r.coverage)
 		}
 		diagnosis := named[snapshot.SituationID]
@@ -110,15 +115,49 @@ func (r lineReasoner) watchUntil(validUntil time.Time) (time.Time, []proposal) {
 }
 
 func (s lineSnapshot) cause(coverage lineCoverage) string {
-	vibrationCounted := s.leastReadings("vibration_readings_15m") >= coverage.vibrationReadings
+	lost := s.vibrationLost(coverage)
 	switch {
-	case vibrationCounted && s.residual("vibration_15m") >= bearingVibrationResidualMmS:
+	case lost && s.bearingByWinding(coverage), !lost && s.bearingByVibration(coverage):
 		return "bearing"
-	case vibrationCounted && s.leastReadings("winding_readings_30m") >= coverage.slopeReadings &&
-		s.residual("winding_slope_30m") >= gearboxSlopeResidualKPerH && s.residual("vibration_15m") < gearboxQuietVibrationMmS:
+	case !lost && s.gearboxByWinding(coverage):
 		return "gearbox_seizing"
+	case lost && s.Phase == "watch":
+		return s.lostReading()
 	}
 	return untoldCause
+}
+
+func (s lineSnapshot) bearingByVibration(coverage lineCoverage) bool {
+	return s.leastReadings("vibration_readings_15m") >= coverage.vibrationReadings && s.residual("vibration_15m") >= bearingVibrationResidualMmS
+}
+
+func (s lineSnapshot) gearboxByWinding(coverage lineCoverage) bool {
+	return s.leastReadings("vibration_readings_15m") >= coverage.vibrationReadings && s.leastReadings("winding_readings_30m") >= coverage.slopeReadings &&
+		s.residual("winding_slope_30m") >= gearboxSlopeResidualKPerH && s.residual("vibration_15m") < gearboxQuietVibrationMmS
+}
+
+func (s lineSnapshot) bearingByWinding(coverage lineCoverage) bool {
+	counted := s.leastReadings("winding_readings_15m") >= coverage.windingReadings && s.leastReadings("winding_readings_30m") >= coverage.slopeReadings
+	slope := s.residual("winding_slope_30m")
+	return counted && s.residual("winding_15m") >= bearingWindingResidualK && slope >= bearingSlopeFloorKPerH && slope < gearboxSlopeResidualKPerH
+}
+
+func (s lineSnapshot) vibrationLost(coverage lineCoverage) bool {
+	return s.vibrationStuck(coverage)
+}
+
+func (s lineSnapshot) vibrationStuck(coverage lineCoverage) bool {
+	flat := s.fact("drive3_vibration_max_15m")-s.fact("drive3_vibration_min_15m") < stuckVibrationRangeMmS
+	moving := min(s.vibrationRange("drive1"), s.vibrationRange("drive2")) >= movingVibrationRangeMmS
+	return s.fact("drive3_amps") > runningDriveAmps && s.leastReadings("vibration_readings_15m") >= coverage.vibrationReadings && flat && moving
+}
+
+func (s lineSnapshot) vibrationRange(drive string) float64 {
+	return s.fact(drive+"_vibration_max_15m") - s.fact(drive+"_vibration_min_15m")
+}
+
+func (s lineSnapshot) lostReading() string {
+	return stuckVibration.diagnosis
 }
 
 func (s lineSnapshot) leastReadings(feature string) float64 {

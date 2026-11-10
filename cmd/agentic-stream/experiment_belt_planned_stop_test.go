@@ -44,7 +44,7 @@ func (s twinStory) subjects(base campaign.Subjects) campaign.Subjects {
 
 func (s twinStory) judge(t *testing.T, grade outcomeGrade, ran twinRun) {
 	t.Helper()
-	if s.spec != plannedStopSpec {
+	if s.spec != plannedStopSpec && s.lost.fault == "" {
 		return
 	}
 	assertBeatsEveryBaseline(t, grade)
