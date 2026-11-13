@@ -19,12 +19,12 @@ func (r *OperatorRuntime) applyWindowOperator(inst *operatorInstance, blob *Oper
 	ws := blob.windowState(deviceBootID(env), watermark)
 	corrected, err := r.isLateWindowCorrection(inst.window.size, env.EventTime, watermark, ws.LastEmit)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("window operator %s: %w", inst.def.Name, err)
 	}
 	ws.AddSample(Sample{EventID: env.ID, EventTime: env.EventTime, Value: value, BootID: deviceBootID(env)}, watermark.Add(-inst.window.size))
-	agg, err := computeAggregate(inst.def.Aggregate, ws.Samples)
+	agg, err := windowValue(inst, ws.Samples, watermark)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("window operator %s: %w", inst.def.Name, err)
 	}
 	return r.emitWindow(inst, env, ws, agg, watermark, corrected), nil
 }
@@ -108,10 +108,17 @@ func (r *OperatorRuntime) windowFeature(inst *operatorInstance, env contractsv1.
 		TenantID: env.TenantID, EntityType: env.Entity.Type, EntityID: env.Entity.ID,
 		StateKey: operatorStateKey(env), BootID: deviceBootID(env), PartitionID: env.PartitionID(0),
 		WindowStart: watermark.Add(-inst.window.size), WindowEnd: watermark,
-		Value: agg, Unit: inst.def.Unit, EventTime: env.EventTime, Watermark: watermark,
+		Value: withoutNegativeZero(agg), Unit: inst.def.Unit, EventTime: env.EventTime, Watermark: watermark,
 		InputEventIDs: eventIDs(ws.Samples), Completeness: completeness,
 		Traceparent: env.Traceparent, Tracestate: env.Tracestate,
 	}
+}
+
+func withoutNegativeZero(value float64) float64 {
+	if value == 0 {
+		return 0
+	}
+	return value
 }
 
 func windowCloseDue(cfg *windowConfig, ws *WindowState, watermark time.Time) bool {
@@ -140,6 +147,13 @@ func (r *OperatorRuntime) isLateWindowCorrection(windowSize time.Duration, event
 		return false, fmt.Errorf("allowed lateness: %w", err)
 	}
 	return watermark.Sub(eventTime) <= allowedLateness, nil
+}
+
+func windowValue(inst *operatorInstance, samples []Sample, end time.Time) (float64, error) {
+	if inst.extrapolation != nil {
+		return secondsToLimit(*inst.extrapolation, samples, end), nil
+	}
+	return computeAggregate(inst.def.Aggregate, samples)
 }
 
 func computeAggregate(agg string, samples []Sample) (float64, error) {

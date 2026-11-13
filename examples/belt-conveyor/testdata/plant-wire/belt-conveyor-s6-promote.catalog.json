@@ -1,0 +1,28 @@
+{
+  "protocol_version": 1,
+  "routes": {
+    "reduce_feed": {
+      "operation": "set_feed",
+      "target": "F-1",
+      "target_bindings": {"conveyor-1": "F-1"},
+      "selector_field": "level",
+      "expires_after_ms": 180000,
+      "presets": {
+        "limp": {"feed_setpoint": 54},
+        "restore": {"feed_setpoint": 100}
+      },
+      "bounds": {"feed_setpoint": {"min": 0, "max": 100}}
+    },
+    "stop_feed": {
+      "operation": "set_feed",
+      "target": "F-1",
+      "target_bindings": {"conveyor-1": "F-1"},
+      "selector_field": "level",
+      "expires_after_ms": 180000,
+      "presets": {
+        "empty": {"feed_setpoint": 0}
+      },
+      "bounds": {"feed_setpoint": {"min": 0, "max": 0}}
+    }
+  }
+}

@@ -87,3 +87,10 @@ func TestFacadeExposesTheSpecVocabulary(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestFacadeNamesTheStaleFactOfAnAdvisoryInputInsideItsFactGroup(t *testing.T) {
+	t.Parallel()
+	if got := spec.InputStaleFact("drive3_vibration"); got != "input_stale.drive3_vibration" || !strings.HasPrefix(got, spec.InputStaleFacts+".") {
+		t.Fatalf("stale fact = %q, want input_stale.drive3_vibration: CEL reads it as features.input_stale.drive3_vibration", got)
+	}
+}

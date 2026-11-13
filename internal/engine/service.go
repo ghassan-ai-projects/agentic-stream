@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/engine/internal/app"
+	"github.com/ghassan-ai-projects/agentic-stream/internal/engine/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/eventlog"
 )
 
@@ -24,4 +25,27 @@ func (s *Service) RunGlobal(ctx context.Context, beforeApply func(eventlog.Recor
 // reports found as false.
 func (s *Service) SituationFeatures(ctx context.Context, situationID string) (map[string]any, bool, error) {
 	return s.app.SituationFeatures(ctx, situationID)
+}
+
+// WakeSituations publishes a new version of each named open Situation from its
+// current runtime state, marked as woken by a watch fire, and lets cognition
+// evaluate its triggers on it (`delta.watch_fired`). A Situation the engine does
+// not hold open is skipped.
+func (s *Service) WakeSituations(ctx context.Context, situationIDs []string) error {
+	return s.app.WakeSituations(ctx, situationIDs)
+}
+
+// FailedReasoning is a concluded episode that gave no accepted decision: the
+// Situation and the version it reasoned on.
+type FailedReasoning = domain.FailedReasoning
+
+// RetryFailedReasoning wakes each open Situation whose failed reasoning is due
+// for a retry under the spec's cognition.retryFailedReasoning: the Situation is
+// still in the phase of its latest failure, at most Max failures happened in that
+// phase, After of event time passed since the latest failed version, and that
+// failure was not retried yet (the engine remembers the failures it retried
+// while it runs). The woken version carries `delta.reasoning_failed`. Without
+// the policy it does nothing.
+func (s *Service) RetryFailedReasoning(ctx context.Context, failed []FailedReasoning) error {
+	return s.app.RetryFailedReasoning(ctx, failed)
 }

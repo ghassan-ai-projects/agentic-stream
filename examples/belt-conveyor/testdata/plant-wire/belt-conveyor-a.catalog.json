@@ -1,0 +1,50 @@
+{
+  "protocol_version": 1,
+  "routes": {
+    "reduce_feed": {
+      "operation": "set_feed",
+      "target": "F-1",
+      "target_bindings": {"conveyor-1": "F-1"},
+      "selector_field": "level",
+      "expires_after_ms": 180000,
+      "presets": {
+        "limp": {"feed_setpoint": 54},
+        "restore": {"feed_setpoint": 100}
+      },
+      "bounds": {"feed_setpoint": {"min": 0, "max": 100}}
+    },
+    "stop_feed": {
+      "operation": "set_feed",
+      "target": "F-1",
+      "target_bindings": {"conveyor-1": "F-1"},
+      "selector_field": "level",
+      "expires_after_ms": 180000,
+      "presets": {
+        "empty": {"feed_setpoint": 0}
+      },
+      "bounds": {"feed_setpoint": {"min": 0, "max": 0}}
+    },
+    "isolate_drive": {
+      "operation": "stop_drive",
+      "target": "D-3",
+      "target_bindings": {"conveyor-1": "D-3"},
+      "selector_field": "mode",
+      "expires_after_ms": 180000,
+      "presets": {
+        "planned_stop": {"run_command": 0}
+      },
+      "bounds": {"run_command": {"min": 0, "max": 0}}
+    },
+    "stop_belt": {
+      "operation": "stop_belt",
+      "target": "B-1",
+      "target_bindings": {"conveyor-1": "B-1"},
+      "selector_field": "mode",
+      "expires_after_ms": 180000,
+      "presets": {
+        "planned_stop": {"run_command": 0}
+      },
+      "bounds": {"run_command": {"min": 0, "max": 0}}
+    }
+  }
+}

@@ -10,31 +10,35 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
 )
 
-// InstallRoute is the effector route that installs a watch condition.
 const InstallRoute = actionport.WatchInstallRoute
 
-// Watch states (`watch_conditions.status`).
 const (
 	StatusActive   = "active"
 	StatusDisabled = "disabled"
 	StatusExpired  = "expired"
 )
 
-// Condition is the identity-defining content of an installed watch.
 type Condition struct {
 	TenantID, SituationID, Expression, Target string
 	ExpiresAt                                 time.Time
 	SituationVersion, MaxFires                int
 }
 
-// ActiveWatch is the part of a stored active watch that decides a fire.
-type ActiveWatch struct{ Expression, SituationID, Target string }
+type ActiveWatch struct {
+	Expression, SituationID, Target string
+	LastMatched                     *bool
+}
 
-// Candidate is an active watch scoped to one event target.
+func (w ActiveWatch) RisesTo(matched bool) bool {
+	return matched && (w.LastMatched == nil || !*w.LastMatched)
+}
+
+func (w ActiveWatch) Changes(matched bool) bool {
+	return w.LastMatched == nil || *w.LastMatched != matched
+}
+
 type Candidate struct{ WatchID, SituationID string }
 
-// WatchID is the identity of a watch: the command's idempotency key, or its
-// command ID when none is set.
 func WatchID(command actionport.Command) string {
 	if command.IdempotencyKey != "" {
 		return command.IdempotencyKey
@@ -42,9 +46,6 @@ func WatchID(command actionport.Command) string {
 	return command.CommandID
 }
 
-// ConditionFromCommand validates a watch payload in order: a bounded, present
-// identity (target, Situation, version, 1-100 fires, expression of at most 4096
-// characters), then the expression, then a future expiry.
 func ConditionFromCommand(command actionport.Command, now time.Time) (Condition, error) {
 	condition := Condition{TenantID: command.TenantID}
 	condition.Expression, _ = command.Payload["expression"].(string)
@@ -73,8 +74,6 @@ func (c Condition) withValidatedExpiry(expiresAt string, now time.Time) (Conditi
 	return c, nil
 }
 
-// SameAs makes a repeated install idempotent: the same watch ID must carry the
-// same condition.
 func (c Condition) SameAs(stored Condition) error {
 	sameExpiry := c.ExpiresAt.Equal(stored.ExpiresAt)
 	c.ExpiresAt, stored.ExpiresAt = time.Time{}, time.Time{}
@@ -84,13 +83,10 @@ func (c Condition) SameAs(stored Condition) error {
 	return nil
 }
 
-// InScope reports whether an event for the given Situation and target is the
-// one this active watch was installed for.
 func (w ActiveWatch) InScope(situationID, target string) bool {
 	return w.SituationID == situationID && w.Target == target
 }
 
-// RequireRoute requires the command to name the watch install route.
 func RequireRoute(command actionport.Command) error {
 	if command.EffectorRoute != InstallRoute {
 		return fmt.Errorf("watch effector does not support route %q", command.EffectorRoute)

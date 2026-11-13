@@ -34,6 +34,8 @@ type Pipeline struct {
 	dispatcher        *actions.Service
 	watch             *watch.Service
 	situationFeatures watch.FeatureSource
+	wakeSituations    func(context.Context, []string) error
+	retryReasoning    func(context.Context, []engine.FailedReasoning) error
 	clk               sources.Clock
 	tenantID          string
 

@@ -48,7 +48,8 @@ func changeDelta(current, previous situations.Version, prevFacts map[string]any)
 
 		spec.DeltaKeys.PrimaryHypothesisChanged: false, spec.DeltaKeys.FactsChanged: factsChanged,
 		spec.DeltaKeys.Facts: prevFacts, spec.DeltaKeys.NewFacts: current.Facts,
-		spec.DeltaKeys.Novelty: novelty(phaseChanged || factsChanged),
+		spec.DeltaKeys.Novelty:    novelty(phaseChanged || factsChanged),
+		spec.DeltaKeys.WatchFired: current.WokenBy == situations.WokenByWatch, spec.DeltaKeys.ReasoningFailed: current.WokenBy == situations.WokenByFailedReasoning,
 	}
 }
 
@@ -58,6 +59,7 @@ func firstVersionDelta(current situations.Version) map[string]any {
 		spec.DeltaKeys.CompletenessChanged: true, spec.DeltaKeys.PrimaryHypothesisChanged: true,
 		spec.DeltaKeys.FactsChanged: true, spec.DeltaKeys.Facts: map[string]any{},
 		spec.DeltaKeys.NewFacts: current.Facts, spec.DeltaKeys.Novelty: 1.0,
+		spec.DeltaKeys.WatchFired: current.WokenBy == situations.WokenByWatch, spec.DeltaKeys.ReasoningFailed: current.WokenBy == situations.WokenByFailedReasoning,
 	}
 }
 

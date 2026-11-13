@@ -54,10 +54,12 @@ references, and its link to a prior Command when proposing compensation.
 
 The gateway evaluates against current durable state, not the state observed when
 the model started. An Intent stays fresh until the Situation changes
-materially: cognition records the latest version for which a trigger's
-`materialDelta` holds (or that ends the occurrence), and policy, approval
-resolution and dispatch refuse the Intent as `situation_version_stale` only
-when such a version is newer than the Intent's. A window's provisional and
+materially: cognition records the latest version that changes the phase, ends
+the occurrence, or for which a trigger that applies to it (its `when` holds)
+declares its `materialDelta`. A trigger that does not apply declares nothing:
+a watch fire in a phase whose trigger does not name it is no material change.
+Policy, approval resolution and dispatch refuse the Intent as
+`situation_version_stale` only when such a version is newer than the Intent's. A window's provisional and
 on-time versions alone do not cancel a pending decision. A trigger without
 `materialDelta` keeps the strict rule: any newer version is stale
 (ADR-018). Approval-required paths create durable approval records;

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire/internal/domain"
 	"github.com/ghassan-ai-projects/agentic-stream/internal/plantwire/internal/wire"
 )
 
@@ -31,6 +32,22 @@ func TestParseSiteFileReadsTheBenchExample(t *testing.T) {
 	}
 }
 
+func TestParseSiteFileReadsAReadingOfOneDevice(t *testing.T) {
+	t.Parallel()
+	raw, err := os.ReadFile(benchSite)
+	if err != nil {
+		t.Fatal(err)
+	}
+	named := strings.Replace(string(raw), `{"kind": "thermal_sensor", "metric": "humidity"`, `{"device": "zone-01", "kind": "thermal_sensor", "metric": "humidity"`, 1)
+	site, err := wire.ParseSiteFile([]byte(named))
+	if err != nil {
+		t.Fatalf("ParseSiteFile = %v", err)
+	}
+	if site.Readings[0].Device != "" || site.Readings[1].Device != "zone-01" {
+		t.Fatalf("readings = %+v, want the kind rule first and the zone's own rule second", site.Readings)
+	}
+}
+
 func TestParseSiteFileRefusesWhatIsNotASiteFile(t *testing.T) {
 	t.Parallel()
 	raw, err := os.ReadFile(benchSite)
@@ -46,6 +63,8 @@ func TestParseSiteFileRefusesWhatIsNotASiteFile(t *testing.T) {
 		{"a quality code missing", strings.Replace(string(raw), `"stale": "invalid",`, "", 1), []string{"/quality/stale"}},
 		{"an unknown member", strings.Replace(string(raw), `"version": 1,`, `"version": 1, "tenant": "x",`, 1), []string{"/tenant"}},
 		{"a device id with a space", strings.Replace(string(raw), `"led-01"`, `"led 01"`, 1), []string{""}},
+		{"a reading device with a space", strings.Replace(string(raw), `{"kind": "thermal_sensor", "metric"`, `{"device": "zone 01", "kind": "thermal_sensor", "metric"`, 1),
+			[]string{"/readings/0/device"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -60,4 +79,54 @@ func TestParseSiteFileRefusesWhatIsNotASiteFile(t *testing.T) {
 	if _, err := wire.ParseSiteFile([]byte("[]")); !errors.Is(err, wire.ErrNotARecord) {
 		t.Fatalf("ParseSiteFile([]) = %v, want ErrNotARecord", err)
 	}
+}
+
+func TestEveryCommittedSiteFileMapsAgainstItsKindFiles(t *testing.T) {
+	t.Parallel()
+	sites, err := filepath.Glob(filepath.Join("..", "..", "..", "..", "examples", "*", "testdata", "plant-wire", "*.site.json"))
+	if err != nil || len(sites) < 3 {
+		t.Fatalf("committed site files = %v (%v), want the bench, the pump station and the conveyor", sites, err)
+	}
+	for _, path := range sites {
+		t.Run(filepath.Base(path), func(t *testing.T) {
+			t.Parallel()
+			site, err := wire.ParseSiteFile(readFile(t, path))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := domain.NewMapping(site, commissionKindsBeside(t, path)); err != nil {
+				t.Fatalf("NewMapping(%s) = %v, want the committed site to map", path, err)
+			}
+		})
+	}
+}
+
+func commissionKindsBeside(t *testing.T, sitePath string) domain.Inventory {
+	t.Helper()
+	paths, err := filepath.Glob(filepath.Join(filepath.Dir(sitePath), "kinds", "*.kind.json"))
+	if err != nil || len(paths) == 0 {
+		t.Fatalf("no kind files beside %s: %v", sitePath, err)
+	}
+	kinds := make([]domain.Kind, 0, len(paths))
+	for _, path := range paths {
+		kind, err := wire.ParseKindFile(readFile(t, path))
+		if err != nil {
+			t.Fatalf("%s: %v", path, err)
+		}
+		kinds = append(kinds, kind)
+	}
+	inventory, err := domain.Commission(kinds, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return inventory
+}
+
+func readFile(t *testing.T, path string) []byte {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
 }

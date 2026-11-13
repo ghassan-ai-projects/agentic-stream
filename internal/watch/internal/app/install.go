@@ -11,7 +11,6 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/watch/internal/store"
 )
 
-// Dispatch installs one watch condition and is idempotent by watch identity.
 func (s *Service) Dispatch(ctx context.Context, command actionport.Command) (actionport.Effect, error) {
 	if err := domain.RequireRoute(command); err != nil {
 		return actionport.Effect{}, err
@@ -23,7 +22,6 @@ func (s *Service) Dispatch(ctx context.Context, command actionport.Command) (act
 	return s.install(ctx, command, want)
 }
 
-// DispatchAuthorized runs the final authorization check before installing.
 func (s *Service) DispatchAuthorized(ctx context.Context, command actionport.Command, authorization actionport.Authorization) (actionport.Effect, error) {
 	if authorization.Check == nil {
 		return actionport.Effect{}, errors.New("dispatch authorization is required")
@@ -36,18 +34,35 @@ func (s *Service) DispatchAuthorized(ctx context.Context, command actionport.Com
 
 func (s *Service) install(ctx context.Context, command actionport.Command, want domain.Condition) (actionport.Effect, error) {
 	watchID := domain.WatchID(command)
+	matched, err := s.matchedAtInstall(ctx, watchID, want)
+	if err != nil {
+		return actionport.Effect{}, err
+	}
 	now := s.clk.Now().UTC()
 	if err := s.store.WithTx(ctx, func(tx *store.Tx) error {
-		return installOnce(ctx, tx, watchID, want, now)
+		return installOnce(ctx, tx, watchID, want, matched, now)
 	}); err != nil {
 		return actionport.Effect{}, fmt.Errorf("watch condition transaction: %w", err)
 	}
 	return actionport.Effect{ProviderResult: domain.InstallResult(watchID)}, nil
 }
 
-// installOnce installs the watch, or accepts an identical earlier install of
-// the same watch ID and rejects a conflicting one.
-func installOnce(ctx context.Context, tx *store.Tx, watchID string, want domain.Condition, now time.Time) error {
+func (s *Service) matchedAtInstall(ctx context.Context, watchID string, want domain.Condition) (*bool, error) {
+	if s.features == nil {
+		return nil, nil
+	}
+	features, found, err := s.features(ctx, want.SituationID)
+	if err != nil {
+		return nil, fmt.Errorf("features of situation %s at the install of watch %s: %w", want.SituationID, watchID, err)
+	}
+	if !found {
+		return nil, nil
+	}
+	matched := matchesFeatures(ctx, watchID, "install", domain.ActiveWatch{Expression: want.Expression, SituationID: want.SituationID, Target: want.Target}, features)
+	return &matched, nil
+}
+
+func installOnce(ctx context.Context, tx *store.Tx, watchID string, want domain.Condition, matched *bool, now time.Time) error {
 	existing, found, err := tx.LoadCondition(ctx, watchID)
 	if err != nil {
 		return fmt.Errorf("load existing watch condition: %w", err)
@@ -58,7 +73,7 @@ func installOnce(ctx context.Context, tx *store.Tx, watchID string, want domain.
 	if err := assertGuards(ctx, tx, want.TenantID, want.Target); err != nil {
 		return err
 	}
-	if err := tx.InsertCondition(ctx, watchID, want, now); err != nil {
+	if err := tx.InsertCondition(ctx, watchID, want, matched, now); err != nil {
 		return err
 	}
 	return verifyInstalled(ctx, tx, watchID, want)
@@ -75,7 +90,6 @@ func verifyInstalled(ctx context.Context, tx *store.Tx, watchID string, want dom
 	return want.SameAs(stored)
 }
 
-// assertGuards re-checks runtime ownership, then the governance interlock.
 func assertGuards(ctx context.Context, tx *store.Tx, tenantID, target string) error {
 	if err := tx.AssertOwner(ctx); err != nil {
 		return err

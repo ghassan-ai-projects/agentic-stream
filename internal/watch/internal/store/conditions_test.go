@@ -15,7 +15,7 @@ func TestConditionRoundTripsAndInsertIsIdempotent(t *testing.T) {
 			t.Fatalf("missing watch found=%v err=%v", found, err)
 		}
 		for range 2 {
-			if err := tx.InsertCondition(t.Context(), "w-1", condition(), testNow); err != nil {
+			if err := tx.InsertCondition(t.Context(), "w-1", condition(), nil, testNow); err != nil {
 				return err
 			}
 		}
@@ -30,7 +30,7 @@ func TestConditionRoundTripsAndInsertIsIdempotent(t *testing.T) {
 func TestFireIsRecordedOncePerEventAndSpendsAllowance(t *testing.T) {
 	t.Parallel()
 	s := openStore(t)
-	inTx(t, s, func(tx *Tx) error { return tx.InsertCondition(t.Context(), "w-1", condition(), testNow) })
+	inTx(t, s, func(tx *Tx) error { return tx.InsertCondition(t.Context(), "w-1", condition(), nil, testNow) })
 	inTx(t, s, func(tx *Tx) error {
 		first, err := tx.RecordFire(t.Context(), "w-1", "evt-1", testNow)
 		again, againErr := tx.RecordFire(t.Context(), "w-1", "evt-1", testNow)
@@ -60,7 +60,7 @@ func TestFireIsRecordedOncePerEventAndSpendsAllowance(t *testing.T) {
 func TestExpiryHidesWatchesFromActiveReads(t *testing.T) {
 	t.Parallel()
 	s := openStore(t)
-	inTx(t, s, func(tx *Tx) error { return tx.InsertCondition(t.Context(), "w-1", condition(), testNow) })
+	inTx(t, s, func(tx *Tx) error { return tx.InsertCondition(t.Context(), "w-1", condition(), nil, testNow) })
 	if candidates, err := s.ActiveForTarget(t.Context(), "motor-1", testNow); err != nil || len(candidates) != 1 || candidates[0] != (domain.Candidate{WatchID: "w-1", SituationID: "sit-1"}) {
 		t.Fatalf("candidates = %+v err=%v", candidates, err)
 	}
@@ -85,7 +85,7 @@ func TestExpiryHidesWatchesFromActiveReads(t *testing.T) {
 func TestLoadConditionFailsClosedOnUnreadableStoredExpiry(t *testing.T) {
 	t.Parallel()
 	s := openStore(t)
-	inTx(t, s, func(tx *Tx) error { return tx.InsertCondition(t.Context(), "w-1", condition(), testNow) })
+	inTx(t, s, func(tx *Tx) error { return tx.InsertCondition(t.Context(), "w-1", condition(), nil, testNow) })
 	inTx(t, s, func(tx *Tx) error {
 		if _, err := tx.tx.ExecContext(t.Context(), "UPDATE watch_conditions SET expires_at = 'soon' WHERE watch_id = 'w-1'"); err != nil {
 			return err
@@ -108,7 +108,7 @@ func TestUnreadableStoredExpiryIsExpiredNotActive(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			s := openStore(t)
-			inTx(t, s, func(tx *Tx) error { return tx.InsertCondition(t.Context(), "w-1", condition(), testNow) })
+			inTx(t, s, func(tx *Tx) error { return tx.InsertCondition(t.Context(), "w-1", condition(), nil, testNow) })
 			inTx(t, s, func(tx *Tx) error {
 				if _, err := tx.tx.ExecContext(t.Context(), "UPDATE watch_conditions SET expires_at = ? WHERE watch_id = 'w-1'", corrupt); err != nil {
 					return err
@@ -151,7 +151,7 @@ func TestAWatchIsVisibleUpToItsExpiryAndHiddenAtIt(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			s := openStore(t)
-			inTx(t, s, func(tx *Tx) error { return tx.InsertCondition(t.Context(), "w-1", condition(), testNow) })
+			inTx(t, s, func(tx *Tx) error { return tx.InsertCondition(t.Context(), "w-1", condition(), nil, testNow) })
 			candidates, err := s.ActiveForTarget(t.Context(), "motor-1", tc.at)
 			if visible := len(candidates) == 1; err != nil || visible != tc.want {
 				t.Errorf("ActiveForTarget visible = %v, %v; want %v", visible, err, tc.want)

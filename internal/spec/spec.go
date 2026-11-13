@@ -89,6 +89,18 @@ type Window = domain.Window
 // Operator defines a deterministic computation over inputs.
 type Operator = domain.Operator
 
+// Extrapolation is an extrapolate operator's configuration: the limit its fit
+// must reach, the fit (FitLinear or FitQuadratic), the fewest samples a fit
+// needs and, when positive, the furthest crossing it publishes.
+// Operator.Extrapolation reads it and names what is wrong with it.
+type Extrapolation = domain.Extrapolation
+
+// FitLinear and FitQuadratic are the fits an extrapolate operator declares.
+const (
+	FitLinear    = domain.FitLinear
+	FitQuadratic = domain.FitQuadratic
+)
+
 // Phase is a state in the Situation lifecycle.
 type Phase = domain.Phase
 
@@ -135,6 +147,11 @@ type Budget = domain.Budget
 
 // Cognition groups trigger and executor configuration.
 type Cognition = domain.Cognition
+
+// RetryPolicy wakes an open Situation whose latest episode concluded without an
+// accepted decision once After of event time has passed since the version that
+// episode reasoned on, while its phase is unchanged, at most Max times per phase.
+type RetryPolicy = domain.RetryPolicy
 
 // Intent declares one action type and its authority: the EXACT risk class,
 // the parameter schema, the operator-authored presets, the model-writable
@@ -196,6 +213,15 @@ type Promotion = domain.Promotion
 // situation: the reading feature at the situation's closing version must be
 // within a relative tolerance of the baseline feature frozen at decision time.
 type Recovery = domain.Recovery
+
+// InputStaleFacts is the situation fact group that holds, per advisory input,
+// whether its loss has been detected (input_stale.<name>); CEL reads it as
+// features.input_stale.<name>.
+const InputStaleFacts = domain.InputStaleFacts
+
+// InputStaleFact names the situation fact that holds whether the advisory
+// input has been lost.
+func InputStaleFact(input string) string { return domain.InputStaleFact(input) }
 
 // UnknownDiagnosis is the diagnosis code that never becomes a rule.
 const UnknownDiagnosis = domain.UnknownDiagnosis

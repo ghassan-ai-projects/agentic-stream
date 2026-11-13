@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/ghassan-ai-projects/agentic-stream/internal/kernel"
@@ -20,7 +21,7 @@ const decidedSQL = `FROM decisions d JOIN episodes e ON e.episode_id = d.episode
 
 const detectionsQuery = `SELECT entity_id, decided_at, label FROM (
 	SELECT s.entity_id AS entity_id, v.event_horizon AS decided_at, COALESCE(json_extract(d.raw_json, '$.diagnosis_code'), '') AS label,
-		ROW_NUMBER() OVER (PARTITION BY s.entity_id ORDER BY v.event_horizon, d.created_at, d.decision_id) AS n
+		ROW_NUMBER() OVER (PARTITION BY s.entity_id, json_extract(d.raw_json, '$.diagnosis_code') ORDER BY v.event_horizon, d.created_at, d.decision_id) AS n
 	` + decidedSQL + `) WHERE n = 1 ORDER BY decided_at, entity_id`
 
 const actionsQuery = `SELECT 'sha256:' || lower(hex(c.idempotency_key)), c.effector_route, c.normalized_target, v.event_horizon, c.status
@@ -44,9 +45,12 @@ type consumer struct {
 }
 
 type detection struct {
-	EntityID   string `json:"entity_id"`
-	DetectedAt string `json:"detected_at"`
-	Label      string `json:"label,omitempty"`
+	EntityID           string `json:"entity_id"`
+	DetectedAt         string `json:"detected_at"`
+	Label              string `json:"label,omitempty"`
+	PredictedFailureAt string `json:"predicted_failure_at,omitempty"`
+	situationEntity    string
+	diagnosis          string
 }
 
 type action struct {
@@ -57,26 +61,106 @@ type action struct {
 	OutcomeBelieved string `json:"outcome_believed"`
 }
 
-// WriteVerdict writes the run's consumer verdict beside its run file, in the
-// simulator's neutral vocabulary. Everything is placed in simulated time: a
-// detection is the first decision on a pump whose Situation version's event
-// horizon falls inside the run's window, labeled with its diagnosis, and an
-// action is a command whose deciding episode does, issued at that horizon.
+// Subjects names what a verdict reports in the simulator's vocabulary: the
+// instance and label of a detection from its Situation's entity and the
+// decision's diagnosis, and the instance and effector an action reached from
+// its route and normalized target. A detection mapped to no instance is left
+// out (a diagnosis that names nothing), and so is an action (a command that
+// reaches no instance, as the runtime's own watch). One mapped to an instance without a
+// label is a symptom. Refines declares, per diagnosis, the symptom diagnosis
+// it refines: a labeled detection that refines a symptom of its instance takes
+// the symptom's earlier time, and that symptom is no row of its own; a symptom
+// nothing refines is reported once, at its earliest, without a label; a label
+// that refines nothing keeps its own time. Prognosis names, per
+// label, the Situation fact that holds the seconds until the detected
+// instance fails if nobody acts (an extrapolate operator's output): a
+// detection of that label carries the failure time its Situation predicted
+// then, and each later prediction, at most one per PredictionSpacing of event
+// time, is reported as a further detection of the same instance and label.
+type Subjects struct {
+	Detected  func(entityID, diagnosis string) (instance, label string)
+	Acted     func(route, target string) (instance, effector string)
+	Refines   map[string]string
+	Prognosis map[string]string
+}
+
+// SameNames is the campaign's subjects: an entity "site-a:pump-1" is the
+// instance "site-a/pump-1", a diagnosis is the label and a route is the
+// effector.
+var SameNames = Subjects{
+	Detected: func(entityID, diagnosis string) (string, string) { return instanceOf(entityID), diagnosis },
+	Acted:    func(route, target string) (string, string) { return instanceOf(target), route },
+}
+
+// WriteVerdict writes the campaign run's consumer verdict with SameNames as
+// its subjects.
 func WriteVerdict(ctx context.Context, db *sql.DB, runDir, arm string, window Window) error {
+	return WriteVerdictOf(ctx, db, runDir, window, Verdict{Version: "rule-promotion", Arm: arm, Subjects: SameNames})
+}
+
+// Verdict is the consumer version and comparison arm a verdict names and the
+// subjects its rows report.
+type Verdict struct {
+	Version, Arm string
+	Subjects     Subjects
+}
+
+// WriteVerdictOf writes the run's consumer verdict beside its run file, in the
+// simulator's neutral vocabulary. Everything is placed in simulated time: a
+// detection is the first decision of each diagnosis on an entity whose
+// Situation version's event horizon falls inside the run's window (a first
+// "unknown" does not hide the cause a later decision names), and an action is a command
+// whose deciding episode does, issued at that horizon.
+func WriteVerdictOf(ctx context.Context, db *sql.DB, runDir string, window Window, of Verdict) error {
 	runID, err := readRunID(runDir)
 	if err != nil {
 		return err
 	}
-	v := verdict{SchemaVersion: schemaVersion, RunID: runID, Consumer: consumer{Name: "agentic-stream", Version: "rule-promotion", Arm: arm}}
-	from, until := kernel.FormatTime(window.From), kernel.FormatTime(window.Until)
-	if v.Detections, err = readVerdictRows(ctx, db, "detection", scanDetection, detectionsQuery, from, until); err != nil {
-		return err
-	}
-	if v.Actions, err = readVerdictRows(ctx, db, "action", scanAction, actionsQuery, from, until); err != nil {
+	v := verdict{SchemaVersion: schemaVersion, RunID: runID, Consumer: consumer{Name: "agentic-stream", Version: of.Version, Arm: of.Arm}}
+	if err := v.gather(ctx, db, window, of.Subjects); err != nil {
 		return err
 	}
 	_, err = writeIn(runDir, verdictFile, v)
 	return err
+}
+
+func (v *verdict) gather(ctx context.Context, db *sql.DB, window Window, subjects Subjects) error {
+	if err := v.read(ctx, db, window); err != nil {
+		return err
+	}
+	subjects.place(v)
+	var err error
+	v.Detections, err = subjects.predict(ctx, db, window.Until, v.Detections)
+	return err
+}
+
+func (v *verdict) read(ctx context.Context, db *sql.DB, window Window) error {
+	from, until := kernel.FormatTime(window.From), kernel.FormatTime(window.Until)
+	var err error
+	if v.Detections, err = readVerdictRows(ctx, db, "detection", scanDetection, detectionsQuery, from, until); err != nil {
+		return err
+	}
+	v.Actions, err = readVerdictRows(ctx, db, "action", scanAction, actionsQuery, from, until)
+	return err
+}
+
+func (s Subjects) place(v *verdict) {
+	v.Detections = s.withSymptomsFolded(s.detections(v.Detections))
+	for i, a := range v.Actions {
+		v.Actions[i].EntityID, v.Actions[i].Effector = s.Acted(a.Effector, a.EntityID)
+	}
+	v.Actions = slices.DeleteFunc(v.Actions, func(a action) bool { return a.EntityID == "" })
+}
+
+func (s Subjects) detections(decided []detection) []detection {
+	placed := []detection{}
+	for _, d := range decided {
+		instance, label := s.Detected(d.EntityID, d.Label)
+		if instance != "" {
+			placed = append(placed, detection{EntityID: instance, DetectedAt: d.DetectedAt, Label: label, situationEntity: d.EntityID, diagnosis: d.Label})
+		}
+	}
+	return placed
 }
 
 func readRunID(runDir string) (string, error) {
@@ -106,7 +190,6 @@ func scanDetection(rows *sql.Rows) (detection, error) {
 	if err := rows.Scan(&d.EntityID, &d.DetectedAt, &d.Label); err != nil {
 		return d, fmt.Errorf("scan a detection: %w", err)
 	}
-	d.EntityID = instanceOf(d.EntityID)
 	return d, nil
 }
 
@@ -116,7 +199,7 @@ func scanAction(rows *sql.Rows) (action, error) {
 	if err := rows.Scan(&a.CommandID, &a.Effector, &a.EntityID, &a.IssuedAt, &status); err != nil {
 		return a, fmt.Errorf("scan an action: %w", err)
 	}
-	a.EntityID, a.OutcomeBelieved = instanceOf(a.EntityID), believedOutcome(status)
+	a.OutcomeBelieved = believedOutcome(status)
 	return a, nil
 }
 

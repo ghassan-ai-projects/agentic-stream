@@ -21,8 +21,9 @@ type OperatorRuntime struct {
 }
 
 type operatorInstance struct {
-	def    spec.Operator
-	window *windowConfig
+	def           spec.Operator
+	window        *windowConfig
+	extrapolation *spec.Extrapolation
 }
 
 type windowConfig struct {
@@ -61,19 +62,40 @@ func buildWindowConfigs(windows []spec.Window) (map[string]*windowConfig, error)
 func indexOperatorsByInput(operators []spec.Operator, windowConfigs map[string]*windowConfig) (map[string][]*operatorInstance, error) {
 	byInput := make(map[string][]*operatorInstance)
 	for _, op := range operators {
-		inst := &operatorInstance{def: op}
-		if op.Window != "" {
-			cfg, ok := windowConfigs[op.Window]
-			if !ok {
-				return nil, fmt.Errorf("operator %s references unknown window %s", op.Name, op.Window)
-			}
-			inst.window = cfg
+		inst, err := newOperatorInstance(op, windowConfigs)
+		if err != nil {
+			return nil, err
 		}
 		for _, in := range op.Inputs {
 			byInput[in] = append(byInput[in], inst)
 		}
 	}
 	return byInput, nil
+}
+
+func newOperatorInstance(op spec.Operator, windowConfigs map[string]*windowConfig) (*operatorInstance, error) {
+	inst := &operatorInstance{def: op}
+	if op.Window != "" {
+		cfg, ok := windowConfigs[op.Window]
+		if !ok {
+			return nil, fmt.Errorf("operator %s references unknown window %s", op.Name, op.Window)
+		}
+		inst.window = cfg
+	}
+	var err error
+	inst.extrapolation, err = extrapolationOf(op)
+	return inst, err
+}
+
+func extrapolationOf(op spec.Operator) (*spec.Extrapolation, error) {
+	if op.Kind != "extrapolate" {
+		return nil, nil
+	}
+	extrapolation, err := op.Extrapolation()
+	if err != nil {
+		return nil, fmt.Errorf("operator %s: %w", op.Name, err)
+	}
+	return &extrapolation, nil
 }
 
 func newWindowConfig(w spec.Window) (*windowConfig, error) {
@@ -176,7 +198,7 @@ func (r *OperatorRuntime) ApplyEventAt(ctx context.Context, ps *PartitionState, 
 	if !ok {
 		return nil, ps, nil
 	}
-	features, err := r.applyInput(ctx, ps, inputName, env, watermark, processingTime)
+	features, err := r.applyArrival(ctx, ps, inputName, env, watermark, processingTime)
 	if err != nil {
 		return nil, ps, err
 	}
@@ -224,7 +246,7 @@ func (r *OperatorRuntime) inputForEvent(env contractsv1.Envelope) (string, bool)
 func (r *OperatorRuntime) applyOperator(_ context.Context, ps *PartitionState, inst *operatorInstance, env contractsv1.Envelope, watermark, processingTime time.Time) ([]Feature, error) {
 	blob := r.getBlob(ps, inst.def.Name, operatorStateKey(env))
 	switch inst.def.Kind {
-	case "aggregate", "slope":
+	case "aggregate", "slope", "extrapolate":
 		return r.applyWindowOperator(inst, blob, env, watermark)
 	case "missing_heartbeat":
 		return r.applyHeartbeatOperator(inst, blob, env, watermark, processingTime)

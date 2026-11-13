@@ -28,6 +28,7 @@ type Config struct {
 
 type Service struct {
 	mu           sync.Mutex
+	retried      map[string]int
 	store        store.Store
 	log          *eventlog.EventLog
 	clock        sources.Clock
@@ -53,7 +54,7 @@ func New(ctx context.Context, cfg Config) (*Service, error) {
 	if domain.RequiresSchemaValidation(cfg.Spec.Inputs) {
 		cfg.Log.RequireSchemaValidation()
 	}
-	service := &Service{store: cfg.Store, log: cfg.Log, clock: sources.OrPhysical(cfg.Clock), spec: cfg.Spec, tenantID: cfg.TenantID, deploymentID: cfg.Spec.Digest, logger: slog.Default()}
+	service := &Service{retried: map[string]int{}, store: cfg.Store, log: cfg.Log, clock: sources.OrPhysical(cfg.Clock), spec: cfg.Spec, tenantID: cfg.TenantID, deploymentID: cfg.Spec.Digest, logger: slog.Default()}
 	if err := service.buildPlanes(ctx, cfg.Cognition); err != nil {
 		return nil, fmt.Errorf("build engine planes: %w", err)
 	}

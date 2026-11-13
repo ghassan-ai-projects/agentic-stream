@@ -9,7 +9,7 @@ import (
 )
 
 func (e *Engine) applyFeatureEvidence(sit *Situation, feature operators.Feature) bool {
-	completenessMatters := recordInputCompleteness(sit, feature)
+	completenessMatters := e.recordEvidenceQuality(sit, feature)
 	e.applyReducers(sit, feature)
 	recordTimerProvenance(sit, feature.Metadata)
 	if feature.EventTime.After(sit.LatestEventTime) {

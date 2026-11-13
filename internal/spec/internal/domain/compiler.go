@@ -40,6 +40,9 @@ func checkSpec(spec *CompiledSpec) error {
 	if err := validateExpressions(spec); err != nil {
 		return err
 	}
+	if err := checkAdvisoryInputs(spec); err != nil {
+		return err
+	}
 	return checkPromotion(spec)
 }
 

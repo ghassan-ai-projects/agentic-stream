@@ -74,7 +74,7 @@ func (r *OperatorRuntime) operatorAdmitsEvent(inst *operatorInstance, env contra
 	switch inst.def.Kind {
 	case "missing_heartbeat":
 		return sampleQualityValid(env)
-	case "aggregate", "slope":
+	case "aggregate", "slope", "extrapolate":
 		return r.numericObservationQualityValid(inst, env)
 	default:
 		return true

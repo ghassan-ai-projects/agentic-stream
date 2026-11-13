@@ -1,0 +1,323 @@
+apiVersion: agentic-stream/v1
+kind: SituationSpec
+
+# Belt conveyor M2 (streams-simulator docs/belt-conveyor-drives/M2-DESIGN.md):
+# three drives D-1..D-3 share the belt of conveyor-1 fed by F-1. When one
+# drive's current drops to about 0 A while the feed is still high, the two
+# survivors carry the whole load and their inverters trip about two minutes
+# later. The line enters line_overload and the decision reduce_feed (R1,
+# automatic) cuts the feeder to the limp feed the two survivors can carry.
+#
+# Each drive's current is its own event type (per-device site readings), so
+# the features say which drive was lost. An operator output with no value yet
+# reads 0 in CEL, so a drive at 0 A counts as lost only while another drive
+# carries more than its share (above 5 A; about 4.2 A each on three drives at
+# full feed, 6.2 A on two). Gates are short: this spec drives a test against a
+# wall-paced twin and must react well inside the ~98 s the survivors have.
+#
+# The site gives every reading of the line, and a deployment registers the
+# event schemas of its spec's inputs only; evidence of an unregistered type is
+# quarantined. So the spec declares the drives' winding and vibration and the
+# belt's tail speed as inputs although no operator reads them.
+
+metadata:
+  name: line_overload
+  version: 0.1.0
+  description: Detect a lost conveyor drive while the feed is high and cut the feed to the limp setting the survivors can carry.
+  labels:
+    domain: belt-conveyor
+    safety: advisory
+
+inputs:
+  - name: drive1_current
+    eventType: conveyor.drive1_current.observed
+    schemaVersion: "1.0"
+    schema: conveyor.drive1_current.observed/1.0
+    partitionKey: entity.id
+    entityType: conveyor
+    classification: internal
+  - name: drive2_current
+    eventType: conveyor.drive2_current.observed
+    schemaVersion: "1.0"
+    schema: conveyor.drive2_current.observed/1.0
+    partitionKey: entity.id
+    entityType: conveyor
+    classification: internal
+  - name: drive3_current
+    eventType: conveyor.drive3_current.observed
+    schemaVersion: "1.0"
+    schema: conveyor.drive3_current.observed/1.0
+    partitionKey: entity.id
+    entityType: conveyor
+    classification: internal
+  - name: feed
+    eventType: conveyor.feed.observed
+    schemaVersion: "1.0"
+    schema: conveyor.feed.observed/1.0
+    partitionKey: entity.id
+    entityType: conveyor
+    classification: internal
+  - name: feed_setpoint
+    eventType: conveyor.feed_setpoint.observed
+    schemaVersion: "1.0"
+    schema: conveyor.feed_setpoint.observed/1.0
+    partitionKey: entity.id
+    entityType: conveyor
+    classification: internal
+  - name: drive1_winding
+    eventType: conveyor.drive1_winding.observed
+    schemaVersion: "1.0"
+    schema: conveyor.drive1_winding.observed/1.0
+    partitionKey: entity.id
+    entityType: conveyor
+    classification: internal
+  - name: drive2_winding
+    eventType: conveyor.drive2_winding.observed
+    schemaVersion: "1.0"
+    schema: conveyor.drive2_winding.observed/1.0
+    partitionKey: entity.id
+    entityType: conveyor
+    classification: internal
+  - name: drive3_winding
+    eventType: conveyor.drive3_winding.observed
+    schemaVersion: "1.0"
+    schema: conveyor.drive3_winding.observed/1.0
+    partitionKey: entity.id
+    entityType: conveyor
+    classification: internal
+  - name: drive1_vibration
+    eventType: conveyor.drive1_vibration.observed
+    schemaVersion: "1.0"
+    schema: conveyor.drive1_vibration.observed/1.0
+    partitionKey: entity.id
+    entityType: conveyor
+    classification: internal
+  - name: drive2_vibration
+    eventType: conveyor.drive2_vibration.observed
+    schemaVersion: "1.0"
+    schema: conveyor.drive2_vibration.observed/1.0
+    partitionKey: entity.id
+    entityType: conveyor
+    classification: internal
+  - name: drive3_vibration
+    eventType: conveyor.drive3_vibration.observed
+    schemaVersion: "1.0"
+    schema: conveyor.drive3_vibration.observed/1.0
+    partitionKey: entity.id
+    entityType: conveyor
+    classification: internal
+  - name: tail_speed
+    eventType: conveyor.tail_speed.observed
+    schemaVersion: "1.0"
+    schema: conveyor.tail_speed.observed/1.0
+    partitionKey: entity.id
+    entityType: conveyor
+    classification: internal
+
+time:
+  watermarkStrategy: bounded_out_of_orderness
+  maxOutOfOrderness: 2s
+  idleTimeout: 1m
+  allowedLateness: 10s
+  latePolicy: correct_and_reconsider
+  clockSkewTolerance: 5s
+
+windows:
+  - name: recent_10s
+    kind: sliding
+    size: 10s
+    slide: 1s
+    emit: early_and_close
+
+operators:
+  - name: drive1_now
+    kind: aggregate
+    inputs: [drive1_current]
+    field: data.amps
+    window: recent_10s
+    aggregate: latest
+    output: drive1_amps
+    unit: ampere
+  - name: drive2_now
+    kind: aggregate
+    inputs: [drive2_current]
+    field: data.amps
+    window: recent_10s
+    aggregate: latest
+    output: drive2_amps
+    unit: ampere
+  - name: drive3_now
+    kind: aggregate
+    inputs: [drive3_current]
+    field: data.amps
+    window: recent_10s
+    aggregate: latest
+    output: drive3_amps
+    unit: ampere
+  - name: feed_now
+    kind: aggregate
+    inputs: [feed]
+    field: data.kg_s
+    window: recent_10s
+    aggregate: latest
+    output: feed_kg_s
+    unit: kg_s
+  - name: feed_setpoint_now
+    kind: aggregate
+    inputs: [feed_setpoint]
+    field: data.percent
+    window: recent_10s
+    aggregate: latest
+    output: feed_setpoint_percent
+    unit: percent
+
+situation:
+  type: line_overload
+  entityKey: entity.id
+  occurrence:
+    openWhen: >
+      features.feed_kg_s > 20.0 &&
+      (features.drive1_amps < 0.5 || features.drive2_amps < 0.5 || features.drive3_amps < 0.5) &&
+      (features.drive1_amps > 5.0 || features.drive2_amps > 5.0 || features.drive3_amps > 5.0)
+    closeWhen: features.feed_kg_s < 15.0
+    reopenCooldown: 5m
+  initialPhase: candidate
+  phases:
+    - name: candidate
+      severity: 20
+    - name: overload
+      severity: 80
+    - name: resolved
+      severity: 0
+      terminal: true
+  transitions:
+    - from: candidate
+      to: overload
+      when: >
+        features.feed_kg_s > 20.0 &&
+        (features.drive1_amps < 0.5 || features.drive2_amps < 0.5 || features.drive3_amps < 0.5) &&
+        (features.drive1_amps > 5.0 || features.drive2_amps > 5.0 || features.drive3_amps > 5.0)
+      minDuration: 2s
+  reducers:
+    - field: facts.drive1_amps
+      strategy: latest_event_time
+      input: drive1_amps
+    - field: facts.drive2_amps
+      strategy: latest_event_time
+      input: drive2_amps
+    - field: facts.drive3_amps
+      strategy: latest_event_time
+      input: drive3_amps
+    - field: facts.feed_kg_s
+      strategy: latest_event_time
+      input: feed_kg_s
+    - field: facts.feed_setpoint_percent
+      strategy: latest_event_time
+      input: feed_setpoint_percent
+
+cognition:
+  triggers:
+    - name: lost_drive_needs_relief
+      when: situation.phase == "overload"
+      score: >
+        double(situation.severity) * 0.5 +
+        double(delta.novelty) * 25.0
+      threshold: 30
+      lane: fast
+      completeness: any
+      debounce: 100ms
+      cooldown: 1m
+      expiresAfter: 2m
+      materialDelta: delta.phase_changed
+  executor:
+    name: tamoz
+    dispatchPolicy: active
+    riskCeiling: R1
+    objective: |
+      Decide whether the conveyor lost a drive while the feed is high and name
+      the drive whose current fell to about 0 A. Request the one step of the
+      situation's phase; never stop the belt.
+      - phase overload: cut the feed to the limp feed the two survivors carry -
+        intent reduce_feed (preset limp).
+    prompt: >
+      Analyze the immutable snapshot (each drive's current, the feed and its
+      setpoint) and return a typed decision with a diagnosis and at most one
+      feed request.
+    modelPolicy: conveyor_reasoner
+    promptVersion: line-overload-v1
+    decisionSchema: schemas/maintenance-decision-v1.json
+    tools:
+      - features_query
+      - evidence_get
+    budget:
+      wallTime: 30s
+      modelCalls: 3
+      inputTokens: 16000
+      outputTokens: 2000
+      toolCalls: 4
+      toolResultBytes: 32768
+      totalToolResultBytes: 65536
+      providerRetries: 1
+      costMicrounits: 400000
+    diagnosisCatalog: '[{"code":"unknown","description":"no confident diagnosis"},{"code":"drive_tripped","description":"a drive stopped carrying load while the feed is high"},{"code":"transient_none","description":"a short dip that recovers on its own"}]'
+
+actions:
+  intents:
+    - type: install_watch_condition
+      risk: R0
+      description: Keep watching the line when no step is due; Tamoz falls back to it when it recommends nothing.
+      parameterSchema:
+        type: object
+        properties:
+          entity_id:
+            type: string
+          expires_at:
+            type: string
+          expression:
+            type: [string, number]
+          max_fires:
+            type: integer
+          metric:
+            type: [string, number]
+          situation_id:
+            type: string
+          situation_version:
+            type: integer
+          target:
+            type: string
+          threshold:
+            type: number
+        additionalProperties: false
+      presets:
+        default:
+          expression: features.feed_kg_s > 20.0
+          max_fires: 3
+          metric: feed_kg_s
+          threshold: 20.0
+      policy: automatic
+      rateLimitPerHour: 4
+    - type: reduce_feed
+      risk: R1
+      description: Set the feeder to a preset feed; limp is the feed this plant's two survivors carry (the plant's device catalog sets it), restore the full feed.
+      parameterSchema:
+        type: object
+        properties:
+          entity_id:
+            type: string
+          situation_id:
+            type: string
+          situation_version:
+            type: integer
+          level:
+            type: string
+            enum: [limp, restore]
+        required: [level]
+        additionalProperties: false
+      modelWritableFields: [level]
+      presets:
+        limp:
+          level: limp
+        restore:
+          level: restore
+      policy: automatic
+      rateLimitPerHour: 6

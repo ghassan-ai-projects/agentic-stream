@@ -31,3 +31,7 @@ func ReadAdmission(ctx context.Context, tx *store.Tx, episodeID string) (domain.
 func ReasoningInFlight(ctx context.Context, tx *store.Tx) (bool, error) {
 	return tx.ReasoningInFlight(ctx)
 }
+
+func UnansweredReasoning(ctx context.Context, tx *store.Tx, tenantID string) ([]domain.Unanswered, error) {
+	return tx.UnansweredReasoning(ctx, tenantID)
+}

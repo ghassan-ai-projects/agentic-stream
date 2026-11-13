@@ -40,7 +40,19 @@ as behavior qualified for a production deployment.
 - **Score/threshold:** avoids waking an executor for weak evidence.
 - **Material delta:** allows a trigger to require a meaningful change from
   the most recently evaluated version. The durable `last_reasoned_version`
-  marker advances even when the evaluation starts no episode.
+  marker advances even when the evaluation starts no episode. A watch that an
+  episode installed wakes its Situation when it fires: the engine publishes the
+  Situation's current state as a new version in the same phase, and
+  `delta.watch_fired` is true on it, so a trigger whose `materialDelta` names it
+  is evaluated again (still under its cooldown and coalescing). The woken version
+  is material only while such a trigger applies (its `when` holds), so a pending
+  approval survives a fire in a phase whose trigger does not name the watch.
+- **Failed reasoning:** with `cognition.retryFailedReasoning` (`after`, `max`), a
+  Situation whose latest episode concluded without an accepted decision (it
+  failed, timed out or its decision was rejected) is woken once `after` of event
+  time has passed since the version that episode reasoned on, while its phase holds,
+  once per failure and at most `max` times per phase. `delta.reasoning_failed`
+  is true on that version, and the retry is a new episode.
 - **Debounce:** sets the earliest run time after a queue opportunity is created.
 - **Cooldown:** delays work until the configured interval after the latest trigger admission.
 - **Coalescing:** replaces open work for the same Situation and trigger; it

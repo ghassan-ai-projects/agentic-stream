@@ -12,10 +12,8 @@ import (
 	"github.com/ghassan-ai-projects/agentic-stream/internal/watch/internal/domain"
 )
 
-// ErrConditionMissing reports a watch that an install just wrote but cannot be read back.
 var ErrConditionMissing = errors.New("watch condition is missing")
 
-// LoadCondition reads an installed watch. It reports false when none exists.
 func (tx *Tx) LoadCondition(ctx context.Context, watchID string) (domain.Condition, bool, error) {
 	var stored domain.Condition
 	var expiresAt string
@@ -39,25 +37,28 @@ func withStoredExpiry(condition domain.Condition, watchID, expiresAt string) (do
 	return condition, true, nil
 }
 
-// InsertCondition installs an active watch with its full allowance. An existing
-// watch of the same ID is left untouched.
-func (tx *Tx) InsertCondition(ctx context.Context, watchID string, want domain.Condition, now time.Time) error {
+func (tx *Tx) InsertCondition(ctx context.Context, watchID string, want domain.Condition, matched *bool, now time.Time) error {
 	at := kernel.FormatTime(now)
 	if _, err := tx.tx.ExecContext(ctx, `
 		INSERT INTO watch_conditions (
 			watch_id, tenant_id, situation_id, situation_version, expression, target,
-			expires_at, remaining_fires, max_fires, status, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
+			expires_at, remaining_fires, max_fires, status, last_matched, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)
 		ON CONFLICT(watch_id) DO NOTHING`,
 		watchID, want.TenantID, want.SituationID, want.SituationVersion, want.Expression, want.Target,
-		kernel.FormatTime(want.ExpiresAt), want.MaxFires, want.MaxFires, at, at); err != nil {
+		kernel.FormatTime(want.ExpiresAt), want.MaxFires, want.MaxFires, lastMatched(matched), at, at); err != nil {
 		return fmt.Errorf("install watch condition: %w", err)
 	}
 	return nil
 }
 
-// ExpireDue marks every active watch whose expiry has passed as expired,
-// keeping its audit rows.
+func lastMatched(matched *bool) any {
+	if matched == nil {
+		return nil
+	}
+	return storage.BoolInt(*matched)
+}
+
 func (tx *Tx) ExpireDue(ctx context.Context, now time.Time) error {
 	at := kernel.FormatTime(now)
 	if _, err := tx.tx.ExecContext(ctx, expireDueSQL, at, at); err != nil {
@@ -66,11 +67,9 @@ func (tx *Tx) ExpireDue(ctx context.Context, now time.Time) error {
 	return nil
 }
 
-// LoadActive reads an active, unexpired watch. It reports false when the watch
-// is absent, disabled or expired.
 func (tx *Tx) LoadActive(ctx context.Context, watchID string, now time.Time) (domain.ActiveWatch, bool, error) {
 	var active domain.ActiveWatch
-	err := tx.tx.QueryRowContext(ctx, loadActiveSQL, watchID, kernel.FormatTime(now)).Scan(&active.Expression, &active.SituationID, &active.Target)
+	err := tx.tx.QueryRowContext(ctx, loadActiveSQL, watchID, kernel.FormatTime(now)).Scan(&active.Expression, &active.SituationID, &active.Target, &active.LastMatched)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.ActiveWatch{}, false, nil
 	}
@@ -80,8 +79,6 @@ func (tx *Tx) LoadActive(ctx context.Context, watchID string, now time.Time) (do
 	return active, true, nil
 }
 
-// RecordFire records the fire at most once per event, and only while the watch
-// is active with allowance left. It reports whether a new fire was recorded.
 func (tx *Tx) RecordFire(ctx context.Context, watchID, eventID string, now time.Time) (bool, error) {
 	at := kernel.FormatTime(now)
 	result, err := tx.tx.ExecContext(ctx, recordFireSQL, watchID, eventID, at, watchID, at)
@@ -95,7 +92,13 @@ func (tx *Tx) RecordFire(ctx context.Context, watchID, eventID string, now time.
 	return count == 1, nil
 }
 
-// SpendAllowance spends one unit of the watch's allowance, disabling it at zero.
+func (tx *Tx) RecordEvaluation(ctx context.Context, watchID string, matched bool, now time.Time) error {
+	if _, err := tx.tx.ExecContext(ctx, `UPDATE watch_conditions SET last_matched = ?, updated_at = ? WHERE watch_id = ?`, storage.BoolInt(matched), kernel.FormatTime(now), watchID); err != nil {
+		return fmt.Errorf("record watch evaluation: %w", err)
+	}
+	return nil
+}
+
 func (tx *Tx) SpendAllowance(ctx context.Context, watchID string, now time.Time) error {
 	if _, err := tx.tx.ExecContext(ctx, `UPDATE watch_conditions SET remaining_fires = remaining_fires - 1, status = CASE WHEN remaining_fires = 1 THEN 'disabled' ELSE status END, updated_at = ? WHERE watch_id = ?`, kernel.FormatTime(now), watchID); err != nil {
 		return fmt.Errorf("decrement watch allowance: %w", err)
@@ -103,8 +106,6 @@ func (tx *Tx) SpendAllowance(ctx context.Context, watchID string, now time.Time)
 	return nil
 }
 
-// ActiveForTarget lists the active, unexpired watches scoped to one event
-// target. It reads outside any transaction.
 func (s Store) ActiveForTarget(ctx context.Context, target string, now time.Time) ([]domain.Candidate, error) {
 	rows, err := s.db.QueryContext(ctx, activeForTargetSQL, target, kernel.FormatTime(now))
 	if err != nil {
@@ -127,7 +128,7 @@ const (
 
 	expireDueSQL = "UPDATE watch_conditions SET status = 'expired', updated_at = ? WHERE status = 'active' AND (expires_at <= ? OR NOT stored_time_ok(expires_at))"
 
-	loadActiveSQL = "SELECT expression, situation_id, target FROM watch_conditions WHERE watch_id = ? AND status = 'active' AND " + unexpired
+	loadActiveSQL = "SELECT expression, situation_id, target, last_matched = 1 FROM watch_conditions WHERE watch_id = ? AND status = 'active' AND " + unexpired
 
 	recordFireSQL = "INSERT INTO watch_fires (watch_id, event_id, fired_at) SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM watch_conditions WHERE watch_id = ? AND status = 'active' AND " + unexpired + " AND remaining_fires > 0) ON CONFLICT(watch_id, event_id) DO NOTHING"
 

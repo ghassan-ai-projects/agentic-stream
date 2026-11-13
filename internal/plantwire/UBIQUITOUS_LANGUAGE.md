@@ -51,7 +51,7 @@ the [device-authority language](../authority/UBIQUITOUS_LANGUAGE.md).
 
 | Term | Meaning | Code | Wire |
 | --- | --- | --- | --- |
-| **Site file** | The deployment's mapping, outside the repository: devices to kinds and entities, readings to event types and fields, heartbeat rules, wire quality to event quality. | `Site`, `wire.ParseSiteFile` | — |
+| **Site file** | The deployment's mapping, outside the repository: devices to kinds and entities, readings (per kind, or per device of a kind, the device's rule first) to event types and fields, heartbeat rules, wire quality to event quality. | `Site`, `wire.ParseSiteFile` | — |
 | **Mapping** | A site file checked against the commissioned kinds. | `Mapping`, `NewMapping` | — |
 | **Directory** | The one seam that says which entity a device reports for (and, with the effector, which device a command reaches). | `Directory` | — |
 | **Born device** | A device registered by its `DBIRTH` on its current boot until its death or a rebirth. | `liveDevice` | `DBIRTH` |

@@ -119,3 +119,32 @@ func TestMapsEqualComparesKeysAndValuesDeeply(t *testing.T) {
 		}
 	}
 }
+
+func TestAWatchFireIsAMaterialDeltaForTheTriggersThatNameIt(t *testing.T) {
+	t.Parallel()
+	woken := spec.Trigger{Name: "step", When: `situation.phase == "degrading"`, Score: "5.0", Threshold: 5, MaterialDelta: "delta.phase_changed || delta.watch_fired"}
+	phaseOnly := spec.Trigger{Name: "phase_only", When: `situation.phase == "degrading"`, Score: "5.0", Threshold: 5, MaterialDelta: "delta.phase_changed"}
+	rules, err := NewRules(&spec.CompiledSpec{Cognition: spec.Cognition{Triggers: []spec.Trigger{woken, phaseOnly}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	previous := situations.Version{SituationID: "s", Version: 3, Phase: "degrading", Facts: map[string]any{"t": 1.0}}
+	current := situations.Version{SituationID: "s", Version: 4, Phase: "degrading", Facts: map[string]any{"t": 2.0}, WokenBy: situations.WokenByWatch}
+	for _, tc := range []struct {
+		trigger spec.Trigger
+		current situations.Version
+		want    string
+	}{
+		{woken, current, "admitted"},
+		{phaseOnly, current, "ignored"},
+		{woken, situations.Version{SituationID: "s", Version: 4, Phase: "degrading", Facts: map[string]any{"t": 2.0}}, "ignored"},
+	} {
+		eval, err := rules.Evaluate(EvaluationInput{Trigger: tc.trigger, Current: tc.current, Previous: &previous, Now: time.Now(), DeploymentID: "dep"})
+		if err != nil || eval.Outcome != tc.want {
+			t.Errorf("trigger %s on a version woken by %q = %s (%v), want %s", tc.trigger.Name, tc.current.WokenBy, eval.Outcome, err, tc.want)
+		}
+	}
+	if !rules.Material(current, &previous) {
+		t.Fatal("a woken version is not material although a trigger names the watch delta")
+	}
+}

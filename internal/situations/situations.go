@@ -25,6 +25,17 @@ const PhaseResolved = domain.PhaseResolved
 // Version is an immutable Situation version.
 type Version = domain.Version
 
+// Position is where an open Situation stands: its phase, its current version
+// and its latest event time.
+type Position = domain.Position
+
+// Why the engine published a Situation's current state again (Version.WokenBy):
+// a watch fired, or the last reasoning on it gave no accepted decision.
+const (
+	WokenByWatch           = domain.WokenByWatch
+	WokenByFailedReasoning = domain.WokenByFailedReasoning
+)
+
 // NewEngine creates a situation engine.
 func NewEngine(deploymentID, tenantID string, partitionID int, compiled *spec.CompiledSpec, idGen sources.Generator) (*domain.Engine, error) {
 	return domain.NewEngine(deploymentID, tenantID, partitionID, compiled, idGen)

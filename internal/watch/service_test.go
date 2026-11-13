@@ -61,8 +61,8 @@ func TestAWatchIsInstalledFiredAndReadBackThroughTheFacade(t *testing.T) {
 	if _, err := service.Dispatch(t.Context(), command); err != nil {
 		t.Fatalf("idempotent reinstall: %v", err)
 	}
-	if fired, err := service.FireEvent(t.Context(), "evt-1", "motor-1", featuresOf(map[string]any{"t": 5})); err != nil || fired != 1 {
-		t.Fatalf("fired=%d err=%v", fired, err)
+	if fired, err := service.FireEvent(t.Context(), "evt-1", "motor-1", featuresOf(map[string]any{"t": 5})); err != nil || len(fired) != 1 {
+		t.Fatalf("fired=%d err=%v", len(fired), err)
 	}
 	if err := service.Expire(t.Context()); err != nil {
 		t.Fatal(err)

@@ -13,26 +13,26 @@ import (
 
 type FeatureSource func(ctx context.Context, situationID string) (map[string]any, bool, error)
 
-func (s *Service) FireEvent(ctx context.Context, eventID, target string, source FeatureSource) (int, error) {
+func (s *Service) FireEvent(ctx context.Context, eventID, target string, source FeatureSource) ([]string, error) {
 	if eventID == "" || target == "" {
-		return 0, errors.New("watch event identity is required")
+		return nil, errors.New("watch event identity is required")
 	}
 	candidates, err := s.store.ActiveForTarget(ctx, target, s.clk.Now().UTC())
 	if err != nil {
-		return 0, fmt.Errorf("active watches of target %s: %w", target, err)
+		return nil, fmt.Errorf("active watches of target %s: %w", target, err)
 	}
 	return s.fireCandidates(ctx, eventID, target, source, candidates)
 }
 
-func (s *Service) fireCandidates(ctx context.Context, eventID, target string, source FeatureSource, candidates []domain.Candidate) (int, error) {
-	fired := 0
+func (s *Service) fireCandidates(ctx context.Context, eventID, target string, source FeatureSource, candidates []domain.Candidate) ([]string, error) {
+	var fired []string
 	for _, item := range candidates {
 		matched, err := s.fireCandidate(ctx, eventID, target, source, item)
 		if err != nil {
 			return fired, err
 		}
 		if matched {
-			fired++
+			fired = append(fired, item.SituationID)
 		}
 	}
 	return fired, nil
@@ -71,31 +71,47 @@ func fireIn(ctx context.Context, tx *store.Tx, watchID, eventID, situationID, ta
 	if err := assertGuards(ctx, tx, "", ""); err != nil {
 		return false, fmt.Errorf("guard the watch fire: %w", err)
 	}
-	if err := tx.ExpireDue(ctx, now); err != nil {
-		return false, fmt.Errorf("expire due watches before firing: %w", err)
+	active, found, err := activeInScope(ctx, tx, watchID, situationID, target, now)
+	if err != nil || !found {
+		return false, err
 	}
-	matches, err := activeWatchMatches(ctx, tx, watchID, eventID, situationID, target, features, now)
-	if err != nil || !matches {
+	rose, err := evaluationRises(ctx, tx, watchID, eventID, active, features, now)
+	if err != nil || !rose {
 		return false, err
 	}
 	return recordFire(ctx, tx, watchID, eventID, now)
 }
 
-func activeWatchMatches(ctx context.Context, tx *store.Tx, watchID, eventID, situationID, target string, features map[string]any, now time.Time) (bool, error) {
+func activeInScope(ctx context.Context, tx *store.Tx, watchID, situationID, target string, now time.Time) (domain.ActiveWatch, bool, error) {
+	if err := tx.ExpireDue(ctx, now); err != nil {
+		return domain.ActiveWatch{}, false, fmt.Errorf("expire due watches before firing: %w", err)
+	}
 	active, found, err := tx.LoadActive(ctx, watchID, now)
 	if err != nil {
-		return false, fmt.Errorf("load active watch %s: %w", watchID, err)
+		return domain.ActiveWatch{}, false, fmt.Errorf("load active watch %s: %w", watchID, err)
 	}
-	if !found || !active.InScope(situationID, target) {
+	return active, found && active.InScope(situationID, target), nil
+}
+
+func evaluationRises(ctx context.Context, tx *store.Tx, watchID, eventID string, active domain.ActiveWatch, features map[string]any, now time.Time) (bool, error) {
+	matches := matchesFeatures(ctx, watchID, eventID, active, features)
+	if !active.Changes(matches) {
 		return false, nil
 	}
+	if err := tx.RecordEvaluation(ctx, watchID, matches, now); err != nil {
+		return false, fmt.Errorf("record the evaluation of watch %s: %w", watchID, err)
+	}
+	return active.RisesTo(matches), nil
+}
+
+func matchesFeatures(ctx context.Context, watchID, eventID string, active domain.ActiveWatch, features map[string]any) bool {
 	matches, err := domain.Evaluate(active.Expression, features)
 	if err != nil {
 		slog.WarnContext(ctx, "watch expression evaluation skipped",
 			"watch_id", watchID, "event_id", eventID, "situation_id", active.SituationID, "target", active.Target, "error", err)
-		return false, nil
+		return false
 	}
-	return matches, nil
+	return matches
 }
 
 func recordFire(ctx context.Context, tx *store.Tx, watchID, eventID string, now time.Time) (bool, error) {

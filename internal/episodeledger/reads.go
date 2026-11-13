@@ -57,3 +57,15 @@ func ReadAdmission(ctx context.Context, db *sql.DB, episodeID string) (Admission
 func ReasoningInFlight(ctx context.Context, db *sql.DB) (bool, error) {
 	return app.ReasoningInFlight(ctx, store.Reader(db))
 }
+
+// Unanswered is a concluded episode that gave no accepted decision: the
+// Situation and the version it reasoned on.
+type Unanswered = domain.Unanswered
+
+// UnansweredReasoning reads, from a database handle, every concluded episode
+// without an accepted decision of each Situation whose latest episode is one:
+// it failed, timed out or had its decision rejected, and nothing reasoned on
+// the Situation since.
+func UnansweredReasoning(ctx context.Context, db *sql.DB, tenantID string) ([]Unanswered, error) {
+	return app.UnansweredReasoning(ctx, store.Reader(db), tenantID)
+}

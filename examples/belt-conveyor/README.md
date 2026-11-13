@@ -1,0 +1,160 @@
+# Belt conveyor
+
+Test inputs for the belt conveyor's closed loops (streams-simulator
+`docs/belt-conveyor-drives/`): three drives `D-1`..`D-3` of one kind share the
+belt `B-1` of `conveyor-1`, fed by `F-1` (on the S6 plants D-1 is the speed
+master, of kind `drive_master`, and D-2, D-3 its followers, of kind
+`drive_follower`). Four specs, one per `serve`:
+
+- `line_overload` (M2, story S2-B on plant `belt-conveyor-drives-b`): when one
+  drive's current drops to about 0 A while the feed is still high, the decision
+  `reduce_feed` (R1, automatic) sets the feeder to the limp feed (preset `limp`, 18 % on plant B)
+  the two survivors can carry; the feeder's setpoint read-back verifies the
+  command.
+- `drive_degradation` (M3, stories S1, S3 and S4): a drive whose winding
+  temperature or vibration leaves its peers' band at equal current walks the
+  line through `normal`, `watch`, `degrading`, `shedding`, `belt_empty`, a
+  cause phase and `isolated` or `belt_stopped`, one trigger per step. The
+  steps that do not depend on the cause come first, whatever the diagnosis
+  (O34): at `degrading` shed the feed to the plant's limp preset (R1), at
+  `shedding` stop the feed so the belt runs empty (R2). On the empty belt the
+  line waits until the evidence names the cause: `cause_bearing` when the
+  drive's vibration residual reaches 0.3 mm/s (stop the drive by plan,
+  `isolate_drive`, R2), `cause_gearbox` when its winding slope residual
+  reaches 2 K/h while its vibration residual stays below 0.05 mm/s (stop the
+  belt, `stop_belt`, R2), or `cause_undecided` after 5 h with neither (stop
+  the belt, the safe default). Once the drive is isolated the limp feed is
+  restored (R1). The watch preset (`install_watch_condition`) holds when the
+  bearing or the gearbox rule holds; a reasoner that only installs it at
+  `degrading` or `shedding` is asked again when it fires (the triggers name
+  `delta.watch_fired`). A feed surge moves every drive together and no residual.
+  Every window emits on close, because an R2 intent is denied on provisional
+  evidence, and counts only with 90 % of its readings. The thresholds come
+  from streams-simulator's calibration (`M3-DESIGN.md` section 7) and are
+  named in the one transition that uses each. The wait: an empty belt is the
+  safe state (the drive cannot reach its overtemperature trip there and a
+  seizing gearbox cannot strand it), but a dry bearing wears with its load
+  cubed, about 4.5 times slower than at full feed, so the bearing rule, 0.6 to
+  1.0 h after the degrading rule at full feed, takes up to about 4.2 h on an
+  empty belt; the twin measured 1.9 h (S1-A) and 3.6 h (S1-B) on row 1.
+  A lost vibration reading (M4, story S5: D-3's accelerometer stuck at its
+  last value with good quality) is read by no vibration rule: D-3's 15 minute
+  readings within 0.005 mm/s while each peer's move by at least 0.02 mm/s
+  (the drive running) moves the line to `watch`, where the reasoner reports
+  `sensor_stuck`; the gearbox rule waits (a stuck reading fakes its quiet
+  vibration); and on the empty belt the bearing is judged by the winding:
+  D-3's residual at least 3 K and its 30 minute slope residual from 0.5 up to
+  below 2 K/h, a winding that still rises, slower than a seizing gearbox's.
+  A reading that stops arriving (story S5b: the vibration channel drops out)
+  is lost too. The three vibration inputs are `completenessRole: advisory`
+  ([advisory inputs](../../documentation/design/advisory-inputs.md)): a
+  15 minute `missing_heartbeat` on each, judged in event time, sets the fact
+  `input_stale.<input>` instead of making the line uncertain, so the line
+  keeps its R2 steps; they rest on the winding and the currents, which stay
+  required. The reasoner reports D-3's lost reading as `sensor_lost`.
+
+- `drive_degradation_planned_stop` (M4, story S1-B on plant `belt-conveyor-drives-b`,
+  whose survivors have no margin and whose limp feed, 18 %, earns too little to
+  pay for an early isolation): the same readings, rules and thresholds, but the
+  line keeps its full feed after the drive starts degrading (`degrading`) and
+  after its bearing is named (`bearing_loaded`, no step), and takes the planned
+  isolation (`shedding`: stop the feed, R2; on the empty belt `cause_bearing`:
+  stop the drive, R2; `isolated`: the limp feed, R1) when D-3's winding is
+  predicted to reach its 150 C trip within 1.5 h plus the 3 min the belt takes
+  to empty. The prediction is the operator kind `extrapolate`: a quadratic fit
+  of D-3's winding over 60 min (`documentation/design/extrapolate-operator.md`,
+  calibrated on S1-B's ten do-nothing rows). A gearbox named at full feed
+  empties the belt at once; a cause still untold when the trip is predicted
+  empties the belt and waits there for it (O34). Each plant's deployment runs
+  its own spec, as it runs its own device catalog: nothing in a snapshot tells
+  the plants apart, and a hold command at full feed would be an effector call
+  that ends the prognosis window.
+
+- `master_loss` (M4, story S6 on the plants `belt-conveyor-drives-s6-stop` and
+  `-s6-promote`, plant A with a speed master): the master D-1 trips. The line
+  opens while the belt runs (`running`) and enters `master_lost` once D-1 reads
+  below 0.5 A for 5 s within a minute of carrying more than 2 A (no step: within
+  seconds the plant shows what it does without its master). Then either
+  `stranded` (every drive below 0.5 A, the tail pulley below 1 rpm and the feed
+  above 20 kg/s within the last minute: the followers stopped with their master
+  and the loaded belt stands, `master_loss: stop_all`): stop the feeder
+  (`stop_feed`, R2), the first step of an empty restart; or `followers_lead`
+  (both followers carry at least 20 % more than the master's last share for 5 s
+  at a feed above 20 kg/s: one took the speed loop, `promote`): S2-A's reaction,
+  the plant's limp feed (`reduce_feed`, R1, 54 % from the S6 catalogs). Both
+  steps carry the diagnosis `drive_tripped`, defined here for the master: the
+  cause (the master's drive trip) is S2's, and what the plant did next is the
+  phase. No restart is possible: the spec declares no intent that starts the
+  belt or a drive, and the S6 catalogs route only the feeder, so a restart is
+  refused as an undeclared intent. What an empty restart would need and the
+  line does not have: a reading of the belt's load (the belt gives its tail
+  speed and run command only, and the unloading is manual), so that a phase
+  could say the belt is empty, and a `start_belt` route in the catalog. The
+  request for the manual unloading and the empty restart is advisory text in
+  the stranded decision's summary, not an intent: the only R0 intent the
+  runtime carries out without a device is `install_watch_condition`, and the
+  plant wire has no operator message.
+
+Everything lives under `testdata/`, outside the `examples/*/*.situation.yaml`
+gates, because the specs need their own event schemas:
+
+| File | What |
+| --- | --- |
+| `testdata/line-overload.situation.yaml` | The M2 spec; compile it with `--event-schemas testdata/event-schemas`. It declares every reading the shared site gives as an input, also those no operator reads: a deployment registers only its inputs' event schemas and quarantines the rest |
+| `testdata/drive-degradation.situation.yaml` | The M3 spec; compile it the same way |
+| `testdata/drive-degradation-planned-stop.situation.yaml` | The M4 planned-stop spec for plant B; compile it the same way |
+| `testdata/master-loss.situation.yaml` | The M4 S6 spec for both S6 plants; compile it the same way |
+| `testdata/event-schemas/conveyor.json` | One event type per drive's current, winding and vibration, the feed, its setpoint and the belt's tail speed |
+| `testdata/plant-wire/kinds/` | Byte copies of streams-simulator's `examples/belt-conveyor/kinds/*.kind.json` (guarded by `TestTheConveyorKindFilesAreByteCopiesOfStreamsims`): the feeder, the belt, the drive, and the drive's two roles on the S6 plants, `drive_master` and `drive_follower` (the drive's metrics and commands under the role's name) |
+| `testdata/plant-wire/belt-conveyor.site.json` | Every device on `conveyor-1`; per-device current, winding and vibration readings for the drives |
+| `testdata/plant-wire/belt-conveyor-s6.site.json` | The same site on the S6 plants, with D-1 of kind `drive_master` and D-2, D-3 of kind `drive_follower` (same event types) |
+| `testdata/plant-wire/belt-conveyor-s6-{stop,promote}.catalog.json` | One device catalog per S6 plant: `reduce_feed` (`limp` 54 %, plant A's safe limp feed, the story table's for regime `a`; `restore` 100 %) and `stop_feed` (0 %) to `set_feed` on `F-1`, and nothing else |
+| `testdata/plant-wire/belt-conveyor-{a,b}.catalog.json` | One device catalog per plant, as each plant's deployment has its own: `reduce_feed` (presets `limp`, the plant's safe limp feed, 54 % on plant A and 18 % on plant B, and `restore` 100 %; the specs name only `limp`, because nothing in a snapshot tells the plants apart) and `stop_feed` (0 %) to `set_feed` on `F-1`, `isolate_drive` to `stop_drive` on `D-3`, `stop_belt` to `stop_belt` on `B-1`; a command lives 180 s, longer than a barrier-paced world step (60 s), so `serve` takes `--dispatch-lease 5m` |
+| `testdata/principals.yaml` | A test approver for R1 and R2 on `conveyor-1` (the all-zero-seed test key) |
+
+The tests are in `cmd/agentic-stream/experiment_belt_conveyor*_test.go` (M2) and
+`experiment_belt_degradation*_test.go` (M3): against a fake plant wire node that
+replays backdated readings at the sensors' cadences and obeys the host's
+commands, and against the streams-simulator twin (skipped without
+`STREAMSIM_BIN`; M3's stories S1-A, S3-A and S4-A and M4's S5-A and S5b-A run barrier-paced, and the
+planned-stop spec plays S1-B, S4-B, and S4-A and S0-A on plant A's catalog, where
+nothing degrades), graded by `streamsim outcome` and `streamsim score`. On the
+planned-stop story the verdict carries D-3's predicted trip
+(`predicted_failure_at`) and the run must beat every baseline. Their reasoner is a stand-in that
+diagnoses by the catalog's rules (`drive_degrading` while neither the bearing
+nor the gearbox rule holds; the cause refines it) and takes the phase's step,
+which does not depend on its diagnosis. The verdict maps `drive_degrading` to
+D-3 without a label, a symptom that dates the detection of a later cause that
+refines it, and leaves `unknown` out. Which code refines which is declared in
+the tests' verdict subjects (`bearing` and `gearbox_seizing` refine
+`drive_degrading`), not in the diagnosis catalog: Tamoz refuses a catalog entry
+with any key but `code` and `description`, and only grading reads the relation.
+
+`experiment_belt_master_loss*_test.go` (M4, S6) plays both master-loss branches
+against the fake node (abrupt currents, the stopped belt coasting 15 s) and both
+S6 stories barrier-paced against the twin, on the S6 site and each plant's
+catalog. Its stand-in names `drive_tripped` while D-1 reads below 0.5 A and takes
+the phase's step; the verdict maps `drive_tripped` to `drive_master__vfd_fault`
+on D-1. S6-A-promote must beat every baseline with no trip beyond doing nothing's
+(the outcome counts D-2's promotion latch, `ref_held`, as a trip state) and no
+stranded belt; S6-A-stop must tie doing nothing exactly and be `easy`, with no
+start or reset call and the same trips as doing nothing (a restart of the loaded
+belt would stall it again). An S6 plant steps about 2.6 times slower than plant
+A: a 3 h row plays in about 4 min.
+
+`experiment_belt_live_*_test.go` plays S1-A, S1-B, S2-B, S3-A, S5-A, S5B-A,
+S6-A-promote and S6-A-stop with the real Tamoz worker as the reasoner instead
+(arm B: Tamoz reasons, the specs act). Each live story takes its spec, routes,
+read-backs, faulted device and verdict subjects from the scripted twin's story
+and is judged by the same bar; `TestEveryLiveStoryHasACompleteLiveConfiguration`
+checks each one's spec, catalog and site without a model. It calls a
+real model and runs only when asked: `CONVEYOR_LIVE_MODEL=1`,
+`CONVEYOR_TAMOZ_DIR` (a Tamoz checkout, run under `rbenv`), `ZAI_API_KEY` in the
+environment, `STREAMSIM_BIN`, and optionally `CONVEYOR_LIVE_ROWS` (seed rows of
+streams-simulator's `stories.json`, default `1`) and `CONVEYOR_LIVE_OUT` (where
+each run keeps its database, Tamoz's database and log, the worker exchanges, the
+twin's run folder, `outcome.json`, `score.txt` and the verified export). Each run
+starts its own worker on a fresh Tamoz database, copies the spec with the live
+budget (300 s wall time, 24000 input and 20000 output tokens: the model reasons
+20 to 80 s per call), counts model calls and refuses further episodes past 60;
+R2 steps are approved by the scripted approver through the signed relay.

@@ -31,5 +31,5 @@ type PipelineDependencies struct {
 }
 
 func NewPipeline(d PipelineDependencies) *Pipeline {
-	return &Pipeline{log: d.Log, engine: d.Engine, admission: d.Admission, runner: d.Runner, dispatcher: d.Dispatcher, watch: d.Watch, situationFeatures: d.Engine.SituationFeatures, telemetry: d.Telemetry, transactions: d.Transactions, sources: d.Sources, clk: d.Clock, tenantID: d.TenantID, maintenanceInterval: d.MaintenanceInterval}
+	return &Pipeline{log: d.Log, engine: d.Engine, admission: d.Admission, runner: d.Runner, dispatcher: d.Dispatcher, watch: d.Watch, situationFeatures: d.Engine.SituationFeatures, wakeSituations: d.Engine.WakeSituations, retryReasoning: d.Engine.RetryFailedReasoning, telemetry: d.Telemetry, transactions: d.Transactions, sources: d.Sources, clk: d.Clock, tenantID: d.TenantID, maintenanceInterval: d.MaintenanceInterval}
 }

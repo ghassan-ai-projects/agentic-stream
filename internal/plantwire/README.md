@@ -49,7 +49,11 @@ repository; an example is
 [`examples/real-world-sensor/testdata/plant-wire/`](../../examples/real-world-sensor/testdata/plant-wire/thermal-bench.site.json)).
 It is checked at start against its embedded schema (`internal/wire/site.schema.json`)
 and the commissioned kinds: every site kind is commissioned, every mapped metric
-is declared by its kind, no reading or heartbeat has two rules, every device of
+is declared by its kind, a reading that names a `device` names a site device of
+the reading's kind, no reading (device, kind and metric) or heartbeat (kind) has
+two rules, no kind-level reading or heartbeat rule covers two devices bound to
+one entity (their boots would mix in one event type; give each device its own
+reading), every device of
 a kind that gives events names its entity, every wire quality has an event
 quality and none but `good` maps to the event quality of `good`. Without a site
 file the host serves sessions and gives no events.
@@ -58,7 +62,8 @@ file the host serves sessions and gives no events.
   quarantines, and whose kind is the one the site file names for it. A rebirth
   forgets every device; a `DDEATH` of the device's current boot removes it.
 - A non-historical `DDATA` of a born device on its current boot gives one event
-  per sample whose metric the site file maps: the value under the rule's field
+  per sample whose metric the site file maps, by the rule of that device if the
+  site file has one and else by the rule of its kind: the value under the rule's field
   only when the wire quality is `good`, the mapped quality, `boot_id`, the
   record's `seq`, `device_mono_us` when sent and `schema_version`; a non-good
   sample also carries an envelope quality flag. The event id is `pw-` and 32 hex

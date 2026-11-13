@@ -35,6 +35,8 @@ var DeltaKeys = struct {
 	Facts                    string
 	NewFacts                 string
 	Novelty                  string
+	WatchFired               string
+	ReasoningFailed          string
 }{
 	PhaseChanged:             "phase_changed",
 	SeverityChange:           "severity_change",
@@ -44,6 +46,8 @@ var DeltaKeys = struct {
 	Facts:                    "facts",
 	NewFacts:                 "new_facts",
 	Novelty:                  "novelty",
+	WatchFired:               "watch_fired",
+	ReasoningFailed:          "reasoning_failed",
 }
 
 type Metadata struct {
@@ -54,14 +58,15 @@ type Metadata struct {
 }
 
 type Input struct {
-	Name            string `json:"name" yaml:"name"`
-	EventType       string `json:"eventType" yaml:"eventType"`
-	SchemaVersion   string `json:"schemaVersion" yaml:"schemaVersion"`
-	SchemaRef       string `json:"schema" yaml:"schema"`
-	PartitionKey    string `json:"partitionKey" yaml:"partitionKey"`
-	EntityType      string `json:"entityType" yaml:"entityType"`
-	Classification  string `json:"classification,omitempty" yaml:"classification,omitempty"`
-	MaxPayloadBytes int    `json:"maxPayloadBytes,omitempty" yaml:"maxPayloadBytes,omitempty"`
+	Name             string `json:"name" yaml:"name"`
+	EventType        string `json:"eventType" yaml:"eventType"`
+	SchemaVersion    string `json:"schemaVersion" yaml:"schemaVersion"`
+	SchemaRef        string `json:"schema" yaml:"schema"`
+	PartitionKey     string `json:"partitionKey" yaml:"partitionKey"`
+	EntityType       string `json:"entityType" yaml:"entityType"`
+	Classification   string `json:"classification,omitempty" yaml:"classification,omitempty"`
+	MaxPayloadBytes  int    `json:"maxPayloadBytes,omitempty" yaml:"maxPayloadBytes,omitempty"`
+	CompletenessRole string `json:"completenessRole,omitempty" yaml:"completenessRole,omitempty"`
 }
 
 type TimePolicy struct {
@@ -183,8 +188,14 @@ type Budget struct {
 }
 
 type Cognition struct {
-	Triggers []Trigger `json:"triggers" yaml:"triggers"`
-	Executor Executor  `json:"executor" yaml:"executor"`
+	Triggers             []Trigger    `json:"triggers" yaml:"triggers"`
+	Executor             Executor     `json:"executor" yaml:"executor"`
+	RetryFailedReasoning *RetryPolicy `json:"retryFailedReasoning,omitempty" yaml:"retryFailedReasoning,omitempty"`
+}
+
+type RetryPolicy struct {
+	After string `json:"after" yaml:"after"`
+	Max   int    `json:"max" yaml:"max"`
 }
 
 type Intent struct {

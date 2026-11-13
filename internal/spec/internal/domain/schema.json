@@ -163,6 +163,9 @@
           "minimum": 256,
           "maximum": 16777216,
           "default": 1048576
+        },
+        "completenessRole": {
+          "enum": ["required", "advisory"]
         }
       }
     },
@@ -263,6 +266,7 @@
           "enum": [
             "aggregate",
             "slope",
+            "extrapolate",
             "missing_heartbeat"
           ]
         },
@@ -639,6 +643,21 @@
         },
         "executor": {
           "$ref": "#/$defs/executor"
+        },
+        "retryFailedReasoning": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["after", "max"],
+          "properties": {
+            "after": {
+              "$ref": "#/$defs/duration"
+            },
+            "max": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5
+            }
+          }
         }
       }
     },

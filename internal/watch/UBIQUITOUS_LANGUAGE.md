@@ -6,7 +6,8 @@
 | Watch identity | The command's idempotency key, or its command ID when none is set. Re-installing the same identity must carry the same condition. | `domain.WatchID` | `watch_id` |
 | Watch expression | A CEL boolean over the `features` of the watch's Situation, named as in the SituationSpec. | `domain.ValidateExpression`, `domain.Evaluate` | `expression` |
 | Allowance | The remaining number of fires. Spending the last one disables the watch. | `remaining_fires`, `max_fires` | same |
-| Fire | One recorded, deduplicated match of an event against a watch. | `store.Tx.RecordFire` | `watch_fires` |
+| Fire | One recorded, deduplicated rise of a watch's expression (false at its last evaluation, true at this event). | `store.Tx.RecordFire` | `watch_fires` |
+| Last evaluation | Whether the expression held at the watch's previous evaluation, seeded at install; a fire needs it false. | `domain.ActiveWatch.LastMatched` | `last_matched` |
 | Expiry | The instant an active watch stops matching; the row is kept for audit. | `domain.Condition.ExpiresAt` | `expires_at`, status `expired` |
 
 | State | Meaning |

@@ -8,7 +8,7 @@ func TestWatchReadsTheConditionAndItsFires(t *testing.T) {
 	if _, found, err := Reader(s.db).Watch(t.Context(), "tenant", "w-1"); err != nil || found {
 		t.Fatalf("an uninstalled watch was found: found=%t err=%v", found, err)
 	}
-	inTx(t, s, func(tx *Tx) error { return tx.InsertCondition(t.Context(), "w-1", condition(), testNow) })
+	inTx(t, s, func(tx *Tx) error { return tx.InsertCondition(t.Context(), "w-1", condition(), nil, testNow) })
 	inTx(t, s, func(tx *Tx) error {
 		_, err := tx.RecordFire(t.Context(), "w-1", "evt-1", testNow)
 		return err

@@ -39,6 +39,7 @@ func recordHeartbeat(blob *OperatorStateBlob, env contractsv1.Envelope, processi
 		hs.LastEventID = env.ID
 		hs.Traceparent = env.Traceparent
 		hs.Tracestate = env.Tracestate
+		hs.Stale = false
 	}
 	hs.LastProcessingTime = &processingTime
 	return hs

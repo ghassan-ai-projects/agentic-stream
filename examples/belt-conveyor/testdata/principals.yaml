@@ -1,0 +1,14 @@
+# Approval governance for the belt conveyor tests. The approver's key is the
+# well-known all-zero-seed test key; never use it for a real approval.
+tenant: default
+principals:
+  - id: conveyor-relay
+  - id: conveyor-approver
+    public_key: O2onvM62pC1io6jQKm8Nc2UyFXcd4kOmOsBIoYtZ2ik=
+roles:
+  - id: belt-conveyor-approvers
+    name: Belt conveyor approver
+    members: [conveyor-approver]
+    authorities:
+      - entity: conveyor-1
+        risks: [R1, R2]

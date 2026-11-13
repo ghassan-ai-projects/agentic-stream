@@ -58,13 +58,21 @@ func NewPipeline(ctx context.Context, cfg PipelineConfig) (*app.Pipeline, error)
 	if err := validateOwnership(cfg); err != nil {
 		return nil, err
 	}
-	cfg = pipelineDefaults(cfg)
-	effector, watch, err := composeEffectors(cfg)
+	return composeStreamFirst(ctx, pipelineDefaults(cfg))
+}
+
+func composeStreamFirst(ctx context.Context, cfg PipelineConfig) (*app.Pipeline, error) {
+	log := eventlog.NewEventLogWithClock(cfg.DB, cfg.Clock)
+	stream, err := newOwnedStream(ctx, cfg, log)
+	if err != nil {
+		return nil, err
+	}
+	effector, watch, err := composeEffectors(cfg, stream.SituationFeatures)
 	if err != nil {
 		return nil, err
 	}
 	cfg.Effector = effector
-	return composeOwnedPipeline(ctx, cfg, watch)
+	return composeOwnedPipeline(ctx, cfg, log, stream, watch)
 }
 
 func validateOwnership(cfg PipelineConfig) error {
@@ -74,12 +82,7 @@ func validateOwnership(cfg PipelineConfig) error {
 	return nil
 }
 
-func composeOwnedPipeline(ctx context.Context, cfg PipelineConfig, watch *watch.Service) (*app.Pipeline, error) {
-	log := eventlog.NewEventLogWithClock(cfg.DB, cfg.Clock)
-	stream, err := newOwnedStream(ctx, cfg, log)
-	if err != nil {
-		return nil, err
-	}
+func composeOwnedPipeline(ctx context.Context, cfg PipelineConfig, log *eventlog.EventLog, stream *engine.Service, watch *watch.Service) (*app.Pipeline, error) {
 	if err := configureCostLimits(ctx, cfg); err != nil {
 		return nil, err
 	}

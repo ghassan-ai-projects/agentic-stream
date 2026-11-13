@@ -204,6 +204,7 @@ func CELFeatures(compiled *spec.CompiledSpec, facts map[string]any, evidence []s
 		addReducedFeature(features, facts, evidence, r)
 	}
 	addOperatorDefaults(features, compiled.Operators)
+	addInputStaleness(features, compiled, facts)
 	return features
 }
 

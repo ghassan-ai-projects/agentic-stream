@@ -1,6 +1,7 @@
 package domain_test
 
 import (
+	"math"
 	"slices"
 	"strings"
 	"testing"
@@ -200,6 +201,23 @@ func TestLatestAndMaximumFollowEventTimeThenEventIDNotArrivalOrder(t *testing.T)
 			}
 			if values["latest_value"] != tc.wantLatest || values["max_value"] != tc.wantMaximum {
 				t.Fatalf("latest, max = %v, %v; want %v, %v", values["latest_value"], values["max_value"], tc.wantLatest, tc.wantMaximum)
+			}
+		})
+	}
+}
+
+func TestAWindowFeatureNeverCarriesANegativeZero(t *testing.T) {
+	t.Parallel()
+	for _, aggregate := range []string{"latest", "min", "max", "mean"} {
+		t.Run(aggregate, func(t *testing.T) {
+			t.Parallel()
+			h := newHarness(t, aggregateSpec(aggregate))
+			features := h.applyOnTime(temperature("t0", base, math.Copysign(0, -1)))
+			if len(features) != 1 {
+				t.Fatalf("features = %+v, want one", features)
+			}
+			if value, isFloat := features[0].Value.(float64); !isFloat || value != 0 || math.Signbit(value) {
+				t.Fatalf("features = %+v, want one feature of positive zero", features)
 			}
 		})
 	}

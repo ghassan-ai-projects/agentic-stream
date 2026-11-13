@@ -64,7 +64,10 @@ state under any policy. The engine records every late or skewed event's disposit
 `clock_skew`) in the `event_time_dispositions` table, and the event itself stays in the event log.
 
 Missing heartbeat and source-health signals can make completeness uncertain.
-Incomplete evidence is explicit state, not a silent default.
+Incomplete evidence is explicit state, not a silent default. An input declared
+`completenessRole: advisory` is the exception: its loss, judged in event time,
+becomes the fact `input_stale.<input>` instead of uncertainty
+([advisory inputs](advisory-inputs.md)).
 
 When applying an event fails the same way on every attempt (an operator or a
 Situation rule refuses it), the engine records the failure in
@@ -85,7 +88,15 @@ least that complete, and names the unmet requirement otherwise.
 ## Operators and windows
 
 The current deterministic operators include aggregates, slope-like features,
-and missing-heartbeat handling. Window kinds include tumbling, sliding, count,
+the time until a fitted quantity reaches a limit ([extrapolate](extrapolate-operator.md)),
+and missing-heartbeat handling. An event that carries a device `boot_id` is
+fenced by boot per entity and input event type: the first event of a new boot
+discards the state of the operators that event type feeds (an operator fed by
+several event types loses its state when any of them admits a new boot), and an
+event of a boot seen before for that event type never changes state. Several
+devices can feed one entity, each through its own event types; the plant wire
+site file refuses a kind-level reading of a kind with several devices on one
+entity, whose boots would share one event type. Window kinds include tumbling, sliding, count,
 and decay. The compiler checks that operator inputs, windows, and output names
 are declared and compatible.
 
