@@ -149,3 +149,26 @@ func executeInBackground(ctx context.Context, executor *native.Executor, req *ep
 	}()
 	return result
 }
+
+type manualWallTime struct {
+	context.Context
+	expired chan struct{}
+	once    sync.Once
+}
+
+func newManualWallTime(parent context.Context) *manualWallTime {
+	return &manualWallTime{Context: parent, expired: make(chan struct{})}
+}
+
+func (m *manualWallTime) Done() <-chan struct{} { return m.expired }
+
+func (m *manualWallTime) Err() error {
+	select {
+	case <-m.expired:
+		return context.DeadlineExceeded
+	default:
+		return nil
+	}
+}
+
+func (m *manualWallTime) expire() { m.once.Do(func() { close(m.expired) }) }
